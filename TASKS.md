@@ -2,7 +2,7 @@
 
 ## 项目信息
 - 项目名称：Vela
-- 当前阶段：M1 收口中（provider 架构整改已落地，待正式报告/closure），M2 准备中
+- 当前阶段：M1 收口中
 - 项目责任人：小新
 - 默认编码施工位：Codex（GPT-5.4 xhigh）
 - 最后更新：2026-03-19
@@ -15,16 +15,17 @@
 - DONE
 
 ## 当前总体目标
-先打穿一个最小事实：
+先把一个最小事实做实：
 
-**Vela 不是聊天框，而是一个有连续人格、连续记忆、语音入口和轻量在场感的 avatar 伴侣。**
+**Vela 不是聊天框，而是一个有连续人格、连续记忆、真实主脑、并开始具备伴侣感的 avatar 伴侣原型。**
 
 ## 当前额外施工约束
-- `M1-T1 ~ M1-T5` 作为同一批主线任务，默认在**一个连续施工上下文**内推进，不碎成多个新会话
+- `M1-T1 ~ M1-T6` 默认在**一个连续施工上下文**内推进，不碎成多个新会话
 - 长任务默认派 **CLI 施工位**
 - UI 审美明确避开“AI 工具味”，参考**二次元乙游**方向
 - 若产出对 OpenClaw 有通用价值的源码，后续应评估是否抽象回馈
-- 涉及真实 LLM / provider / thinking / 记忆回灌 / 权限边界的整改，必须走：施工位自测 → 第二视角真实验收 → 主控 closure；并以**真实测试 + 整改报告**作为完成条件
+- 涉及真实 LLM / provider / thinking / 记忆回灌 / 权限边界的整改，必须走：施工位自测 → 第二视角真实验收 → 主控 closure
+- 完成标准必须包含：**真实测试 + 整改报告**
 
 ---
 
@@ -34,159 +35,186 @@
 - 状态：DONE
 - 优先级：P0
 - Owner：小新
-- 描述：冻结 Vela 一期定位、边界、复杂度红线
-- 产物：
-  - `M0_FREEZE.md`
-  - `PROJECT_PROPOSAL.md`
+- 产物：`M0_FREEZE.md`、`PROJECT_PROPOSAL.md`
 
 ### M0-T2 主线板 / 任务板落地
 - 状态：DONE
 - 优先级：P0
 - Owner：小新
-- 描述：把 M0 冻结转成当前可执行主线
-- 产物：
-  - `CURRENT-ROUTE.md`
-  - `TASKS.md`
+- 产物：`CURRENT-ROUTE.md`、`TASKS.md`
 
 ---
 
-## M1 - 最小伴侣闭环
+## M1 - 最小伴侣闭环（当前收口阶段）
 
-### M1-T1 Vela 工程骨架初始化
+### M1-T1 工程骨架初始化
 - 状态：DONE
 - 优先级：P0
 - Owner：Codex
-- 描述：初始化 Electron + Web UI 项目骨架，建立可运行桌面壳
-- DoD：
-  - [x] 可启动桌面应用
-  - [x] 有基础聊天视图
-  - [x] 有 avatar / 状态区域占位
-  - [x] 有单一主配置文件骨架（如 `vela.jsonc`）
 
-### M1-T2 Vela Core 最小闭环
+### M1-T2 `Vela Core` 最小闭环
 - 状态：DONE
 - 优先级：P0
 - Owner：Codex
-- 描述：实现最小本地中枢 `Vela Core`
-- DoD：
-  - [x] 记忆读写入口
-  - [x] 人格/会话状态入口
-  - [x] 上下文组装入口
-  - [x] avatar 状态映射入口
-  - [x] 不做复杂 gateway
 
 ### M1-T3 记忆文件骨架
 - 状态：DONE
 - 优先级：P0
 - Owner：Codex
-- 描述：实现一期最小记忆文件结构与会话摘要写入
-- DoD：
-  - [x] `profile` 级信息可存
-  - [x] `session summary` 可写入本地
-  - [x] 可读回最近若干摘要
-  - [x] 目录结构简单清晰，不做过度设计
 
 ### M1-T4 固定人格种子接入
 - 状态：DONE
 - 优先级：P0
 - Owner：Codex
-- 描述：接入一期默认人格种子
-- DoD：
-  - [x] 有固定人格设定入口
-  - [x] 对话中人格不明显漂移
-  - [x] 结构允许未来替换人格，但当前只做一个人格
 
 ### M1-T5 文本聊天闭环
 - 状态：DONE
 - 优先级：P0
 - Owner：Codex
-- 描述：打通文本模式下的最小聊天闭环
+
+### M1-T6 Provider 架构整改
+- 状态：DONE
+- 优先级：P0
+- Owner：Codex
 - DoD：
-  - [x] 能发送消息
-  - [x] 能收到主脑回复
-  - [x] 回复能带入最近摘要/人格上下文
-  - [x] 用户主观感觉不像重开新会话
+  - [x] 支持 OpenAI-compatible / Anthropic Messages / MiniMax anthropic-like 三类适配
+  - [x] Core 不再直接依赖厂商返回格式
+  - [x] `thinking` / `text` / `usage` / `finishReason` / `providerMeta` 已归一化
+  - [x] `verify:providers` / `verify:core` / `build` / `smoke` 全部通过
+  - [x] `docs/llm-provider-adapters.md` 已落地
+
+### M1-G1 施工位自测包
+- 状态：DONE
+- 优先级：P0
+- Owner：Codex
+- DoD：
+  - [x] 代码整改完成
+  - [x] 自测结果可复核
+  - [x] 关键验证命令已跑
+
+### M1-G2 第二视角真实验收
+- 状态：DONE
+- 优先级：P0
+- Owner：MiniMax
+- DoD：
+  - [x] 隔离副本 + 真 key + 真 `MiniMax-M2.7` 验证已完成
+  - [x] M1 真实 LLM 体验已验收，不是只靠 mock
+  - [x] 已形成验收结论
+
+### M1-G3 主控 closure
+- 状态：IN-PROGRESS
+- 优先级：P0
+- Owner：小新
+- DoD：
+  - [ ] 把阶段结论正式回填到项目文档
+  - [ ] 锁定 M1 通过口径
+  - [ ] 宣布切主线到 M2
 
 ---
 
-## M2 - 语音闭环
+## M2 - 表达与在场感闭环
 
 ### M2-T1 语音模式按钮
 - 状态：TODO
 - 优先级：P1
 - Owner：Codex
-- 描述：实现按钮切换的语音交互模式
 - DoD：
   - [ ] 可显式开启/关闭语音模式
-  - [ ] 关闭后退回 text-in / text-out
+  - [ ] 关闭后退回 `text-in / text-out`
   - [ ] UI 状态明确
 
-### M2-T2 ASR 占位接入
+### M2-T2 流式文本输出
 - 状态：TODO
 - 优先级：P1
 - Owner：Codex
-- 描述：先接最低成本可用 ASR 路线
 - DoD：
-  - [ ] 语音输入可转文本
-  - [ ] 不阻塞主线
-  - [ ] 后续可替换 provider
+  - [ ] 回复自然流式出现
+  - [ ] 不再整段突然蹦出
 
-### M2-T3 TTS 占位接入
+### M2-T3 TTS / 语音开口
 - 状态：TODO
 - 优先级：P1
 - Owner：Codex
-- 描述：先接一期可用 TTS；正式路线保留 MiniMax WebSocket 候选
 - DoD：
-  - [ ] 回复可播报
-  - [ ] speaking 状态可驱动 UI/avatar
-  - [ ] provider 可替换
+  - [ ] 语音输出尽量流式开口
+  - [ ] 不等待整段文本完全生成后才开始说话
+  - [ ] 正式 TTS 路线优先考虑 MiniMax WebSocket 候选
+
+### M2-T4 在场感与状态同步
+- 状态：TODO
+- 优先级：P1
+- Owner：Codex
+- DoD：
+  - [ ] speaking / listening / thinking 状态同步
+  - [ ] 表情反馈自然
+  - [ ] 轻动作反馈自然
+
+### M2-T5 远景 / 近景切换
+- 状态：TODO
+- 优先级：P1
+- Owner：Codex
+- DoD：
+  - [ ] 支持场景远景 / 近景切换
+  - [ ] 主脑可判断当前是否该切近景
+
+### M2-T6 三档 thinking mode
+- 状态：TODO
+- 优先级：P1
+- Owner：Codex
+- DoD：
+  - [ ] 用户可配置 `fast / balanced / deep`
+  - [ ] 各 provider 有映射策略
+  - [ ] 真实测试 + 整改报告齐备
 
 ---
 
-## M3 - 轻量在场感闭环
+## M3 - 模型路由与稳定性闭环
 
-### M3-T1 占位 avatar / 状态 UI
+### M3-T1 default model + fallback
 - 状态：TODO
 - 优先级：P1
 - Owner：Codex
-- 描述：在没有正式资产时，先做占位 avatar / 极简状态 UI
 - DoD：
-  - [ ] neutral / listening / thinking / speaking 状态可见
-  - [ ] 至少 1-2 个情绪态可见
-  - [ ] 不依赖正式美术资产
+  - [ ] 默认模型额度耗尽时不直接卡死
+  - [ ] 有 fallback 机制
 
-### M3-T2 说话状态联动
+### M3-T2 模型能力提示
 - 状态：TODO
 - 优先级：P1
 - Owner：Codex
-- 描述：让 TTS / 回复状态驱动 UI 或 avatar 状态
 - DoD：
-  - [ ] speaking 时有明确反馈
-  - [ ] thinking/listening 状态与交互一致
-  - [ ] 不做重动作库
+  - [ ] 不同模型能力有标签 / 提示
+  - [ ] 低级模型风险做用户提示，不做死封
+
+### M3-T3 provider 稳定性策略
+- 状态：TODO
+- 优先级：P1
+- Owner：Codex
+- DoD：
+  - [ ] OpenAI-compatible / Anthropic / MiniMax 三类长期可用
+  - [ ] 关键异常不直接把系统打死
 
 ---
 
-## M4 - 轻主动与连续性验证
+## M4 - 轻主动与关系深化
 
 ### M4-T1 启动续接旧话题
 - 状态：TODO
 - 优先级：P1
 - Owner：Codex
-- 描述：应用启动或回到会话时，能自然延续之前语境
-- DoD：
-  - [ ] 能基于最近摘要生成自然开场
-  - [ ] 不像硬检索数据库
 
 ### M4-T2 会话内自然提旧事
 - 状态：TODO
+- 优先级：P1
+- Owner：Codex
+
+### M4-T3 轻主动节奏
+- 状态：TODO
 - 优先级：P2
 - Owner：Codex
-- 描述：在会话中最小验证“会主动提起旧事”
 - DoD：
-  - [ ] 只做轻量相关性召回
-  - [ ] 不做系统级推送
-  - [ ] 不让用户觉得 creepy
+  - [ ] 主动不骚扰
+  - [ ] 节奏可控
 
 ---
 
@@ -203,6 +231,6 @@
 ---
 
 ## 当前下一步
-1. 把 `M1-T1 ~ M1-T5` 交给 Codex 启动
-2. 主控挂好 `SESSION-STATE.md`
-3. 施工返回后做主控验收 + 必要时 Claude 复核
+1. 正式收 M1（主控 closure）
+2. 开 M2 连续施工单
+3. M2 完成后按同样规则做第二视角真实验收
