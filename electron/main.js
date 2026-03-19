@@ -81,6 +81,10 @@ ipcMain.handle("vela:send-message", async (_event, message) => {
   return core.handleUserMessage(message);
 });
 
+ipcMain.handle("vela:complete-onboarding", async (_event, payload) => {
+  return core.completeOnboarding(payload);
+});
+
 app.whenReady().then(async () => {
   await createMainWindow();
 

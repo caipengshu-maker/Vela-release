@@ -15,12 +15,36 @@ async function run() {
   await core.initialize();
   const before = await core.getBootstrapState();
   const initialSummary = before.memoryPeek?.summary || "";
+
+  if (before.onboarding?.required) {
+    await core.completeOnboarding({
+      velaName: "Vela",
+      userName: "测试用户",
+      temperament: "gentle-cool",
+      distance: "warm"
+    });
+  }
+
   const probe = `第${Date.now()}次验证：我最近总是睡得很晚，白天也有点飘。`;
 
   const afterChat = await core.handleUserMessage(probe);
 
   if (!afterChat.messages.length) {
     throw new Error("chat roundtrip did not produce messages");
+  }
+
+  const latestAssistant = afterChat.messages.at(-1);
+
+  if (!latestAssistant?.llm?.providerMeta?.adapter) {
+    throw new Error("assistant turn is missing normalized provider metadata");
+  }
+
+  if (latestAssistant.content !== latestAssistant.llm.text) {
+    throw new Error("assistant message content diverged from normalized text");
+  }
+
+  if (!Array.isArray(latestAssistant.blocks) || latestAssistant.blocks.length === 0) {
+    throw new Error("assistant turn is missing normalized content blocks");
   }
 
   const nextCore = new VelaCore({
@@ -36,6 +60,10 @@ async function run() {
 
   if (afterReload.memoryPeek.summary === initialSummary && initialSummary) {
     throw new Error("recent summary did not update after chat");
+  }
+
+  if (!afterReload.onboarding?.completed) {
+    throw new Error("onboarding should be completed during verify flow");
   }
 
   if (!afterReload.welcomeNote.includes("上次我们停在")) {

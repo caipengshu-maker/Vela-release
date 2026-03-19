@@ -12,7 +12,8 @@
     "build": "vite build",
     "start": "electron .",
     "smoke": "electron . --smoke-test",
-    "verify:core": "node scripts/verify-core.mjs"
+    "verify:core": "node scripts/verify-core.mjs",
+    "verify:providers": "node scripts/verify-provider-adapters.mjs"
   },
   "dependencies": {
     "jsonc-parser": "^3.3.1",

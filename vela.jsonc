@@ -11,18 +11,27 @@
     }
   },
   "runtime": {
-    "storageRoot": "./.vela-data",
+    "storageRoot": "D:/Vela/data",
+    "cacheRoot": "D:/Vela/cache",
+    "assetRoot": "D:/Vela/assets",
     "recentSummaryLimit": 3,
     "summaryIndexLimit": 12,
     "sessionMessageLimit": 12
   },
   "llm": {
-    "mode": "mock",
+    "provider": "mock",
     "baseUrl": "https://api.openai.com/v1",
     "model": "gpt-4.1-mini",
     "apiKeyEnv": "OPENAI_API_KEY",
     "temperature": 0.9,
-    "maxTokens": 260
+    "maxTokens": 260,
+    "endpointPath": "",
+    "headers": {},
+    "anthropicVersion": "2023-06-01",
+    "thinking": {
+      "enabled": false,
+      "budgetTokens": 512
+    }
   },
   "asr": {
     "enabled": false,

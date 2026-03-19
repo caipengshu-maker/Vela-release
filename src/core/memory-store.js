@@ -11,6 +11,13 @@ function defaultProfile() {
     },
     vela: {
       personaId: "vela-default"
+    },
+    onboarding: {
+      completed: false,
+      velaName: "Vela",
+      userName: "",
+      temperament: "gentle-cool",
+      distance: "warm"
     }
   };
 }
@@ -30,6 +37,27 @@ function defaultSummaryIndex() {
   };
 }
 
+function mergeProfile(profile = {}) {
+  const base = defaultProfile();
+
+  return {
+    ...base,
+    ...profile,
+    user: {
+      ...base.user,
+      ...(profile.user || {})
+    },
+    vela: {
+      ...base.vela,
+      ...(profile.vela || {})
+    },
+    onboarding: {
+      ...base.onboarding,
+      ...(profile.onboarding || {})
+    }
+  };
+}
+
 export class MemoryStore {
   constructor(store, config) {
     this.store = store;
@@ -38,10 +66,12 @@ export class MemoryStore {
 
   async initialize() {
     await this.store.ensureDir("memory", "sessions");
-    await this.store.writeJson(
-      PROFILE_FILE,
+
+    const profile = mergeProfile(
       await this.store.readJson(PROFILE_FILE, defaultProfile())
     );
+
+    await this.store.writeJson(PROFILE_FILE, profile);
     await this.store.writeJson(
       RELATIONSHIP_FILE,
       await this.store.readJson(RELATIONSHIP_FILE, defaultRelationship())
@@ -53,7 +83,9 @@ export class MemoryStore {
   }
 
   async loadMemorySnapshot() {
-    const profile = await this.store.readJson(PROFILE_FILE, defaultProfile());
+    const profile = mergeProfile(
+      await this.store.readJson(PROFILE_FILE, defaultProfile())
+    );
     const relationship = await this.store.readJson(
       RELATIONSHIP_FILE,
       defaultRelationship()
@@ -71,6 +103,35 @@ export class MemoryStore {
         this.config.runtime.recentSummaryLimit
       )
     };
+  }
+
+  async completeOnboarding({ velaName, userName, temperament, distance }) {
+    const profile = mergeProfile(
+      await this.store.readJson(PROFILE_FILE, defaultProfile())
+    );
+
+    const nextProfile = {
+      ...profile,
+      user: {
+        ...profile.user,
+        name: userName || profile.user.name
+      },
+      onboarding: {
+        ...profile.onboarding,
+        completed: true,
+        velaName: velaName || profile.onboarding.velaName,
+        userName: userName || profile.onboarding.userName,
+        temperament: temperament || profile.onboarding.temperament,
+        distance: distance || profile.onboarding.distance
+      }
+    };
+
+    await this.store.writeJson(PROFILE_FILE, nextProfile);
+    return nextProfile;
+  }
+
+  async updateRelationship(relationship) {
+    await this.store.writeJson(RELATIONSHIP_FILE, relationship);
   }
 
   async appendTurnSummary(summary) {

@@ -25,8 +25,7 @@ export function buildContext({
   profile,
   relationship,
   recentSummaries,
-  runtimeSession,
-  userMessage
+  runtimeSession
 }) {
   const systemPrompt = [
     persona.seedPrompt,
@@ -38,13 +37,17 @@ export function buildContext({
 
   const messages = runtimeSession.messages
     .slice(-6)
-    .map((message) => ({
-      role: message.role,
-      content: message.content
-    }))
-    .concat({
-      role: "user",
-      content: userMessage
+    .map((message) => {
+      const normalizedMessage = {
+        role: message.role,
+        content: message.content
+      };
+
+      if (Array.isArray(message.blocks) && message.blocks.length > 0) {
+        normalizedMessage.blocks = message.blocks;
+      }
+
+      return normalizedMessage;
     });
 
   return {
