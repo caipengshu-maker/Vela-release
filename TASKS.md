@@ -15,9 +15,7 @@
 - DONE
 
 ## 当前总体目标
-先把一个最小事实做实：
-
-**Vela 不是聊天框，而是一个有连续人格、连续记忆、真实主脑、并开始具备伴侣感的 avatar 伴侣原型。**
+把文本管道从"整段蹦出"升级为自然流式，同时打通基础 provider 稳定性，为后续语音和在场感奠基。
 
 ## 当前额外施工约束
 - `M1-T1 ~ M1-T6` 默认在**一个连续施工上下文**内推进，不碎成多个新会话
@@ -102,62 +100,37 @@
   - [x] 已形成验收结论
 
 ### M1-G3 主控 closure
-- 状态：IN-PROGRESS
+- 状态：DONE
 - 优先级：P0
 - Owner：小新
+- 关闭日期：2026-03-20
 - DoD：
-  - [ ] 把阶段结论正式回填到项目文档
-  - [ ] 锁定 M1 通过口径
-  - [ ] 宣布切主线到 M2
+  - [x] 把阶段结论正式回填到项目文档
+  - [x] 锁定 M1 通过口径
+  - [x] 宣布切主线到 M2
+- 结论：M1 通过。带连续人格 + 连续记忆 + 初始化流 + 真实 LLM 验证的文本伴侣原型已成立。Provider 架构已收口到可扩展方向。
 
 ---
 
-## M2 - 表达与在场感闭环
+## M2 - 管道闭环（流式文本 + 状态机 + thinking + 基础 fallback）
 
-### M2-T1 语音模式按钮
+### M2-T1 流式文本输出
 - 状态：TODO
-- 优先级：P1
+- 优先级：P0
 - Owner：Codex
 - DoD：
-  - [ ] 可显式开启/关闭语音模式
-  - [ ] 关闭后退回 `text-in / text-out`
-  - [ ] UI 状态明确
+  - [ ] 回复自然流式出现，不再整段突然蹦出
+  - [ ] SSE / streaming 适配已覆盖 OpenAI-compatible 和 Anthropic Messages 两类 provider
 
-### M2-T2 流式文本输出
+### M2-T2 状态机骨架
 - 状态：TODO
-- 优先级：P1
+- 优先级：P0
 - Owner：Codex
 - DoD：
-  - [ ] 回复自然流式出现
-  - [ ] 不再整段突然蹦出
+  - [ ] `idle / listening / thinking / speaking` 四态切换正确
+  - [ ] UI 层消费状态机事件，状态可视
 
-### M2-T3 TTS / 语音开口
-- 状态：TODO
-- 优先级：P1
-- Owner：Codex
-- DoD：
-  - [ ] 语音输出尽量流式开口
-  - [ ] 不等待整段文本完全生成后才开始说话
-  - [ ] 正式 TTS 路线优先考虑 MiniMax WebSocket 候选
-
-### M2-T4 在场感与状态同步
-- 状态：TODO
-- 优先级：P1
-- Owner：Codex
-- DoD：
-  - [ ] speaking / listening / thinking 状态同步
-  - [ ] 表情反馈自然
-  - [ ] 轻动作反馈自然
-
-### M2-T5 远景 / 近景切换
-- 状态：TODO
-- 优先级：P1
-- Owner：Codex
-- DoD：
-  - [ ] 支持场景远景 / 近景切换
-  - [ ] 主脑可判断当前是否该切近景
-
-### M2-T6 三档 thinking mode
+### M2-T3 三档 thinking mode
 - 状态：TODO
 - 优先级：P1
 - Owner：Codex
@@ -166,37 +139,102 @@
   - [ ] 各 provider 有映射策略
   - [ ] 真实测试 + 整改报告齐备
 
----
-
-## M3 - 模型路由与稳定性闭环
-
-### M3-T1 default model + fallback
+### M2-T4 基础 model fallback
 - 状态：TODO
-- 优先级：P1
+- 优先级：P0
 - Owner：Codex
 - DoD：
-  - [ ] 默认模型额度耗尽时不直接卡死
-  - [ ] 有 fallback 机制
-
-### M3-T2 模型能力提示
-- 状态：TODO
-- 优先级：P1
-- Owner：Codex
-- DoD：
-  - [ ] 不同模型能力有标签 / 提示
+  - [ ] 默认模型请求失败 / 额度耗尽时自动尝试 fallback 模型
+  - [ ] 不直接卡死，用户可感知降级
   - [ ] 低级模型风险做用户提示，不做死封
 
-### M3-T3 provider 稳定性策略
+### M2-G1 施工位自测
+- 状态：TODO
+- 优先级：P0
+- Owner：Codex
+
+### M2-G2 第二视角真实验收
+- 状态：TODO
+- 优先级：P0
+- Owner：待定
+
+### M2-G3 主控 closure
+- 状态：TODO
+- 优先级：P0
+- Owner：小新
+
+---
+
+## M3 - 在场感闭环（语音 + 表情 + 动作 + 镜头）
+
+### M3-T1 语音模式按钮
 - 状态：TODO
 - 优先级：P1
 - Owner：Codex
 - DoD：
-  - [ ] OpenAI-compatible / Anthropic / MiniMax 三类长期可用
-  - [ ] 关键异常不直接把系统打死
+  - [ ] 可显式开启/关闭语音模式
+  - [ ] 关闭后退回 `text-in / text-out`
+  - [ ] UI 状态明确
+
+### M3-T2 TTS 流式开口
+- 状态：TODO
+- 优先级：P1
+- Owner：Codex
+- DoD：
+  - [ ] 语音输出流式开口，不等整段文本生成完才说话
+  - [ ] 正式路线优先 MiniMax WebSocket
+  - [ ] 默认 `emotion_mode=auto`；只有明确/约束/连续性场景才 force emotion
+  - [ ] `speech-2.8-*` 遇 `whisper / fluent` 可安全降到 `speech-2.6-*`
+  - [ ] 默认 `voiceId` 锁定 `Chinese (Mandarin)_Sweet_Lady`
+
+### M3-T3 表情 / 动作轻反馈
+- 状态：TODO
+- 优先级：P1
+- Owner：Codex
+- DoD：
+  - [ ] speaking / listening / thinking 状态驱动表情切换
+  - [ ] 轻动作反馈自然
+  - [ ] 情绪与表情/动作不出现明显错配
+
+### M3-T4 远景 / 近景切换
+- 状态：TODO
+- 优先级：P1
+- Owner：Codex
+- DoD：
+  - [ ] 支持 `wide / close` 两态
+  - [ ] 默认 wide，情绪/亲密时切 close
+
+### M3-T5 状态同步收口
+- 状态：TODO
+- 优先级：P1
+- Owner：Codex
+- DoD：
+  - [ ] TTS 播放状态、表情、动作、镜头与状态机完全联动
+  - [ ] 无明显延迟或错位
+
+### M3-G1 施工位自测
+- 状态：TODO
+- 优先级：P0
+- Owner：Codex
+
+### M3-G2 第二视角真实验收（技术）
+- 状态：TODO
+- 优先级：P0
+- Owner：待定
+
+### M3-G3 用户体验验收（人耳/人眼）
+- 状态：TODO
+- 优先级：P0
+- Owner：舒彩鹏
+
+### M3-G4 主控 closure
+- 状态：TODO
+- 优先级：P0
+- Owner：小新
 
 ---
 
-## M4 - 轻主动与关系深化
+## M4 - 关系深化与轻主动
 
 ### M4-T1 启动续接旧话题
 - 状态：TODO
@@ -216,6 +254,15 @@
   - [ ] 主动不骚扰
   - [ ] 节奏可控
 
+### M4-T4 provider 稳定性收尾
+- 状态：TODO
+- 优先级：P1
+- Owner：Codex
+- DoD：
+  - [ ] OpenAI-compatible / Anthropic / MiniMax 三类长期稳定
+  - [ ] 模型能力标签 / 提示完善
+  - [ ] 关键异常不把系统打死
+
 ---
 
 ## 当前不做
@@ -231,6 +278,6 @@
 ---
 
 ## 当前下一步
-1. 正式收 M1（主控 closure）
-2. 开 M2 连续施工单
-3. M2 完成后按同样规则做第二视角真实验收
+1. 开 M2 连续施工单（流式文本 + 状态机 + thinking + 基础 fallback）
+2. M2 完成后按规则做第二视角真实验收
+3. M3 再叠语音和在场感

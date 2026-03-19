@@ -412,7 +412,7 @@ Vela 一期明确不是：
 - 技术路线
 - 复杂度红线
 
-### M1 - 人格 / 记忆 / 文本闭环
+### M1 - 人格 / 记忆 / 文本闭环 ✅
 目标：
 - Electron 壳
 - 文本聊天
@@ -421,28 +421,31 @@ Vela 一期明确不是：
 - 稳定人格 prompt
 - provider 架构收口
 - 真实 LLM 验证
+- 状态：已关门（2026-03-20）
 
-### M2 - 表达与在场感闭环
+### M2 - 管道闭环（流式文本 + 状态机 + thinking + 基础 fallback）
+目标：
+- 流式文本输出
+- `idle / listening / thinking / speaking` 状态机
+- 三档 thinking mode（`fast / balanced / deep`）
+- 基础 model fallback（provider 挂了不卡死）
+
+> 为什么 fallback 提前到 M2：M3 要接真实 TTS provider，没有 fallback 一旦 provider 挂了整条链卡死。
+
+### M3 - 在场感闭环（语音 + 表情 + 动作 + 镜头）
 目标：
 - 语音模式按钮
-- 流式文字输出
-- 流式语音开口
-- 说话 / 聆听 / 思考状态联动
-- 表情 / 动作 / 远景近景切换
-- thinking 三档
+- TTS 流式开口（MiniMax WebSocket 优先）
+- 表情 / 动作轻反馈
+- `wide / close` 远近景切换
+- 状态机驱动全链路联动
 
-### M3 - 模型路由与稳定性闭环
-目标：
-- default model + fallback
-- 模型能力提示
-- provider 稳定路由
-- 异常与额度耗尽不直接卡死
-
-### M4 - 轻主动与关系深化
+### M4 - 关系深化与轻主动
 目标：
 - 启动续接旧话题
 - 会话内自然提旧事
 - 轻主动节奏
+- provider 稳定性收尾
 - 关系深化与长期连续感增强
 
 ---
