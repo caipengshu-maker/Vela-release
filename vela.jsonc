@@ -19,10 +19,10 @@
     "sessionMessageLimit": 12
   },
   "llm": {
-    "provider": "openai-compatible",
-    "baseUrl": "https://api.openai.com/v1",
-    "model": "gpt-4.1-mini",
-    "apiKeyEnv": "OPENAI_API_KEY",
+    "provider": "minimax-messages",
+    "baseUrl": "https://api.minimaxi.com/anthropic",
+    "model": "MiniMax-M2.7",
+    "apiKeyEnv": "MINIMAX_API_KEY",
     "temperature": 0.9,
     "maxTokens": 260,
     "thinkingMode": "balanced",
@@ -34,10 +34,10 @@
       "budgetTokens": 512
     },
     "fallback": {
-      "provider": "openai-compatible",
-      "model": "gpt-4o-mini",
-      "apiKeyEnv": "OPENAI_API_KEY",
-      "baseUrl": "https://api.openai.com/v1"
+      "provider": "anthropic-messages",
+      "model": "k2p5",
+      "apiKeyEnv": "KIMI_CODING_API_KEY",
+      "baseUrl": "https://api.kimi.com/coding"
     }
   },
   "asr": {
