@@ -1,0 +1,62 @@
+# M3 VRM Debug + Fix — Codex 排查 Prompt
+
+## 背景
+
+Vela 的 VRM avatar 渲染已经能显示模型（EKU VRM 0.0），但有两个严重问题：
+
+1. **手臂一直保持 T-pose**：尝试过在 `_cacheBones` 后设置手臂旋转、在 `_updatePose` 每帧设置、在 `vrm.update()` 之后设置，全部无效——模型手臂始终水平伸展
+2. **镜头切换不稳定**：`wide / close` 的 camera preset 切换时有时生效有时不生效，close 模式下会切掉头部
+
+## 排查要求
+
+### 第一优先：搞清楚为什么手臂动不了
+
+1. **在 `_cacheBones` 中加 debug 日志**：打印每个骨骼名是否被找到（`getNormalizedBoneNode` 是否返回非 null），特别关注 `leftUpperArm` / `rightUpperArm` / `leftLowerArm` / `rightLowerArm`
+2. **检查 VRM 0.0 的骨骼访问方式**：`@pixiv/three-vrm` 对 VRM 0.x 模型的 `getNormalizedBoneNode` 是否支持手臂骨骼？是否需要用 `getRawBoneNode` 代替？
+3. **检查 `vrm.update(delta)` 对骨骼的影响**：VRM 的 humanoid update 是否会重置 normalized bone 的 quaternion？如果是，应该在 `vrm.update()` 之后再设置手臂旋转
+4. **验证旋转值和轴向**：VRM 0.x 在 `rotateVRM0` 之后的坐标系中，手臂下垂应该绕哪个轴旋转？当前尝试的是 Z 轴 ±1.22 弧度，可能轴向不对
+5. **如果 normalized bone 不行，尝试直接操作 raw bone 或 scene graph 中的 bone 节点**
+
+### 第二优先：修复镜头
+
+1. **确认 `avatarState.camera` 的值确实在 `wide` 和 `close` 之间切换**（加 debug 日志）
+2. **确认 `_updateCamera` 每帧都在被调用**
+3. **调整 close 镜头参数**：确保 close 模式下头部不被切掉。模型高度缩放到 2.18 单位，头部大约在 Y=1.9-2.1 的位置
+
+### 第三优先：确认所有状态机驱动的动作可见
+
+1. 确认 `idle / listening / thinking / speaking` 四个状态的体态/表情差异**肉眼可感知**
+2. 确认 `happy / sad / angry / relaxed` 表情在 VRM 上有可见变化
+3. 确认眨眼在工作
+4. 确认嘴型在 speaking 状态下有可见动作
+
+## 当前代码位置
+
+- VRM 控制器：`src/core/vrm-avatar-controller.js`
+- VRM 舞台组件：`src/vrm-avatar-stage.jsx`
+- 状态映射：`resolveSafePresentation()` 在 `vrm-avatar-controller.js` 中
+- 模型资产：`D:/Vela/assets/avatars/eku/Eku_VRM_v1_0_0.vrm`（VRM 0.0 / glTF 2.0）
+- 模型信息：53 humanoid bones、17 组表情（neutral, aa, ih, ou, ee, oh, blink, blinkLeft, blinkRight, happy, angry, sad, relaxed, lookUp, lookDown, lookLeft, lookRight）
+
+## 技术参考
+
+- `@pixiv/three-vrm` 的 VRM 0.x 支持是通过 `VRMLoaderPlugin` 自动转换的
+- `VRMUtils.rotateVRM0(vrm)` 处理 VRM 0.x → 1.0 坐标转换
+- `VRMHumanBoneName` 枚举定义在 `@pixiv/three-vrm` 中
+- 模型加载后 `vrm.humanoid` 应该可以访问所有映射的人形骨骼
+
+## 约束
+
+1. 不改 interaction-policy / interaction-contract / avatar-state
+2. 不改 TTS / 音频播放链路
+3. 不改 onboarding / config
+4. build 和 smoke 必须通过
+5. 修复后要有 console 日志证明骨骼和镜头确实在生效
+
+## 验收标准
+
+1. 手臂自然下垂，不再 T-pose
+2. wide / close 镜头可切，close 不切头
+3. `npm run build` 通过
+4. `npm run smoke` 通过
+5. 启动 Electron 窗口后 console 有骨骼 debug 日志证明手臂骨骼被找到并被设置

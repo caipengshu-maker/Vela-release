@@ -12,19 +12,33 @@ const CAMERA_PRESETS = {
     target: new THREE.Vector3(0, 1.18, 0.02)
   },
   close: {
-    position: new THREE.Vector3(0.14, 1.5, 1.56),
-    target: new THREE.Vector3(0.02, 1.3, 0.04)
+    position: new THREE.Vector3(0.1, 1.92, 1.92),
+    target: new THREE.Vector3(0.02, 1.86, 0.02)
   }
 };
 
 const EMOTION_EXPRESSION_WEIGHTS = {
-  happy: 0.52,
-  relaxed: 0.44,
-  sad: 0.54,
-  angry: 0.46
+  happy: 0.64,
+  relaxed: 0.58,
+  sad: 0.66,
+  angry: 0.62
 };
 
 const EXPRESSION_KEYS = ["happy", "relaxed", "sad", "angry", "blink", "aa", "ih", "oh"];
+const CORE_POSE_BONES = [
+  VRMHumanBoneName.hips,
+  VRMHumanBoneName.spine,
+  VRMHumanBoneName.chest,
+  VRMHumanBoneName.upperChest,
+  VRMHumanBoneName.neck,
+  VRMHumanBoneName.head
+];
+const ARM_BONES = [
+  VRMHumanBoneName.leftUpperArm,
+  VRMHumanBoneName.rightUpperArm,
+  VRMHumanBoneName.leftLowerArm,
+  VRMHumanBoneName.rightLowerArm
+];
 
 function clampDelta(delta) {
   if (!Number.isFinite(delta) || delta <= 0) {
@@ -213,6 +227,8 @@ export class VrmAvatarController {
     );
     this.restQuaternions = new Map();
     this.bones = new Map();
+    this.armBones = new Map();
+    this.armTargetOffsets = new Map();
     this.elapsed = 0;
     this.width = 1;
     this.height = 1;
@@ -220,6 +236,13 @@ export class VrmAvatarController {
       elapsed: 0,
       closing: false,
       interval: 2.6 + Math.random() * 1.8
+    };
+    this.debugState = {
+      cameraFrameCount: 0,
+      lastCameraMode: "",
+      lastCameraLogAt: -Infinity,
+      lastAvatarSignature: "",
+      lastPresentationLogAt: -Infinity
     };
 
     const hemisphereLight = new THREE.HemisphereLight(0xfff2ea, 0x8d6b73, 1.45);
@@ -271,7 +294,19 @@ export class VrmAvatarController {
   }
 
   setAvatarState(avatar) {
-    this.avatarState = resolveSafePresentation(avatar);
+    const requestedCamera = String(avatar?.camera || "wide").trim().toLowerCase();
+    const nextState = resolveSafePresentation(avatar);
+    const signature = `${nextState.presence}|${nextState.camera}|${nextState.expression}|${nextState.motion}|${nextState.emotion}`;
+
+    if (signature !== this.debugState.lastAvatarSignature) {
+      console.log(
+        `[VRM][state] requestedCamera=${requestedCamera} resolvedCamera=${nextState.camera} ` +
+        `presence=${nextState.presence} expression=${nextState.expression} motion=${nextState.motion} emotion=${nextState.emotion}`
+      );
+      this.debugState.lastAvatarSignature = signature;
+    }
+
+    this.avatarState = nextState;
   }
 
   resize(width, height) {
@@ -298,7 +333,7 @@ export class VrmAvatarController {
     this._updateCamera(delta);
 
     if (this.vrm) {
-      const presentation = resolveSafePresentation(this.avatarState);
+      const presentation = this.avatarState;
       const mouthOpen = this._computeMouthOpen(presentation);
       const blinkWeight = this._computeBlink(delta);
 
@@ -306,6 +341,10 @@ export class VrmAvatarController {
       this._updatePose(presentation, mouthOpen, delta);
       this._updateLookAt(presentation, delta);
       this.vrm.update(delta);
+
+      // Apply arms-down after vrm.update() so raw-bone fallback is not overwritten this frame.
+      this._applyArmsDownFrame(delta);
+      this._debugPresentation(presentation, mouthOpen, blinkWeight);
     }
 
     this.camera.lookAt(this.cameraTarget);
@@ -321,11 +360,14 @@ export class VrmAvatarController {
     this._clearVrm();
     this.vrm = vrm;
 
+    console.log(`[VRM][mount] metaVersion=${vrm?.meta?.metaVersion || "unknown"}`);
     VRMUtils.rotateVRM0(vrm);
+
     this.avatarRoot.add(vrm.scene);
 
     this._fitAvatar(vrm.scene);
     this._cacheBones(vrm);
+    this._applyArmsDownFrame(1 / 30);
     this._resetExpressions();
 
     if (vrm.lookAt) {
@@ -361,23 +403,199 @@ export class VrmAvatarController {
   _cacheBones(vrm) {
     this.bones.clear();
     this.restQuaternions.clear();
+    this.armBones.clear();
+    this.armTargetOffsets.clear();
 
+    [...CORE_POSE_BONES, ...ARM_BONES].forEach((boneName) => {
+      const normalizedNode = vrm.humanoid?.getNormalizedBoneNode(boneName) || null;
+      const rawNode = vrm.humanoid?.getRawBoneNode(boneName) || null;
+      console.log(
+        `[VRM][bones] ${boneName} normalized=${Boolean(normalizedNode)} raw=${Boolean(rawNode)}`
+      );
+
+      const selectedNode = normalizedNode || rawNode;
+      const selectedSource = normalizedNode ? "normalized" : rawNode ? "raw" : "missing";
+
+      if (CORE_POSE_BONES.includes(boneName) && selectedNode) {
+        this.bones.set(boneName, selectedNode);
+        this.restQuaternions.set(boneName, selectedNode.quaternion.clone());
+      }
+
+      if (ARM_BONES.includes(boneName) && selectedNode) {
+        this.armBones.set(boneName, {
+          node: selectedNode,
+          source: selectedSource,
+          restQuaternion: selectedNode.quaternion.clone()
+        });
+      }
+    });
+
+    this._setupArmTargets();
+    this._logArmBoneSummary();
+  }
+
+  _applyArmsDown() {
+    const leftUpperArm = this.bones.get(VRMHumanBoneName.leftUpperArm);
+    const rightUpperArm = this.bones.get(VRMHumanBoneName.rightUpperArm);
+    const leftLowerArm = this.bones.get(VRMHumanBoneName.leftLowerArm);
+    const rightLowerArm = this.bones.get(VRMHumanBoneName.rightLowerArm);
+
+    // Rotate upper arms ~70° down from T-pose.
+    if (leftUpperArm) {
+      this._tempEuler.set(0.3, 0, 1.22, "XYZ");
+      this._tempQuatA.setFromEuler(this._tempEuler);
+      leftUpperArm.quaternion.multiply(this._tempQuatA);
+    }
+
+    if (rightUpperArm) {
+      this._tempEuler.set(0.3, 0, -1.22, "XYZ");
+      this._tempQuatA.setFromEuler(this._tempEuler);
+      rightUpperArm.quaternion.multiply(this._tempQuatA);
+    }
+
+    // Slight bend at elbows for natural look.
+    if (leftLowerArm) {
+      this._tempEuler.set(0, 0, 0.18, "XYZ");
+      this._tempQuatA.setFromEuler(this._tempEuler);
+      leftLowerArm.quaternion.multiply(this._tempQuatA);
+    }
+
+    if (rightLowerArm) {
+      this._tempEuler.set(0, 0, -0.18, "XYZ");
+      this._tempQuatA.setFromEuler(this._tempEuler);
+      rightLowerArm.quaternion.multiply(this._tempQuatA);
+    }
+
+    // Update rest quaternions to include arms-down as the new rest pose.
     [
-      VRMHumanBoneName.hips,
-      VRMHumanBoneName.spine,
-      VRMHumanBoneName.chest,
-      VRMHumanBoneName.upperChest,
-      VRMHumanBoneName.neck,
-      VRMHumanBoneName.head
+      VRMHumanBoneName.leftUpperArm,
+      VRMHumanBoneName.rightUpperArm,
+      VRMHumanBoneName.leftLowerArm,
+      VRMHumanBoneName.rightLowerArm
     ].forEach((boneName) => {
-      const boneNode = vrm.humanoid?.getNormalizedBoneNode(boneName);
+      const bone = this.bones.get(boneName);
+      if (bone) {
+        this.restQuaternions.set(boneName, bone.quaternion.clone());
+      }
+    });
+  }
 
-      if (!boneNode) {
+  _logArmBoneSummary() {
+    ARM_BONES.forEach((boneName) => {
+      const armInfo = this.armBones.get(boneName);
+      console.log(
+        `[VRM][arms] ${boneName} source=${armInfo?.source || "missing"} target=${this.armTargetOffsets.has(boneName)}`
+      );
+    });
+  }
+
+  _setupArmTargets() {
+    this.armTargetOffsets.clear();
+
+    const leftUpperOffset = this._resolveUpperArmOffset({
+      upperArmName: VRMHumanBoneName.leftUpperArm,
+      lowerArmName: VRMHumanBoneName.leftLowerArm,
+      sideSign: 1
+    });
+    const rightUpperOffset = this._resolveUpperArmOffset({
+      upperArmName: VRMHumanBoneName.rightUpperArm,
+      lowerArmName: VRMHumanBoneName.rightLowerArm,
+      sideSign: -1
+    });
+
+    if (leftUpperOffset) {
+      this.armTargetOffsets.set(VRMHumanBoneName.leftUpperArm, leftUpperOffset);
+    }
+
+    if (rightUpperOffset) {
+      this.armTargetOffsets.set(VRMHumanBoneName.rightUpperArm, rightUpperOffset);
+    }
+
+    this._tempEuler.set(0, 0, 0.16, "XYZ");
+    this._tempQuatA.setFromEuler(this._tempEuler);
+    this.armTargetOffsets.set(VRMHumanBoneName.leftLowerArm, this._tempQuatA.clone());
+
+    this._tempEuler.set(0, 0, -0.16, "XYZ");
+    this._tempQuatA.setFromEuler(this._tempEuler);
+    this.armTargetOffsets.set(VRMHumanBoneName.rightLowerArm, this._tempQuatA.clone());
+  }
+
+  _resolveUpperArmOffset({ upperArmName, lowerArmName, sideSign }) {
+    const upperArm = this.armBones.get(upperArmName);
+    const lowerArm = this.armBones.get(lowerArmName);
+
+    if (!upperArm) {
+      return null;
+    }
+
+    const candidates = [
+      { label: "z70", x: 0, y: 0, z: 1.22 * sideSign },
+      { label: "x70", x: -1.22, y: 0, z: 0 },
+      { label: "x-70", x: 1.22, y: 0, z: 0 },
+      { label: "zx", x: 0.24, y: 0, z: 1.08 * sideSign },
+      { label: "xy", x: -0.9, y: 0.32 * sideSign, z: 0 },
+      { label: "yz", x: 0, y: 0.9 * sideSign, z: 0.5 * sideSign }
+    ];
+
+    if (!lowerArm) {
+      this._tempEuler.set(0.24, 0, 1.08 * sideSign, "XYZ");
+      this._tempQuatA.setFromEuler(this._tempEuler);
+      return this._tempQuatA.clone();
+    }
+
+    const armDir = this._tempVecC;
+    const shoulderPos = this._tempVecA;
+    const elbowPos = this._tempVecB;
+    const initialQuat = upperArm.node.quaternion.clone();
+    let bestCandidate = candidates[0];
+    let bestScore = -Infinity;
+
+    candidates.forEach((candidate) => {
+      this._tempEuler.set(candidate.x, candidate.y, candidate.z, "XYZ");
+      this._tempQuatA.setFromEuler(this._tempEuler);
+      upperArm.node.quaternion.copy(upperArm.restQuaternion).multiply(this._tempQuatA);
+      upperArm.node.updateWorldMatrix(true, false);
+      lowerArm.node.updateWorldMatrix(true, false);
+
+      upperArm.node.getWorldPosition(shoulderPos);
+      lowerArm.node.getWorldPosition(elbowPos);
+      armDir.copy(elbowPos).sub(shoulderPos).normalize();
+
+      const downwardScore = -armDir.y;
+      const sideScore = armDir.x * sideSign;
+      const forwardPenalty = Math.abs(armDir.z);
+      const score = downwardScore * 0.72 + sideScore * 0.26 - forwardPenalty * 0.14;
+
+      if (score > bestScore) {
+        bestCandidate = candidate;
+        bestScore = score;
+      }
+    });
+
+    upperArm.node.quaternion.copy(initialQuat);
+    upperArm.node.updateWorldMatrix(true, false);
+
+    console.log(
+      `[VRM][arms] axis ${upperArmName}=${bestCandidate.label} ` +
+      `euler=(${bestCandidate.x.toFixed(2)},${bestCandidate.y.toFixed(2)},${bestCandidate.z.toFixed(2)}) ` +
+      `score=${bestScore.toFixed(3)}`
+    );
+    this._tempEuler.set(bestCandidate.x, bestCandidate.y, bestCandidate.z, "XYZ");
+    this._tempQuatA.setFromEuler(this._tempEuler);
+    return this._tempQuatA.clone();
+  }
+
+  _applyArmsDownFrame(delta) {
+    ARM_BONES.forEach((boneName) => {
+      const armInfo = this.armBones.get(boneName);
+      const armOffset = this.armTargetOffsets.get(boneName);
+
+      if (!armInfo || !armOffset) {
         return;
       }
 
-      this.bones.set(boneName, boneNode);
-      this.restQuaternions.set(boneName, boneNode.quaternion.clone());
+      this._tempQuatA.copy(armInfo.restQuaternion).multiply(armOffset);
+      armInfo.node.quaternion.slerp(this._tempQuatA, dampFactor(18, delta));
     });
   }
 
@@ -391,6 +609,8 @@ export class VrmAvatarController {
     this.vrm = null;
     this.assetPath = "";
     this.bones.clear();
+    this.armBones.clear();
+    this.armTargetOffsets.clear();
     this.restQuaternions.clear();
     this._resetExpressions();
   }
@@ -404,9 +624,29 @@ export class VrmAvatarController {
   _updateCamera(delta) {
     const cameraMode = this.avatarState?.camera === "close" ? "close" : "wide";
     const preset = CAMERA_PRESETS[cameraMode];
+    this.debugState.cameraFrameCount += 1;
 
     dampVector(this.camera.position, preset.position, 8.5, delta);
     dampVector(this.cameraTarget, preset.target, 9, delta);
+
+    if (cameraMode !== this.debugState.lastCameraMode) {
+      this.debugState.lastCameraMode = cameraMode;
+      console.log(
+        `[VRM][camera] mode=${cameraMode} avatarState.camera=${this.avatarState?.camera || "wide"}`
+      );
+    }
+
+    if (
+      this.elapsed - this.debugState.lastCameraLogAt >= 2.4 ||
+      this.debugState.cameraFrameCount % 180 === 0
+    ) {
+      this.debugState.lastCameraLogAt = this.elapsed;
+      console.log(
+        `[VRM][camera] tick=${this.debugState.cameraFrameCount} ` +
+        `pos=(${this.camera.position.x.toFixed(2)},${this.camera.position.y.toFixed(2)},${this.camera.position.z.toFixed(2)}) ` +
+        `target=(${this.cameraTarget.x.toFixed(2)},${this.cameraTarget.y.toFixed(2)},${this.cameraTarget.z.toFixed(2)})`
+      );
+    }
   }
 
   _computeBlink(delta) {
@@ -443,7 +683,7 @@ export class VrmAvatarController {
 
     const baseOpen = 0.5 + 0.5 * Math.sin(this.elapsed * 8.5);
     const accentOpen = 0.5 + 0.5 * Math.sin(this.elapsed * 14.5 + 0.4);
-    const amplitude = presentation.emotion === "whisper" ? 0.2 : 0.34;
+    const amplitude = presentation.emotion === "whisper" ? 0.26 : 0.48;
 
     return amplitude * (0.55 * baseOpen + 0.45 * accentOpen);
   }
@@ -466,9 +706,9 @@ export class VrmAvatarController {
 
     if (presentation.presence === "speaking") {
       const mouthScale = presentation.emotion === "whisper" ? 0.72 : 1;
-      targets.aa = mouthOpen * 0.84 * mouthScale;
-      targets.oh = mouthOpen * 0.34 * mouthScale;
-      targets.ih = mouthOpen * 0.22 * mouthScale;
+      targets.aa = mouthOpen * 1.02 * mouthScale;
+      targets.oh = mouthOpen * 0.44 * mouthScale;
+      targets.ih = mouthOpen * 0.3 * mouthScale;
     }
 
     EXPRESSION_KEYS.forEach((key) => {
@@ -480,6 +720,23 @@ export class VrmAvatarController {
       );
       expressionManager.setValue(key, this.expressionWeights[key]);
     });
+  }
+
+  _debugPresentation(presentation, mouthOpen, blinkWeight) {
+    if (this.elapsed - this.debugState.lastPresentationLogAt < 1.8) {
+      return;
+    }
+
+    this.debugState.lastPresentationLogAt = this.elapsed;
+    console.log(
+      `[VRM][presentation] presence=${presentation.presence} motion=${presentation.motion} ` +
+      `expression=${presentation.expression} emotion=${presentation.emotion} camera=${presentation.camera} ` +
+      `mouth=${mouthOpen.toFixed(3)} blink=${blinkWeight.toFixed(3)} ` +
+      `happy=${(this.expressionWeights.happy || 0).toFixed(2)} ` +
+      `sad=${(this.expressionWeights.sad || 0).toFixed(2)} ` +
+      `angry=${(this.expressionWeights.angry || 0).toFixed(2)} ` +
+      `relaxed=${(this.expressionWeights.relaxed || 0).toFixed(2)}`
+    );
   }
 
   _updatePose(presentation, mouthOpen, delta) {
@@ -596,8 +853,8 @@ export class VrmAvatarController {
     }
 
     this._tempVecB.copy(this.camera.position);
-    this._tempVecB.z -= presentation.camera === "close" ? 0.22 : 0.34;
-    this._tempVecB.y += presentation.camera === "close" ? -0.04 : -0.06;
+    this._tempVecB.z -= presentation.camera === "close" ? 0.18 : 0.34;
+    this._tempVecB.y += presentation.camera === "close" ? 0.02 : -0.06;
 
     if (presentation.presence === "thinking") {
       this._tempVecB.y -= 0.26;
