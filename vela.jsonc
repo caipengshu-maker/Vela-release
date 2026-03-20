@@ -47,8 +47,9 @@
     "provider": "placeholder"
   },
   "tts": {
-    "enabled": false,
+    "enabled": true,
     "provider": "minimax-websocket",
+    "apiKey": "",
     "apiKeyEnv": "MINIMAX_API_KEY",
     "model": "speech-2.8-turbo",
     "wsUrl": "wss://api.minimaxi.com/ws/v1/t2a_v2",

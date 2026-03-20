@@ -15,14 +15,30 @@ function getRequestedProvider(config) {
   return providers.get(requestedProvider) || placeholderTtsProvider;
 }
 
+function resolveApiKey(config, provider) {
+  const directApiKey = String(config.tts?.apiKey || "").trim();
+  if (directApiKey) {
+    return directApiKey;
+  }
+
+  const apiKeyEnv =
+    config.tts?.apiKeyEnv || provider.defaultApiKeyEnv || "";
+
+  if (!apiKeyEnv) {
+    return "";
+  }
+
+  return process.env[apiKeyEnv] || "";
+}
+
 export function getTtsCapabilities(config) {
   const requestedProvider = getRequestedProvider(config);
-  const apiKeyEnv = config.tts.apiKeyEnv || requestedProvider.defaultApiKeyEnv || "";
-  const hasApiKey = apiKeyEnv ? Boolean(process.env[apiKeyEnv]) : true;
+  const hasApiKey = Boolean(resolveApiKey(config, requestedProvider));
+  const keySatisfied = !requestedProvider.requiresApiKey || hasApiKey;
   const providerReady =
     requestedProvider.id !== "placeholder" &&
     Boolean(config.tts?.enabled) &&
-    (!requestedProvider.requiresApiKey || hasApiKey);
+    keySatisfied;
 
   return {
     id: requestedProvider.id,
@@ -34,7 +50,7 @@ export function getTtsCapabilities(config) {
       ? "tts-disabled"
       : requestedProvider.id === "placeholder"
         ? "placeholder-route"
-        : hasApiKey
+        : keySatisfied
           ? null
           : "missing-api-key",
     capabilities: requestedProvider.capabilities
@@ -47,12 +63,10 @@ export function createTtsSession({ config, onEvent, webSocketFactory }) {
   const effectiveProvider = capabilities.available
     ? requestedProvider
     : placeholderTtsProvider;
-  const apiKeyEnv =
-    config.tts.apiKeyEnv || effectiveProvider.defaultApiKeyEnv || "";
 
   return effectiveProvider.createSession({
     config,
-    apiKey: apiKeyEnv ? process.env[apiKeyEnv] : "",
+    apiKey: resolveApiKey(config, effectiveProvider),
     onEvent,
     webSocketFactory
   });

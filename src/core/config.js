@@ -50,6 +50,7 @@ const defaultConfig = {
   tts: {
     enabled: false,
     provider: "minimax-websocket",
+    apiKey: "",
     apiKeyEnv: "MINIMAX_API_KEY",
     model: "speech-2.8-turbo",
     wsUrl: "wss://api.minimaxi.com/ws/v1/t2a_v2",
@@ -229,7 +230,7 @@ function normalizeAsrConfig(asrConfig = {}) {
   };
 }
 
-function normalizeTtsConfig(ttsConfig = {}) {
+function normalizeTtsConfig(ttsConfig = {}, llmConfig = {}) {
   const voiceSettings = isPlainObject(ttsConfig.voiceSettings)
     ? ttsConfig.voiceSettings
     : {};
@@ -242,7 +243,10 @@ function normalizeTtsConfig(ttsConfig = {}) {
     provider: String(ttsConfig.provider || "minimax-websocket")
       .trim()
       .toLowerCase(),
-    apiKeyEnv: String(ttsConfig.apiKeyEnv || "MINIMAX_API_KEY").trim(),
+    apiKey: String(ttsConfig.apiKey || llmConfig.apiKey || "").trim(),
+    apiKeyEnv: String(
+      ttsConfig.apiKeyEnv || llmConfig.apiKeyEnv || "MINIMAX_API_KEY"
+    ).trim(),
     model: String(ttsConfig.model || "speech-2.8-turbo").trim(),
     wsUrl: String(ttsConfig.wsUrl || "wss://api.minimaxi.com/ws/v1/t2a_v2").trim(),
     languageBoost: String(ttsConfig.languageBoost || "Chinese").trim(),
@@ -283,12 +287,13 @@ export async function loadConfig(rootDir) {
   const raw = await fs.readFile(configPath, "utf8");
   const parsed = parse(raw);
   const merged = deepMerge(defaultConfig, parsed);
+  const normalizedLlm = normalizeLlmConfig(merged.llm);
 
   return {
     ...merged,
-    llm: normalizeLlmConfig(merged.llm),
+    llm: normalizedLlm,
     asr: normalizeAsrConfig(merged.asr),
-    tts: normalizeTtsConfig(merged.tts),
+    tts: normalizeTtsConfig(merged.tts, normalizedLlm),
     avatar: normalizeAvatarConfig(merged.avatar)
   };
 }

@@ -1,0 +1,85 @@
+# M3-T2: TTS 流式开口 — Codex 施工 Prompt
+
+## 目标
+
+在 Vela Electron 应用中接通 MiniMax WebSocket TTS，让语音模式开启后，Vela 的回复能**流式出声**（不等全部文字生成完才开始说话）。
+
+## 当前状态
+
+### 已有的（不需要重写）
+1. `src/core/tts/providers/minimax-websocket.js` — 完整的 MiniMax WS TTS provider，支持连接、发送文本、接收音频 chunk、emotion mode
+2. `src/core/tts/speech-orchestrator.js` — SpeechOrchestrator，负责文本分段、按 delta 流式推给 TTS provider
+3. `src/core/tts/segmenter.js` — 文本分段器
+4. `src/core/tts/provider.js` — TTS provider 注册表和 factory
+5. `src/core/vela-core.js` — 已经在 `handleUserMessage` 中创建 SpeechOrchestrator，流式 delta 已经会 pushDelta 给 orchestrator
+6. `electron/main.js` — IPC 已打通，`vela:event` 会把 speech 事件发给 renderer
+7. `electron/preload.js` — `window.vela.onEvent` 已暴露
+8. `src/App.jsx` — 已有 voice mode toggle 按钮和 `handleVoiceToggle`
+9. `src/core/interaction-contract.js` — TTS preset map、emotion mode 逻辑完整
+10. `src/core/interaction-policy.js` — resolveTtsPreset 已实现
+
+### 缺口（需要你做的）
+
+1. **`vela.jsonc` 中 `tts.enabled` 还是 `false`** — 改成 `true`
+2. **Renderer 端没有音频播放逻辑** — 需要一个 AudioPlayer 模块，接收 `speech-audio-chunk` 事件中的音频数据并流式播放
+3. **App.jsx 没有消费 `speech-audio-chunk` / `speech-finished` / `speech-error` 事件来驱动音频播放**
+4. **MiniMax API key 需要注入** — key 已在 `vela.jsonc` 的 `tts.apiKeyEnv` 字段指向 `MINIMAX_API_KEY`，但运行时环境变量没设。解决方案：和 LLM 一样，在 `src/core/config.js` 中支持从 `tts.apiKey` 直接读取（已有 `llm.apiKey` 的先例），然后把 key 写入 `vela.jsonc` 的 `tts.apiKey` 字段
+
+## MiniMax API Key
+
+用于 TTS 的 MiniMax key 和 LLM 用的是同一个，已经在 `vela.jsonc` 的 `llm.apiKey` 字段里了。你可以在 config 层让 TTS 复用同一个 key，或者在 `vela.jsonc` 的 `tts` 块里加一个 `apiKey` 字段引用同一个值。
+
+## 音频播放方案
+
+MiniMax WS TTS 返回的音频格式由 `vela.jsonc` 的 `tts.audioSettings` 控制，当前配置是：
+- format: mp3
+- sampleRate: 32000
+- bitrate: 128000
+- channel: 1
+
+音频 chunk 通过 `speech-audio-chunk` 事件传到 renderer，每个 chunk 包含 base64 编码的 mp3 片段。
+
+建议方案：
+1. 在 renderer 端创建一个 `useAudioPlayer` hook 或 `AudioPlayerService` 类
+2. 接收 `speech-audio-chunk` 事件，将 base64 解码为 ArrayBuffer
+3. 用 Web Audio API（`AudioContext` + `decodeAudioData`）或 HTML5 `<audio>` + MediaSource Extensions 播放
+4. 支持流式播放：收到一个 chunk 就开始播，不等全部收完
+5. `speech-finished` 时标记结束
+6. `speech-error` 时停止播放
+7. 用户点"先停一下"（interrupt）时停止播放
+
+**注意**：mp3 chunk 流式播放最简单的方式是用 MediaSource API，或者把每个 chunk 作为独立的小 mp3 文件依次排队播放。推荐后者，因为 MiniMax WS 返回的每个 chunk 通常是完整可解码的 mp3 片段。
+
+## 需要修改的文件
+
+1. `vela.jsonc` — `tts.enabled: true`，可能加 `tts.apiKey`
+2. `src/core/config.js` — `normalizeTtsConfig` 支持从 `tts.apiKey` 直接读取 key（和 LLM 一样的 fallback 逻辑）
+3. `src/core/tts/provider.js` — `createTtsSession` 确保能拿到真实 apiKey（不仅从 env 读）
+4. `src/App.jsx` — 在 `applyRuntimeEvent` 或 `useEffect(onEvent)` 中消费 `speech-audio-chunk` / `speech-finished` / `speech-error`，驱动音频播放
+5. 新文件 `src/audio-player.js` — 封装 Web Audio API 播放逻辑
+
+## 约束
+
+1. **不改 interaction-policy / interaction-contract / avatar-state** — 这些已经正确了
+2. **不改 SpeechOrchestrator 核心逻辑** — 已经正确处理流式 delta 分段
+3. **不改 MiniMax WS provider 核心逻辑** — 已经正确处理 WS 连接和音频接收
+4. **不做 ASR** — 当前只做 text-in / voice-out
+5. **不碰 VRM avatar 渲染层** — 那是 M3-T3/T4 的事
+6. **build 和 smoke 必须通过**
+
+## 验收标准
+
+1. `npm run build` 通过
+2. `npm run smoke` 通过
+3. 启动 Electron 窗口 → 点击"回应方式"切到语音模式 → 发送一条消息 → 能听到 Vela 用 MiniMax TTS 的 Sweet Lady 声音流式回应
+4. 切回文字模式后不再出声
+5. 播放中点"先停一下"能中断语音
+
+## 不要做
+
+- 不做 ASR（语音输入）
+- 不做 VRM lip sync（嘴型同步留给后续任务）
+- 不做音量控制 UI
+- 不做声音选择 UI
+- 不改 onboarding 流程
+- 不扩 M4 范围

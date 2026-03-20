@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AudioStreamPlayer } from "./audio-stream-player.js";
+import { AudioPlayerService } from "./audio-player.js";
 import {
   releaseCloseCamera,
   settleAvatarState
@@ -544,16 +544,14 @@ export default function App() {
   const [isSwitchingVoice, setIsSwitchingVoice] = useState(false);
   const [isSwitchingThinking, setIsSwitchingThinking] = useState(false);
   const [error, setError] = useState("");
-  const audioElementRef = useRef(null);
   const audioPlayerRef = useRef(null);
 
   useEffect(() => {
-    const player = new AudioStreamPlayer();
-    player.attach(audioElementRef.current);
+    const player = new AudioPlayerService();
     audioPlayerRef.current = player;
 
     return () => {
-      player.reset();
+      void player.dispose();
     };
   }, []);
 
@@ -588,11 +586,7 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = window.vela.onEvent((event) => {
       if (event.type === "speech-audio-chunk") {
-        audioPlayerRef.current?.appendChunk({
-          sessionId: event.chunk.sessionId || "vela-tts",
-          mimeType: event.chunk.mimeType || "audio/mpeg",
-          hex: event.chunk.hex
-        });
+        audioPlayerRef.current?.appendChunk(event.chunk);
       }
 
       if (event.type === "speech-finished") {
@@ -865,7 +859,6 @@ export default function App() {
     <main className="app-shell">
       <div className="ambient ambient-a" />
       <div className="ambient ambient-b" />
-      <audio ref={audioElementRef} className="sr-only" />
 
       {isLoading ? (
         <div className="loading-screen">Vela 正在把记忆和语气接回来...</div>
