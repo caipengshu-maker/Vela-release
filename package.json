@@ -17,9 +17,11 @@
     "verify:m2": "node scripts/verify-m2.mjs"
   },
   "dependencies": {
+    "@pixiv/three-vrm": "^3.5.1",
     "jsonc-parser": "^3.3.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "three": "^0.183.2",
     "ws": "^8.19.0"
   },
   "devDependencies": {

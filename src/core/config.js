@@ -80,7 +80,8 @@ const defaultConfig = {
   },
   avatar: {
     defaultPresence: "idle",
-    defaultEmotion: "calm"
+    defaultEmotion: "calm",
+    assetPath: ""
   }
 };
 
@@ -261,6 +262,22 @@ function normalizeTtsConfig(ttsConfig = {}) {
   };
 }
 
+function normalizeAvatarConfig(avatarConfig = {}) {
+  return {
+    defaultPresence: String(
+      avatarConfig.defaultPresence || defaultConfig.avatar.defaultPresence
+    )
+      .trim()
+      .toLowerCase(),
+    defaultEmotion: String(
+      avatarConfig.defaultEmotion || defaultConfig.avatar.defaultEmotion
+    )
+      .trim()
+      .toLowerCase(),
+    assetPath: String(avatarConfig.assetPath || "").trim()
+  };
+}
+
 export async function loadConfig(rootDir) {
   const configPath = path.join(rootDir, "vela.jsonc");
   const raw = await fs.readFile(configPath, "utf8");
@@ -271,6 +288,7 @@ export async function loadConfig(rootDir) {
     ...merged,
     llm: normalizeLlmConfig(merged.llm),
     asr: normalizeAsrConfig(merged.asr),
-    tts: normalizeTtsConfig(merged.tts)
+    tts: normalizeTtsConfig(merged.tts),
+    avatar: normalizeAvatarConfig(merged.avatar)
   };
 }

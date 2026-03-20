@@ -1,0 +1,7 @@
+# M3 施工单 — 在场感闭环
+
+## 项目背景
+
+Vela 是本地 AI avatar 伴侣桌面应用（Electron + Vite + React）。
+M1（人格/记忆/文本闭环）✅ M2（流式文本+状态机+thinking+基础fallback）✅ 已关门。
+当前主线是 **M3：在场感闭环**，让用户真实感受到

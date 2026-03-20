@@ -69,13 +69,13 @@ function defaultActionForEmotion(emotion) {
     case "happy":
       return "nod";
     case "affectionate":
-      return "soft-smile";
+      return "lean-in";
     case "playful":
       return "head-tilt";
     case "concerned":
       return "lean-in";
     case "sad":
-      return "head-tilt";
+      return "none";
     case "angry":
       return "none";
     case "whisper":
@@ -92,7 +92,7 @@ function cohereAction(emotion, action, relationshipStage) {
     nextAction = "none";
   }
 
-  if (emotion === "angry" && nextAction === "head-tilt") {
+  if ((emotion === "sad" || emotion === "angry") && nextAction === "head-tilt") {
     nextAction = "none";
   }
 
@@ -123,6 +123,67 @@ function cohereEmotion(emotion, relationshipStage, lateNight, gapMs) {
   }
 
   return nextEmotion;
+}
+
+function resolveExpressionForPresence(presence, emotion) {
+  if (presence === "idle") {
+    return "neutral";
+  }
+
+  if (presence === "listening") {
+    return "relaxed";
+  }
+
+  if (presence === "thinking") {
+    return "neutral";
+  }
+
+  switch (emotion) {
+    case "happy":
+    case "playful":
+      return "happy";
+    case "affectionate":
+    case "concerned":
+    case "whisper":
+      return "relaxed";
+    case "sad":
+      return "sad";
+    case "angry":
+      return "angry";
+    default:
+      return "neutral";
+  }
+}
+
+function resolveMotionForPresence(presence, emotion) {
+  if (presence === "idle") {
+    return "still";
+  }
+
+  if (presence === "listening") {
+    return "listen-settle";
+  }
+
+  if (presence === "thinking") {
+    return "tiny-head-drop";
+  }
+
+  switch (emotion) {
+    case "happy":
+      return "tiny-nod";
+    case "affectionate":
+    case "concerned":
+    case "whisper":
+      return "soft-lean";
+    case "playful":
+      return "tiny-head-tilt";
+    case "sad":
+      return "head-down-light";
+    case "angry":
+    case "calm":
+    default:
+      return "still";
+  }
 }
 
 function shouldAllowCloseCamera({
@@ -329,8 +390,8 @@ export function resolveInteractionPlan({
       emotionStrength: "light",
       action: "none",
       camera: "wide",
-      expression: "calm",
-      motion: "none",
+      expression: resolveExpressionForPresence(presence, "calm"),
+      motion: resolveMotionForPresence(presence, "calm"),
       ttsPreset: "calm",
       ttsEmotionMode: "auto",
       ttsProviderEmotion: null,
@@ -356,8 +417,8 @@ export function resolveInteractionPlan({
       emotionStrength: "light",
       action,
       camera: "wide",
-      expression: "calm",
-      motion: action,
+      expression: resolveExpressionForPresence(presence, "calm"),
+      motion: resolveMotionForPresence(presence, "calm"),
       ttsPreset: "calm",
       ttsEmotionMode: "auto",
       ttsProviderEmotion: null,
@@ -421,8 +482,8 @@ export function resolveInteractionPlan({
     emotionStrength,
     action,
     camera,
-    expression: emotion,
-    motion: action,
+    expression: resolveExpressionForPresence(presence, emotion),
+    motion: resolveMotionForPresence(presence, emotion),
     ttsPreset: ttsPreset.presetId,
     ttsEmotionMode: ttsPreset.emotionMode,
     ttsProviderEmotion: ttsPreset.providerEmotion,

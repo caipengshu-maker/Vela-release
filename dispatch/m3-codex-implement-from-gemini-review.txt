@@ -1,0 +1,35 @@
+项目：C:\Users\caipe\.openclaw\workspace\Vela
+任务：执行 M3 UI/在场感整改（Gemini 仅顾问，禁止直接改代码）
+施工位：Codex CLI（当前已切 ai02，xhigh）
+
+背景：我们已拿到 Gemini 顾问建议。你现在只负责把“现在就改”的部分落到代码，不要扩到 M4。
+
+## 本轮必须做（Do Now）
+1) 去掉主界面工具味：
+   - 隐藏/移除 shot-chip（Wide/Close 这种开发态提示不对用户显示）
+   - 主界面状态表达改成人话，不要 text-in/text-out / route pending 这种技术词
+2) 移除 M4 外露元素：
+   - memory-card 从主界面拿掉（M3 不收关系深化）
+3) avatar 主舞台优先：
+   - 保证左侧 avatar 舞台权重足够，聊天区不压主角
+4) 保持运行面稳定：
+   - 不允许打回白屏
+   - 不允许破坏 preload/bridge/VRM 真显示
+
+## 不做（留后面）
+- onboarding 大改
+- 关系/主动相关 UI
+- 大范围重构
+
+## 验证
+至少给出：
+- npm run build
+- npm run smoke
+
+## 回报格式
+1. 修改文件列表
+2. 每个修改对应解决了哪个问题（工具味 / M4外露 / 主舞台 / 稳定性）
+3. build/smoke 结果
+4. 还留了哪些问题到下一刀
+
+直接改代码，别写长文分析。

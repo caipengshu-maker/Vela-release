@@ -1,0 +1,91 @@
+项目：C:\Users\caipe\.openclaw\workspace\Vela
+模式：连续施工上下文（同一轮持续整改，不要当成一次性新任务）
+施工脑：GPT-5.4 xhigh（Codex CLI）
+
+你现在接的是 **Vela M3 第一轮 UI / 在场感整改**。
+
+先读：
+- C:\Users\caipe\.openclaw\workspace\Vela\CURRENT-ROUTE.md
+- C:\Users\caipe\.openclaw\workspace\Vela\TASKS.md
+- C:\Users\caipe\.openclaw\workspace\Vela\docs\M2-M3-STATE-EMOTION-WIRING.md
+- C:\Users\caipe\.openclaw\workspace\Vela\docs\M3-MINIMAL-PRESENCE-SPEC.md
+- C:\Users\caipe\.openclaw\workspace\Vela\src\App.jsx
+- C:\Users\caipe\.openclaw\workspace\Vela\src\styles.css
+- C:\Users\caipe\.openclaw\workspace\Vela\src\vrm-avatar-stage.jsx
+- C:\Users\caipe\.openclaw\workspace\Vela\src\core\avatar-state.js
+- C:\Users\caipe\.openclaw\workspace\Vela\src\core\interaction-policy.js
+
+## 路线边界（锁死）
+这是 **M3**，不是 M4。
+你只能做会直接提升“她像不像在场”的整改：
+- avatar 舞台权重
+- 状态表达方式
+- 聊天壳与角色壳的权力结构
+- wide/close、表情、动作、状态机的表现层承接
+
+你不能做：
+- 旧话题续接深化
+- 关系成长机制
+- 轻主动节奏
+- 更复杂人格层
+- 任何 M4 范围的“越来越像熟人”的设计
+
+## 当前问题点（必须逐条回应，不准装没看见）
+1. UI 工具味太重，像 demo / 调试台，不像伴侣产品
+2. avatar 主体权重不够，“她”不是主角
+3. 状态表达太技术化，不像伴侣在场
+4. 必须保住已跑通的 EKU VRM 真渲染链路，绝不允许重新打回白屏 / 假壳
+
+## 目标
+做出 **M3 第一轮可见整改**：
+- 第一眼更像伴侣产品，不像 AI 工具 demo
+- 左侧 avatar 舞台成为主视觉
+- 状态表达更自然，不再像 debug/status panel
+- 右侧聊天区不再抢主角戏
+- 保留当前 VRM 真加载与最小在场感路线
+
+## 整改建议（不是死命令，但原则必须达成）
+### 1. 抬高 avatar 舞台权重
+- 让左侧 avatar 更像“主舞台”，不是卡片里的一张插图
+- avatar 可视占比增大
+- shot/camera 信息不要抢戏，但允许保留轻量表达
+
+### 2. 砍掉工具味状态表达
+- phase chip / 技术状态块 / 过于工程化的状态标签，能弱化就弱化，能转成自然语言就转自然语言
+- 目标是让用户读到“她在听 / 她停一下在想 / 她把声音放轻了”这种感觉，而不是读系统 phase
+
+### 3. 重排界面权力结构
+正确顺序应更接近：
+1) 她
+2) 你们的对话
+3) 控件
+不要让控件和系统信息压在最前面
+
+### 4. 只做 M3 范围内的产品壳清理
+- 可以做“去工具味”和“抬主角”
+- 不要顺手开启大重构
+- 不要为了好看把状态机/表现层关系改乱
+
+## 硬约束
+- 不要破坏 `window.vela` / preload / EKU VRM 真实渲染链路
+- 不要把 provider 原始流 / TTS 主逻辑直接绑到动作/镜头主裁决
+- 不要扩大 scope 到 M4
+- 不要只改文案皮肤，必须有真实布局/权重/表达层改进
+
+## DoD（这轮必须达到）
+- Vela 真窗继续能显示 EKU VRM
+- 第一眼工具味明显下降
+- avatar 成为主角，视觉权重明显上升
+- 状态表达从技术标签改成更自然的人话表达（至少主界面层如此）
+- 右侧聊天区不再压过左侧角色舞台
+- build + smoke 继续通过
+
+## 你完成后必须回报
+1. 你改了哪些文件
+2. 你怎么解决了上面 4 个问题点
+3. 你跑了哪些验证（至少 build + smoke）
+4. 现在还剩哪些问题故意留到下一刀，不要假装全解决
+5. 如果我要继续第二刀，你建议下一刀优先修什么
+
+直接开工。记住：
+**这轮不是做大美术翻新，是把“能跑的 demo”改成“服务 M3 在场感的产品壳”。**

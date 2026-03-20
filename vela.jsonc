@@ -79,6 +79,7 @@
   },
   "avatar": {
     "defaultPresence": "listening",
-    "defaultEmotion": "calm"
+    "defaultEmotion": "calm",
+    "assetPath": "D:/Vela/assets/avatars/eku/Eku_VRM_v1_0_0.vrm"
   }
 }

@@ -77,6 +77,16 @@ ipcMain.handle("vela:bootstrap", async () => {
   return core.getBootstrapState();
 });
 
+ipcMain.handle("vela:read-binary-file", async (_event, filePath) => {
+  const targetPath = String(filePath || "").trim();
+
+  if (!targetPath) {
+    throw new Error("binary file path is required");
+  }
+
+  return fs.promises.readFile(targetPath);
+});
+
 ipcMain.handle("vela:send-message", async (_event, message) => {
   const sendEvent = (payload) => {
     _event.sender.send("vela:event", payload);

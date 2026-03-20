@@ -79,9 +79,9 @@ textarea {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(320px, 430px) minmax(420px, 1fr);
-  gap: 22px;
-  max-width: 1440px;
+  grid-template-columns: minmax(560px, 1.7fr) minmax(320px, 0.78fr);
+  gap: 18px;
+  max-width: 1640px;
   margin: 0 auto;
 }
 
@@ -104,31 +104,37 @@ textarea {
   min-height: calc(100vh - 52px);
   border-radius: 36px;
   border: 1px solid var(--line-soft);
-  box-shadow: var(--shadow-soft);
   backdrop-filter: blur(16px);
 }
 
 .avatar-shell {
-  padding: 20px;
-  background: linear-gradient(180deg, rgba(255, 250, 246, 0.72) 0%, rgba(246, 237, 231, 0.82) 100%);
+  position: relative;
+  z-index: 2;
+  padding: 24px 24px 22px;
+  box-shadow: 0 30px 84px rgba(103, 73, 73, 0.16);
+  background: linear-gradient(180deg, rgba(255, 250, 246, 0.78) 0%, rgba(246, 237, 231, 0.88) 100%);
 }
 
 .chat-shell {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  background: linear-gradient(180deg, rgba(255, 252, 249, 0.78) 0%, rgba(250, 244, 239, 0.88) 100%);
+  margin-block: 12px;
+  box-shadow: 0 16px 44px rgba(103, 73, 73, 0.09);
+  background: linear-gradient(180deg, rgba(255, 252, 249, 0.7) 0%, rgba(250, 244, 239, 0.8) 100%);
 }
 
 .avatar-panel {
   display: grid;
-  gap: 18px;
+  gap: 20px;
   height: 100%;
 }
 
 .avatar-stage {
   position: relative;
-  min-height: 390px;
-  border-radius: 32px;
+  min-height: 540px;
+  border-radius: 36px;
   overflow: hidden;
   background:
     linear-gradient(180deg, rgba(254, 245, 238, 0.74) 0%, rgba(239, 221, 210, 0.86) 100%);
@@ -136,7 +142,8 @@ textarea {
 }
 
 .scene-backdrop,
-.scene-glow {
+.scene-glow,
+.avatar-render-layer {
   position: absolute;
   inset: 0;
 }
@@ -174,6 +181,36 @@ textarea {
 
 .avatar-orbit-b {
   inset: 102px 108px 134px;
+}
+
+.avatar-render-layer {
+  z-index: 2;
+}
+
+.avatar-render-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.avatar-stage-note {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 18px;
+  z-index: 3;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: rgba(255, 250, 246, 0.76);
+  border: 1px solid rgba(145, 109, 99, 0.16);
+  color: var(--ink-soft);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.avatar-stage-note.is-error {
+  color: #904f4c;
+  border-color: rgba(168, 77, 77, 0.22);
 }
 
 .avatar-silhouette {
@@ -284,21 +321,6 @@ textarea {
   animation: nod 1.8s ease-in-out infinite;
 }
 
-.shot-chip {
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 8px 12px;
-  background: rgba(255, 250, 246, 0.78);
-  border: 1px solid rgba(145, 109, 99, 0.14);
-  color: var(--rose-strong);
-  font-size: 12px;
-  letter-spacing: 0.1em;
-}
-
 .panel-copy h1,
 .chat-header h2 {
   margin: 0;
@@ -310,7 +332,6 @@ textarea {
 .panel-copy p,
 .chat-header p,
 .status-caption,
-.memory-card p,
 .welcome-card,
 .empty-card p,
 .message-bubble p {
@@ -409,31 +430,14 @@ textarea {
   min-height: 48px;
 }
 
-.memory-card {
-  display: grid;
-  gap: 8px;
-  margin-top: auto;
-  padding: 18px;
-  border-radius: 24px;
-  background: rgba(255, 252, 249, 0.64);
-  border: 1px solid rgba(145, 109, 99, 0.12);
-}
-
-.memory-label,
-.memory-time,
 .message-role {
   font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
-.memory-label,
 .message-role {
   color: var(--rose-strong);
-}
-
-.memory-time {
-  color: rgba(101, 86, 99, 0.8);
 }
 
 .chat-header {
@@ -441,7 +445,7 @@ textarea {
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-  padding: 24px 28px 18px;
+  padding: 20px 24px 14px;
   border-bottom: 1px solid rgba(145, 109, 99, 0.1);
 }
 
@@ -510,7 +514,7 @@ textarea {
 }
 
 .conversation {
-  padding: 22px 28px 6px;
+  padding: 18px 24px 4px;
   overflow-y: auto;
   display: grid;
   align-content: start;
@@ -583,7 +587,7 @@ textarea {
 .composer {
   display: grid;
   gap: 14px;
-  padding: 18px 28px 28px;
+  padding: 16px 24px 22px;
   border-top: 1px solid rgba(145, 109, 99, 0.1);
 }
 
@@ -706,6 +710,34 @@ textarea {
   }
 }
 
+@keyframes onboardingStepEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes mainShellEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-shell.is-main-enter {
+  animation: mainShellEnter 220ms ease both;
+}
+
 .onboarding-shell {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -713,8 +745,13 @@ textarea {
 
 .onboarding-form {
   display: grid;
-  gap: 18px;
   padding: 22px 28px 28px;
+}
+
+.onboarding-step {
+  display: grid;
+  gap: 18px;
+  animation: onboardingStepEnter 220ms ease both;
 }
 
 .onboarding-copy {
@@ -723,6 +760,15 @@ textarea {
   background: rgba(255, 251, 247, 0.82);
   border: 1px solid rgba(145, 109, 99, 0.12);
   color: var(--ink-soft);
+}
+
+.onboarding-step-label {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: var(--rose-strong);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .field-block {
@@ -743,38 +789,10 @@ textarea {
   background: rgba(255, 252, 250, 0.92);
   color: var(--ink-main);
   outline: none;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 
-.choice-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.choice-grid.compact {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.choice-card {
-  display: grid;
-  gap: 6px;
-  text-align: left;
-  padding: 14px 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(145, 109, 99, 0.12);
-  background: rgba(255, 251, 247, 0.82);
-  color: var(--ink-main);
-}
-
-.choice-card strong {
-  font-weight: 600;
-}
-
-.choice-card small {
-  color: var(--ink-soft);
-}
-
-.choice-card.is-active {
+.field-block input:focus {
   border-color: rgba(167, 104, 102, 0.34);
   box-shadow: 0 0 0 4px rgba(185, 122, 118, 0.08);
 }
@@ -782,6 +800,17 @@ textarea {
 .onboarding-hint {
   color: var(--ink-soft);
   font-size: 13px;
+}
+
+.onboarding-status {
+  align-content: start;
+}
+
+.onboarding-status-title {
+  margin: 2px 0 6px;
+  color: var(--ink-main);
+  font-size: 20px;
+  font-weight: 600;
 }
 
 @media (max-width: 1100px) {
@@ -802,9 +831,9 @@ textarea {
     min-height: 320px;
   }
 
-  .choice-grid,
-  .choice-grid.compact {
-    grid-template-columns: 1fr;
+  .onboarding-shell .composer-actions {
+    flex-wrap: wrap;
+    align-items: flex-start;
   }
 
   .presence-grid {

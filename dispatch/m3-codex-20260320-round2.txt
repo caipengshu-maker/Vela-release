@@ -1,0 +1,99 @@
+项目：C:\Users\caipe\.openclaw\workspace\Vela
+模式：连续施工上下文（同一轮持续整改，不要重开任务漂移）
+施工位：Codex CLI（GPT-5.4 xhigh）
+
+你现在接的是 **Vela M3 主线施工 round 2**。
+
+先读：
+- C:\Users\caipe\.openclaw\workspace\Vela\CURRENT-ROUTE.md
+- C:\Users\caipe\.openclaw\workspace\Vela\TASKS.md
+- C:\Users\caipe\.openclaw\workspace\Vela\docs\M2-M3-STATE-EMOTION-WIRING.md
+- C:\Users\caipe\.openclaw\workspace\Vela\src\App.jsx
+- C:\Users\caipe\.openclaw\workspace\Vela\src\styles.css
+- C:\Users\caipe\.openclaw\workspace\Vela\src\vrm-avatar-stage.jsx
+- C:\Users\caipe\.openclaw\workspace\Vela\src\core\avatar-state.js
+- C:\Users\caipe\.openclaw\workspace\Vela\src\core\interaction-policy.js
+- C:\Users\caipe\.openclaw\workspace\Vela\electron\main.js
+- C:\Users\caipe\.openclaw\workspace\Vela\electron\preload.js
+
+## 这轮的唯一目标
+围绕 **M3 在场感闭环** 做第一轮真正收束，不要把 M3 做成“能动的 demo”，也不要歪到 M4。
+
+## M3 目标（锁死）
+M3 要收的是：
+1. 她像在场（social presence）
+2. 用户不用费脑理解系统（low cognitive load）
+3. 她有稳定微反馈（听 / 想 / 说 / 靠近），而不是乱演
+
+## 严格边界
+### 你可以做
+- 稳运行面：Electron 真窗 / preload / bridge / VRM 真显示持续稳定
+- avatar 舞台权重整改：让她成为主角，不再像卡片插图
+- 状态表达整改：主界面从技术标签转成人话/自然在场提示
+- `idle / listening / thinking / speaking` 的最小可见差异
+- `wide / close` 两态镜头可感知
+- 表情 / 动作 / 镜头与状态机形成统一表演语言
+
+### 你不可以做
+- 旧话题续接
+- 关系深化
+- 轻主动
+- 更复杂人格/UI 系统
+- 大范围产品重构
+- 再造一堆文档/新真源
+- 为了“更好看”牺牲运行稳定性
+
+## 当前问题点（逐条解决）
+1. UI 仍有 demo / 工具味
+2. avatar 还不够像主舞台
+3. 状态表达太像系统 phase，而不是“她现在在干嘛”
+4. 必须保住 EKU VRM 真渲染链路，绝不允许退回白屏/假壳
+5. 本轮 UI 改动必须直接服务 M3，不准吞主线
+
+## 推荐施工顺序
+### Phase A：先稳运行面
+- 不要再把 Electron 真窗打回去
+- preload / bridge / VRM 显示继续保持可运行
+
+### Phase B：做 avatar 舞台权重整改
+- 左侧角色舞台更像主视觉
+- 让 `wide / close` 肉眼可感知
+- 不要只是把模型塞在卡片里
+
+### Phase C：做状态表达整改
+- 把过于技术化的主界面状态表达，换成更自然的人话/在场提示
+- 系统性细节可以弱化或下沉，但不能影响调试与后续接线
+
+### Phase D：做最小表演语言统一
+- `idle / listening / thinking / speaking`
+- `wide / close`
+- emotion → expression/motion 不错配
+- 思考时别傻笑，sad/angry 别卖萌
+
+## 设计/产品判断标准（必须吸收）
+- 主界面权力顺序应接近：
+  1. 她
+  2. 她此刻的状态
+  3. 你们的对话
+  4. 控件
+- 如果某个改动不能直接增强“她像不像在场”，就不要做
+- companion UI 的价值不是堆功能块，而是让用户低负担地感到“她在回应我”
+
+## DoD（这轮必须达到）
+- `build` 通过
+- `smoke` 通过
+- Electron 真窗可见 EKU VRM
+- avatar 视觉权重明显上升
+- 主界面状态表达比现在更自然，工具味明显下降
+- `idle / listening / thinking / speaking` 有最小可见差异
+- `wide / close` 可感知
+- 本轮整改没有跑到 M4
+
+## 完成后必须回报
+1. 改了哪些文件
+2. 如何分别解决了：运行面 / avatar 主体 / 状态表达 / 工具味 / 表演语言统一
+3. 你跑了哪些验证（至少 `build` + `smoke`）
+4. 当前还剩哪些问题故意留到下一刀
+5. 如果下一刀继续，你建议优先收哪一块：TTS 前台化 / 表演语言细化 / UI 壳微调
+
+直接开工。不要写方案废话，给我真实改动和可验证结果。

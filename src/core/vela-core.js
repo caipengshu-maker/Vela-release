@@ -89,7 +89,7 @@ function buildOnboardingState(profile) {
   return {
     required: true,
     completed: false,
-    prompt: "我刚醒来，还没有完全定型。你可以先决定我该怎么被你认识。",
+    prompt: "先告诉我，我该怎么称呼你。轻轻一句就好。",
     fields: {
       velaName: onboarding.velaName || "Vela",
       userName: onboarding.userName || "",
@@ -107,6 +107,15 @@ function buildMemoryPeek(memory) {
         createdAtLabel: formatTime(memory.recentSummaries[0].createdAt)
       }
     : null;
+}
+
+function buildAvatarAssetState(config) {
+  const assetPath = String(config?.avatar?.assetPath || "").trim();
+
+  return {
+    path: assetPath,
+    fileName: assetPath ? path.basename(assetPath) : ""
+  };
 }
 
 export class VelaCore {
@@ -270,6 +279,7 @@ export class VelaCore {
         shortBio: this.persona.shortBio
       },
       avatar: nextAvatar,
+      avatarAsset: buildAvatarAssetState(this.config),
       messages: messages ?? this.runtimeSession.messages,
       welcomeNote:
         welcomeNote ??
@@ -408,7 +418,7 @@ export class VelaCore {
     });
 
     const memory = await this.loadMemorySnapshot();
-    const replyText = `${this.persona.name}，就先这样醒来吧。之后我会用这种语气陪你，也会慢慢把关于你的事记住。`;
+    const replyText = `${this.persona.name}，我醒来了。接下来我会用现在的语气陪你，也会慢慢记住关于你的事。`;
     const { avatar, plan } = this.buildSpeakingAvatar({
       replyText,
       userMessage: payload.userName || ""
@@ -431,7 +441,7 @@ export class VelaCore {
           content: replyText
         }
       ],
-      welcomeNote: "名字和气质先定下来了。现在你可以像和一个刚醒来但已经开始记住你的人说第一句话。",
+      welcomeNote: "唤醒成功。现在你可以把第一句话交给她。",
       onboarding: {
         required: false,
         completed: true

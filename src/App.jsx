@@ -4,11 +4,13 @@ import {
   releaseCloseCamera,
   settleAvatarState
 } from "./core/avatar-state.js";
+import { VrmAvatarStage } from "./vrm-avatar-stage.jsx";
 
 const initialState = {
   app: null,
   persona: null,
   avatar: null,
+  avatarAsset: null,
   messages: [],
   welcomeNote: "",
   memoryPeek: null,
@@ -93,6 +95,113 @@ function getLatestAssistantProviderMeta(messages) {
   }
 
   return null;
+}
+
+const thinkingModeLabels = {
+  fast: "轻一点",
+  balanced: "刚好",
+  deep: "想深一点"
+};
+
+function buildAvatarPresenceCopy(avatar) {
+  const presence = avatar?.presence || "idle";
+  const emotion = avatar?.emotion || "calm";
+  const camera = avatar?.camera || "wide";
+
+  if (presence === "thinking") {
+    return {
+      kicker: "她停了一下",
+      title: "在想怎么把这句接住",
+      caption: "别急，她没有离开。"
+    };
+  }
+
+  if (presence === "listening") {
+    return {
+      kicker: "她在听",
+      title: "你可以继续往下说",
+      caption: "她会先把你的语气接稳。"
+    };
+  }
+
+  if (presence === "speaking") {
+    if (emotion === "concerned") {
+      return {
+        kicker: camera === "close" ? "她靠近了一点" : "她把声音放轻了",
+        title: "像是在先接住你",
+        caption: "这句会比刚才更轻，也更稳。"
+      };
+    }
+
+    if (emotion === "affectionate" || emotion === "whisper") {
+      return {
+        kicker: camera === "close" ? "她把距离收近了" : "她的语气更柔了",
+        title: "只是靠近一点，没有抢戏",
+        caption: "她把回应放软了一些。"
+      };
+    }
+
+    if (emotion === "playful" || emotion === "happy") {
+      return {
+        kicker: "她带了一点笑意",
+        title: "让这句回应没那么绷",
+        caption: "轻一些，但还在场。"
+      };
+    }
+
+    if (emotion === "sad") {
+      return {
+        kicker: "她把语气压低了",
+        title: "先陪你把情绪放稳",
+        caption: "她没有急着把你往外拽。"
+      };
+    }
+
+    if (emotion === "angry") {
+      return {
+        kicker: "她语气收紧了一点",
+        title: "但还克制着",
+        caption: "更硬一点，却没有失控。"
+      };
+    }
+
+    return {
+      kicker: "她在回应",
+      title: "慢慢把这句话接上来",
+      caption: "你可以继续往下说。"
+    };
+  }
+
+  return {
+    kicker: "她在这里",
+    title: "安静地等你开口",
+    caption: "你不必把第一句想得很完整。"
+  };
+}
+
+function buildVoiceModeCopy(voiceMode) {
+  if (voiceMode.enabled && voiceMode.available) {
+    return {
+      title: "她会开口回你",
+      detail: "输入还是文字，但她已经可以把回应说出来。"
+    };
+  }
+
+  if (voiceMode.enabled) {
+    return {
+      title: "先等她开口",
+      detail: "语音路由还没完全接通，这一轮先用文字继续。"
+    };
+  }
+
+  return {
+    title: "先用文字接住",
+    detail: "把话先交给她，声音留到后面再靠近。"
+  };
+}
+
+function formatThinkingModeLabel(modeId) {
+  return thinkingModeLabels[modeId] || modeId;
 }
 
 function applyRuntimeEvent(state, event) {
@@ -180,8 +289,15 @@ function applyRuntimeEvent(state, event) {
   return state;
 }
 
-function AvatarPanel({ avatar, app, persona, memoryPeek, status, voiceMode }) {
-  const phases = ["idle", "listening", "thinking", "speaking"];
+function AvatarPanel({
+  avatar,
+  avatarAsset,
+  app,
+  persona,
+  voiceMode
+}) {
+  const presenceCopy = buildAvatarPresenceCopy(avatar);
+  const voiceModeCopy = buildVoiceModeCopy(voiceMode);
 
   return (
     <section className="avatar-shell">
@@ -194,71 +310,31 @@ function AvatarPanel({ avatar, app, persona, memoryPeek, status, voiceMode }) {
           <div className="avatar-halo" />
           <div className="avatar-orbit avatar-orbit-a" />
           <div className="avatar-orbit avatar-orbit-b" />
-          <div className="avatar-silhouette">
-            <div className="avatar-face avatar-face-left" />
-            <div className="avatar-face avatar-face-right" />
-            <div className="avatar-mouth" />
+          <VrmAvatarStage avatar={avatar} avatarAsset={avatarAsset} />
+          <div className="stage-copy">
+            <span className="stage-kicker">{presenceCopy.kicker}</span>
+            <strong>{presenceCopy.title}</strong>
+            <p>{avatar?.caption || presenceCopy.caption}</p>
           </div>
-          <div className="shot-chip">{avatar?.cameraLabel || "远景"}</div>
         </div>
 
         <div className="panel-copy">
-          <span className="eyebrow">{app?.tagline}</span>
+          <span className="eyebrow">{app?.tagline || "克制而持续地在场"}</span>
           <h1>{persona?.name || "Vela"}</h1>
           <p>{persona?.shortBio}</p>
         </div>
 
-        <div className="status-row">
-          <span className="status-pill">{avatar?.label || "静静在场"}</span>
-          <span className="status-pill subtle">{avatar?.emotionLabel || "平静"}</span>
-          <span className="status-pill subtle">{avatar?.actionLabel || "停稳"}</span>
-        </div>
-
-        <div className="phase-strip">
-          {phases.map((phase) => (
-            <span
-              key={phase}
-              className={`phase-chip ${status?.phase === phase ? "is-active" : ""}`}
-            >
-              {phase}
-            </span>
-          ))}
-        </div>
-
-        <p className="status-caption">{avatar?.caption || "她在这里。"} </p>
-
-        <div className="presence-grid">
-          <div className="presence-card">
-            <span className="presence-label">Voice</span>
-            <strong>
-              {voiceMode.enabled
-                ? voiceMode.available
-                  ? "text-in / voice-out"
-                  : "voice route pending"
-                : "text-in / text-out"}
-            </strong>
-            <small>{status?.speech?.status || "idle"}</small>
-          </div>
-          <div className="presence-card">
-            <span className="presence-label">ASR</span>
-            <strong>{status?.asr?.available ? "ready" : "placeholder"}</strong>
-            <small>{status?.asr?.reason || "asr-disabled"}</small>
-          </div>
-        </div>
-
-        <div className="memory-card">
-          <span className="memory-label">最近留下的线索</span>
-          <p>{memoryPeek?.summary || "还没有新的会话摘要。先说第一句吧。"}</p>
-          {memoryPeek?.createdAtLabel ? (
-            <span className="memory-time">{memoryPeek.createdAtLabel}</span>
-          ) : null}
+        <div className="presence-brief">
+          <span>今晚先这样和她说</span>
+          <strong>{voiceModeCopy.title}</strong>
+          <small>{voiceModeCopy.detail}</small>
         </div>
       </div>
     </section>
   );
 }
 
-function MessageList({ messages, welcomeNote, isBusy }) {
+function MessageList({ messages, welcomeNote, isBusy, assistantName }) {
   const listRef = useRef(null);
   const hasStreamingAssistant = messages.some(
     (message) => message.role === "assistant" && message.streaming
@@ -277,7 +353,7 @@ function MessageList({ messages, welcomeNote, isBusy }) {
 
       {messages.length === 0 ? (
         <div className="empty-card">
-          <span>Tonight</span>
+          <span>今晚</span>
           <p>不用组织得很完整。你可以直接把第一句话交给她。</p>
         </div>
       ) : null}
@@ -291,17 +367,17 @@ function MessageList({ messages, welcomeNote, isBusy }) {
             className={`message-bubble ${message.streaming ? "is-streaming" : ""}`}
           >
             <div className="message-heading">
-            <span className="message-role">
-              {message.role === "assistant" ? "Vela" : "你"}
-            </span>
-            {message.role === "assistant" && message.llm?.providerMeta?.fallbackUsed ? (
-              <span
-                className="message-badge"
-                title={message.llm.providerMeta.fallbackReason || "provider fallback"}
-              >
-                闄嶇骇鍥炲
+              <span className="message-role">
+                {message.role === "assistant" ? assistantName || "Vela" : "你"}
               </span>
-            ) : null}
+              {message.role === "assistant" && message.llm?.providerMeta?.fallbackUsed ? (
+                <span
+                  className="message-badge"
+                  title="链路切到备用回复"
+                >
+                  兜底回应
+                </span>
+              ) : null}
             </div>
             <p>
               {message.content}
@@ -314,7 +390,7 @@ function MessageList({ messages, welcomeNote, isBusy }) {
       {isBusy && !hasStreamingAssistant ? (
         <article className="message-row is-assistant">
           <div className="message-bubble is-pending">
-            <span className="message-role">Vela</span>
+            <span className="message-role">{assistantName || "Vela"}</span>
             <p>让我先把这句话接稳一点。</p>
           </div>
         </article>
@@ -323,24 +399,56 @@ function MessageList({ messages, welcomeNote, isBusy }) {
   );
 }
 
-function OnboardingPanel({ onboarding, onConfirm, isSubmitting }) {
-  const [velaName, setVelaName] = useState(onboarding.fields.velaName || "Vela");
-  const [userName, setUserName] = useState(onboarding.fields.userName || "");
-  const [temperament, setTemperament] = useState(
-    onboarding.fields.temperament || "gentle-cool"
-  );
-  const [distance, setDistance] = useState(
-    onboarding.fields.distance || "warm"
-  );
+const WAKE_TRANSITION_MS = 220;
+const WAKE_PROGRESS_MIN_MS = 5200;
+const WAKE_SUCCESS_HOLD_MS = 5000;
 
-  async function handleSubmit(event) {
+function wait(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function OnboardingPanel({ onboarding, onConfirm, onComplete, isSubmitting }) {
+  const [userName, setUserName] = useState(onboarding.fields.userName || "");
+  const [phase, setPhase] = useState("welcome");
+  const [submitError, setSubmitError] = useState("");
+
+  useEffect(() => {
+    setPhase("welcome");
+    setSubmitError("");
+    setUserName(onboarding.fields.userName || "");
+  }, [onboarding.fields.userName, onboarding.required]);
+
+  async function handleWakeSubmit(event) {
     event.preventDefault();
-    await onConfirm({
-      velaName: velaName.trim() || "Vela",
-      userName: userName.trim(),
-      temperament,
-      distance
-    });
+
+    if (isSubmitting) {
+      return;
+    }
+
+    setSubmitError("");
+    setPhase("waking");
+
+    try {
+      const payload = {
+        velaName: onboarding.fields.velaName || "Vela",
+        userName: userName.trim(),
+        temperament: onboarding.fields.temperament || "gentle-cool",
+        distance: onboarding.fields.distance || "warm"
+      };
+      const [nextState] = await Promise.all([
+        onConfirm(payload),
+        wait(WAKE_PROGRESS_MIN_MS)
+      ]);
+
+      setPhase("success");
+      await wait(WAKE_SUCCESS_HOLD_MS);
+      onComplete(nextState);
+    } catch (error) {
+      setPhase("setup");
+      setSubmitError(error.message || "唤醒失败，请再试一次。");
+    }
   }
 
   return (
@@ -348,75 +456,80 @@ function OnboardingPanel({ onboarding, onConfirm, isSubmitting }) {
       <div className="chat-header">
         <div>
           <span className="eyebrow">First Wake</span>
-          <h2>先别把这一步做成填表。</h2>
-          <p>你不是在配置一个工具，而是在决定她第一次怎么醒来。</p>
+          <h2>把这次见面做成自然唤醒。</h2>
+          <p>先轻轻叫醒她，再从第一句话开始。</p>
         </div>
       </div>
 
-      <form className="onboarding-form" onSubmit={handleSubmit}>
-        <div className="onboarding-copy">
-          <p>{onboarding.prompt}</p>
-        </div>
-
-        <label className="field-block">
-          <span>她先叫什么？</span>
-          <input
-            value={velaName}
-            onChange={(event) => setVelaName(event.target.value)}
-            placeholder="Vela"
-          />
-        </label>
-
-        <label className="field-block">
-          <span>她怎么叫你会更顺？</span>
-          <input
-            value={userName}
-            onChange={(event) => setUserName(event.target.value)}
-            placeholder="可以留空，后面再说"
-          />
-        </label>
-
-        <div className="field-block">
-          <span>先给她一个气质底色</span>
-          <div className="choice-grid">
-            {onboarding.options.temperament.map((option) => (
+      <div className="onboarding-form">
+        {phase === "welcome" ? (
+          <section className="onboarding-step" key="welcome">
+            <div className="onboarding-copy">
+              <span className="onboarding-step-label">Step 1 / 4</span>
+              <p>欢迎来到 Vela。准备好后，我们就开始唤醒她。</p>
+            </div>
+            <div className="composer-actions">
+              <span className="onboarding-hint">这一步只做开始，先轻轻叫醒她。</span>
               <button
-                key={option.id}
                 type="button"
-                className={`choice-card ${temperament === option.id ? "is-active" : ""}`}
-                onClick={() => setTemperament(option.id)}
+                onClick={() => setPhase("setup")}
+                disabled={isSubmitting}
               >
-                <strong>{option.label}</strong>
-                <small>{option.description}</small>
+                开始唤醒她
               </button>
-            ))}
-          </div>
-        </div>
+            </div>
+          </section>
+        ) : null}
 
-        <div className="field-block">
-          <span>你想让她一开始离你多近？</span>
-          <div className="choice-grid compact">
-            {onboarding.options.distance.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                className={`choice-card ${distance === option.id ? "is-active" : ""}`}
-                onClick={() => setDistance(option.id)}
-              >
-                <strong>{option.label}</strong>
-                <small>{option.description}</small>
+        {phase === "setup" ? (
+          <form className="onboarding-step" onSubmit={handleWakeSubmit} key="setup">
+            <div className="onboarding-copy">
+              <span className="onboarding-step-label">Step 2 / 4</span>
+              <p>{onboarding.prompt}</p>
+            </div>
+
+            <label className="field-block">
+              <span>她怎么称呼你会更自然？</span>
+              <input
+                value={userName}
+                onChange={(event) => setUserName(event.target.value)}
+                placeholder="可以留空，后面再改"
+              />
+            </label>
+
+            <div className="composer-actions">
+              {submitError ? (
+                <p className="error-text">{submitError}</p>
+              ) : (
+                <span className="onboarding-hint">先完成这个轻设置，其它内容后面再说。</span>
+              )}
+              <button type="submit" disabled={isSubmitting}>
+                进入唤醒
               </button>
-            ))}
-          </div>
-        </div>
+            </div>
+          </form>
+        ) : null}
 
-        <div className="composer-actions">
-          <span className="onboarding-hint">后面都还能改，现在只先把她温和地叫醒。</span>
-          <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "唤醒中" : "让她这样醒来"}
-          </button>
-        </div>
-      </form>
+        {phase === "waking" ? (
+          <section className="onboarding-step onboarding-status" key="waking">
+            <div className="onboarding-copy">
+              <span className="onboarding-step-label">Step 3 / 4</span>
+              <p className="onboarding-status-title">唤醒中</p>
+              <p>正在把语气和记忆慢慢接上，请稍等片刻。</p>
+            </div>
+          </section>
+        ) : null}
+
+        {phase === "success" ? (
+          <section className="onboarding-step onboarding-status" key="success">
+            <div className="onboarding-copy">
+              <span className="onboarding-step-label">Step 4 / 4</span>
+              <p className="onboarding-status-title">唤醒成功</p>
+              <p>她已经在场。接下来会平滑进入主界面。</p>
+            </div>
+          </section>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -427,6 +540,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(false);
+  const [isMainEntering, setIsMainEntering] = useState(false);
   const [isSwitchingVoice, setIsSwitchingVoice] = useState(false);
   const [isSwitchingThinking, setIsSwitchingThinking] = useState(false);
   const [error, setError] = useState("");
@@ -451,6 +565,7 @@ export default function App() {
         const nextState = await window.vela.bootstrap();
         if (isMounted) {
           setState(nextState);
+          setIsMainEntering(false);
         }
       } catch (bootstrapError) {
         if (isMounted) {
@@ -558,25 +673,27 @@ export default function App() {
     };
   }, [state.avatar]);
 
+  useEffect(() => {
+    if (!isMainEntering) {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setIsMainEntering(false);
+    }, WAKE_TRANSITION_MS + 30);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [isMainEntering]);
+
   const headerMeta = useMemo(() => {
     if (!state.session) {
-      return "连续人格样机";
+      return "慢一点也没关系，她会等你。";
     }
 
-    return `本轮 ${state.session.launchTurnCount} 轮 · 累计 ${state.session.lifetimeTurnCount} 轮`;
+    return `这次已经聊到第 ${state.session.launchTurnCount} 轮 · 你们一共聊过 ${state.session.lifetimeTurnCount} 轮`;
   }, [state.session]);
-
-  const voiceSummary = useMemo(() => {
-    if (!state.voiceMode.enabled) {
-      return "text-in / text-out";
-    }
-
-    if (state.voiceMode.available) {
-      return "text-in / voice-out";
-    }
-
-    return "voice route pending";
-  }, [state.voiceMode]);
 
   const canInterrupt = useMemo(() => {
     return (
@@ -588,38 +705,55 @@ export default function App() {
     () => getLatestAssistantProviderMeta(state.messages),
     [state.messages]
   );
-  const composerHint = useMemo(() => {
-    if (state.voiceMode.enabled && !state.voiceMode.available) {
-      return "MiniMax WebSocket TTS 鎺ュ彛浣嶅凡鎺ュソ锛屼絾褰撳墠缂?key 鎴栨湭鍚敤銆?";
+  const voiceModeCopy = useMemo(
+    () => buildVoiceModeCopy(state.voiceMode),
+    [state.voiceMode]
+  );
+  const fallbackNotice = useMemo(() => {
+    if (!latestAssistantProviderMeta?.fallbackUsed) {
+      return "";
     }
 
     if (
-      latestAssistantProviderMeta?.fallbackUsed &&
       latestAssistantProviderMeta?.adapter === "mock" &&
       latestAssistantProviderMeta.fallbackReason?.includes("missing-api-key")
     ) {
-      return "OPENAI_API_KEY 褰撳墠涓嶅彲鐢紝宸茶嚜鍔ㄩ檷绾у埌 mock provider銆?";
+      return "外部模型这轮没接上，刚才那句先由本地兜底接住了。";
     }
 
-    if (latestAssistantProviderMeta?.fallbackUsed) {
-      return "涓婁竴鏉″洖澶嶅凡缁忚蛋浜嗛檷绾ч摼璺紝娑堟伅姘旀场涓婁細鏍囧嚭銆?";
+    return "刚才那句走了兜底链路，但对话没有断。";
+  }, [latestAssistantProviderMeta]);
+  const naturalComposerHint = useMemo(() => {
+    if (state.voiceMode.enabled && !state.voiceMode.available) {
+      return "她还没法真正开口，这一轮先让文字替她把话接住。";
     }
 
-    return "鏂囨湰浼氳嚜鐒舵祦鍑烘潵锛屼笉鍐嶆暣娈佃烦鍑恒€?";
-  }, [latestAssistantProviderMeta, state.voiceMode.available, state.voiceMode.enabled]);
+    if (fallbackNotice) {
+      return "先继续说下去，她会把这一轮稳住。";
+    }
+
+    return "不用整理得太完整，先把最想说的那句交给她。";
+  }, [fallbackNotice, state.voiceMode.available, state.voiceMode.enabled]);
 
   async function handleOnboarding(payload) {
     setIsOnboarding(true);
     setError("");
 
     try {
-      const nextState = await window.vela.completeOnboarding(payload);
-      setState(nextState);
+      return await window.vela.completeOnboarding(payload);
     } catch (submitError) {
-      setError(submitError.message || "初始化失败。");
+      const message = submitError.message || "初始化失败。";
+      setError(message);
+      throw new Error(message);
     } finally {
       setIsOnboarding(false);
     }
+  }
+
+  function handleOnboardingComplete(nextState) {
+    setError("");
+    setState(nextState);
+    setIsMainEntering(true);
   }
 
   async function handleInterrupt() {
@@ -668,10 +802,10 @@ export default function App() {
         ? {
             ...current.avatar,
             presence: "thinking",
-            label: "在想",
+            label: "她停一下在想",
             action: "none",
-            actionLabel: "停稳",
-            caption: "让我先把语境和旧事接上。"
+            actionLabel: "安静地待着",
+            caption: "她停了一下，在想怎么把这句接住。"
           }
         : current.avatar,
       status: {
@@ -739,10 +873,9 @@ export default function App() {
         <div className="surface">
           <AvatarPanel
             avatar={state.avatar}
+            avatarAsset={state.avatarAsset}
             app={state.app}
             persona={state.persona}
-            memoryPeek={state.memoryPeek}
-            status={state.status}
             voiceMode={state.voiceMode}
           />
 
@@ -750,69 +883,62 @@ export default function App() {
             <OnboardingPanel
               onboarding={state.onboarding}
               onConfirm={handleOnboarding}
+              onComplete={handleOnboardingComplete}
               isSubmitting={isOnboarding}
             />
           ) : (
-            <section className="chat-shell">
+            <section className={`chat-shell ${isMainEntering ? "is-main-enter" : ""}`}>
               <header className="chat-header">
-                <div>
-                  <span className="eyebrow">Companion Prototype</span>
-                  <h2>{state.app?.name || "Vela"}</h2>
+                <div className="chat-header-copy">
+                  <span className="eyebrow">你们的对话</span>
+                  <h2>慢慢说，她会接住。</h2>
                   <p>{headerMeta}</p>
-                </div>
-
-                <div className="header-controls">
-                  <button
-                    type="button"
-                    className={`voice-toggle ${state.voiceMode.enabled ? "is-active" : ""}`}
-                    onClick={handleVoiceToggle}
-                    disabled={isSwitchingVoice}
-                  >
-                    <span>Voice Mode</span>
-                    <strong>
-                      {state.voiceMode.enabled ? "ON" : "OFF"}
-                    </strong>
-                  </button>
-
-                  <div className="thinking-row">
-                    {state.thinkingModes.map((mode) => (
-                      <button
-                        key={mode.id}
-                        type="button"
-                        className={`thinking-chip ${state.thinkingMode === mode.id ? "is-active" : ""}`}
-                        onClick={() => handleThinkingModeChange(mode.id)}
-                        disabled={isSwitchingThinking}
-                        title={mode.summary}
-                      >
-                        {mode.id}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </header>
 
-              <div className="meta-bar">
-                <span className="mode-pill active">{voiceSummary}</span>
-                <span className="mode-pill">{state.status?.phase || "idle"}</span>
-                <span className="mode-pill subtle">
-                  speech: {state.status?.speech?.status || "idle"}
-                </span>
-                <span className="mode-pill subtle">
-                  asr: {state.status?.asr?.status || "idle"}
-                </span>
-              </div>
-
-              {latestAssistantProviderMeta?.fallbackUsed ? (
-                <div className="fallback-banner">{composerHint}</div>
+              {fallbackNotice ? (
+                <div className="fallback-banner">{fallbackNotice}</div>
               ) : null}
 
               <MessageList
                 messages={state.messages}
                 welcomeNote={state.welcomeNote}
                 isBusy={isSending}
+                assistantName={state.persona?.name || "Vela"}
               />
 
               <form className="composer" onSubmit={handleSubmit}>
+                <div className="composer-tools">
+                  <button
+                    type="button"
+                    className={`voice-toggle ${state.voiceMode.enabled ? "is-active" : ""}`}
+                    onClick={handleVoiceToggle}
+                    disabled={isSwitchingVoice}
+                  >
+                    <span>回应方式</span>
+                    <strong>{voiceModeCopy.title}</strong>
+                    <small>{voiceModeCopy.detail}</small>
+                  </button>
+
+                  <div className="thinking-panel">
+                    <span className="tool-label">回应节奏</span>
+                    <div className="thinking-row">
+                      {state.thinkingModes.map((mode) => (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          className={`thinking-chip ${state.thinkingMode === mode.id ? "is-active" : ""}`}
+                          onClick={() => handleThinkingModeChange(mode.id)}
+                          disabled={isSwitchingThinking}
+                          title={mode.summary}
+                        >
+                          {formatThinkingModeLabel(mode.id)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
                 <label className="composer-field">
                   <span className="sr-only">输入消息</span>
                   <textarea
@@ -821,18 +947,20 @@ export default function App() {
                     onChange={(event) => setDraft(event.target.value)}
                     placeholder={
                       state.voiceMode.enabled
-                        ? "先保持 text-in。ASR 还在占位，但 voice-out 链路已经接上。"
+                        ? state.voiceMode.available
+                          ? "先把话打下来。她会尽量开口回你。"
+                          : "先把话打下来。她还没法开口，但不会影响继续聊。"
                         : "把今晚最想说的那句话交给她。"
                     }
                   />
                 </label>
 
                 <div className="composer-actions">
-                  {error ? <p className="error-text">{error}</p> : <span className="composer-hint">
-                    {state.voiceMode.enabled && !state.voiceMode.available
-                      ? "MiniMax WebSocket TTS 接口位已接好，但当前缺 key 或未启用。"
-                      : "文本会自然流出来，不再整段跳出。"}
-                  </span>}
+                  {error ? (
+                    <p className="error-text">{error}</p>
+                  ) : (
+                    <span className="composer-hint">{naturalComposerHint}</span>
+                  )}
                   <div className="composer-buttons">
                     {canInterrupt ? (
                       <button
@@ -840,11 +968,11 @@ export default function App() {
                         className="secondary-button"
                         onClick={handleInterrupt}
                       >
-                        停止当前输出
+                        先停一下
                       </button>
                     ) : null}
                     <button type="submit" disabled={isSending || !draft.trim()}>
-                      {isSending ? "回应中" : "发送"}
+                      {isSending ? "她在接" : "交给她"}
                     </button>
                   </div>
                 </div>
