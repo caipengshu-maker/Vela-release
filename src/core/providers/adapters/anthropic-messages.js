@@ -54,14 +54,16 @@ function toAnthropicContent(message) {
     : [];
 }
 
-function buildThinkingConfig(config) {
-  if (!config.llm.thinking.enabled) {
+function buildThinkingConfig(config, requestTuning = null) {
+  const thinking = requestTuning?.thinking || config.llm.thinking;
+
+  if (!thinking?.enabled) {
     return null;
   }
 
   const budgetTokens = Math.max(
     1024,
-    Number(config.llm.thinking.budgetTokens || config.llm.maxTokens || 512)
+    Number(thinking.budgetTokens || config.llm.maxTokens || 512)
   );
 
   return {
@@ -105,13 +107,20 @@ function normalizeContentBlocks(content, blocks) {
   }
 }
 
-export function buildAnthropicMessagesRequest({ context, config, adapter }) {
-  const thinking = buildThinkingConfig(config);
+export function buildAnthropicMessagesRequest({
+  context,
+  config,
+  adapter,
+  stream = false,
+  requestTuning = null
+}) {
+  const thinking = buildThinkingConfig(config, requestTuning);
+  const maxTokens = requestTuning?.maxTokens || config.llm.maxTokens;
   const body = {
     model: config.llm.model,
     max_tokens: thinking
-      ? Math.max(config.llm.maxTokens, thinking.budget_tokens)
-      : config.llm.maxTokens,
+      ? Math.max(maxTokens, thinking.budget_tokens)
+      : maxTokens,
     system: context.systemPrompt,
     messages: context.messages.map((message) => ({
       role: message.role,
@@ -119,12 +128,18 @@ export function buildAnthropicMessagesRequest({ context, config, adapter }) {
     }))
   };
 
-  if (config.llm.temperature !== undefined && config.llm.temperature !== null) {
-    body.temperature = config.llm.temperature;
+  const temperature = requestTuning?.temperature ?? config.llm.temperature;
+
+  if (temperature !== undefined && temperature !== null) {
+    body.temperature = temperature;
   }
 
   if (thinking) {
     body.thinking = thinking;
+  }
+
+  if (stream) {
+    body.stream = true;
   }
 
   return {
@@ -167,12 +182,14 @@ export const anthropicMessagesAdapter = {
   defaultApiKeyEnv: "ANTHROPIC_API_KEY",
   defaultAnthropicVersion: "2023-06-01",
   defaultEndpointPath: "v1/messages",
+  streamFormat: "anthropic-messages-sse",
   capabilities: {
     chatCompletions: false,
     messagesApi: true,
     separateSystemPrompt: true,
     supportsTextBlocks: true,
-    supportsThinkingBlocks: true
+    supportsThinkingBlocks: true,
+    supportsStreamingText: true
   },
   buildHeaders({ apiKey, config }) {
     return {
@@ -180,11 +197,13 @@ export const anthropicMessagesAdapter = {
       "anthropic-version": config.llm.anthropicVersion
     };
   },
-  buildRequest({ context, config }) {
+  buildRequest({ context, config, stream = false, requestTuning = null }) {
     return buildAnthropicMessagesRequest({
       context,
       config,
-      adapter: this
+      adapter: this,
+      stream,
+      requestTuning
     });
   },
   parseResponse({ payload, responseHeaders, endpoint, config }) {

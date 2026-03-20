@@ -81,22 +81,25 @@ export const openAiCompatibleAdapter = {
   defaultBaseUrl: "https://api.openai.com/v1",
   defaultApiKeyEnv: "OPENAI_API_KEY",
   defaultEndpointPath: "chat/completions",
+  streamFormat: "openai-chat-sse",
   capabilities: {
     chatCompletions: true,
     messagesApi: false,
     separateSystemPrompt: false,
     supportsTextBlocks: true,
-    supportsThinkingBlocks: true
+    supportsThinkingBlocks: true,
+    supportsStreamingText: true
   },
   buildHeaders({ apiKey }) {
     return {
       Authorization: `Bearer ${apiKey}`
     };
   },
-  buildRequest({ context, config }) {
+  buildRequest({ context, config, stream = false, requestTuning = null }) {
+    const maxTokens = requestTuning?.maxTokens || config.llm.maxTokens;
     const body = {
       model: config.llm.model,
-      max_tokens: config.llm.maxTokens,
+      max_tokens: maxTokens,
       messages: [
         {
           role: "system",
@@ -109,8 +112,21 @@ export const openAiCompatibleAdapter = {
       ]
     };
 
-    if (config.llm.temperature !== undefined && config.llm.temperature !== null) {
-      body.temperature = config.llm.temperature;
+    const temperature = requestTuning?.temperature ?? config.llm.temperature;
+
+    if (temperature !== undefined && temperature !== null) {
+      body.temperature = temperature;
+    }
+
+    if (requestTuning?.reasoningEffort) {
+      body.reasoning_effort = requestTuning.reasoningEffort;
+    }
+
+    if (stream) {
+      body.stream = true;
+      body.stream_options = {
+        include_usage: true
+      };
     }
 
     return {

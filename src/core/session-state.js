@@ -8,9 +8,14 @@ function defaultPersistedState() {
     lifetimeTurnCount: 0,
     lastSummaryId: null,
     lastActiveAt: null,
+    voiceModeEnabled: false,
+    thinkingMode: "balanced",
     lastAvatar: {
-      presence: "listening",
-      emotion: "calm"
+      presence: "idle",
+      emotion: "calm",
+      camera: "wide",
+      action: "none",
+      ttsEmotionMode: "auto"
     },
     lastTopic: null
   };
@@ -40,6 +45,8 @@ export class SessionStateStore {
       launchTurnCount: 0,
       lifetimeTurnCount: persistedState.lifetimeTurnCount || 0,
       lastSummaryId: persistedState.lastSummaryId || null,
+      voiceModeEnabled: Boolean(persistedState.voiceModeEnabled),
+      thinkingMode: persistedState.thinkingMode || "balanced",
       messages: []
     };
   }
@@ -50,8 +57,20 @@ export class SessionStateStore {
       lifetimeTurnCount: runtimeSession.lifetimeTurnCount,
       lastSummaryId: summary.id,
       lastActiveAt: summary.createdAt,
+      voiceModeEnabled: Boolean(runtimeSession.voiceModeEnabled),
+      thinkingMode: runtimeSession.thinkingMode || "balanced",
       lastAvatar: avatar,
       lastTopic: summary.topicLabel
+    });
+  }
+
+  async savePreferences(runtimeSession) {
+    const persistedState = await this.loadPersistedState();
+
+    await this.store.writeJson(SESSION_STATE_FILE, {
+      ...persistedState,
+      voiceModeEnabled: Boolean(runtimeSession.voiceModeEnabled),
+      thinkingMode: runtimeSession.thinkingMode || "balanced"
     });
   }
 }

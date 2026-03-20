@@ -1,0 +1,82 @@
+[HANDOFF]
+Task: Vela M2 contract-driven rework (expression + presence loop)
+From: main
+To: Codex
+Goal: Rebuild M2 against the frozen contract, using old WIP only as a parts bin. Do NOT continue the old spike as source of truth.
+
+Scope:
+- Repo root: C:\Users\caipe\.openclaw\workspace\Vela
+- Truth source first: M2_INTERACTION_CONTRACT.md
+- Also read: CURRENT-ROUTE.md, TASKS.md, ..\SESSION-STATE.md
+- MiniMax WS TTS primary API doc: C:\Users\caipe\Desktop\同步语音合成WebSocket.txt
+- Online guide is only auxiliary; local txt is the main API doc for this task.
+
+Hard constraints:
+1. This is NOT a greenfield rewrite and NOT a blind continue of old WIP.
+2. Audit spike/m2-expression-wip first; classify reusable pieces / rewrite-required pieces / discard pieces.
+3. Then implement from the frozen contract as the only truth source.
+4. Do not introduce a second strategy model. Policy layer must be deterministic rules + preset mapping + cooldown + state machine.
+5. M2 must stay focused on expression/presence loop:
+   - natural streaming text output
+   - voice mode toggle
+   - MiniMax WebSocket TTS adapter
+   - interruptible playback queue
+   - idle/listening/thinking/speaking state machine
+   - expression bundle / interaction preset mapping
+   - light expression / light motion / wide-close camera sync
+   - fast/balanced/deep thinking mode mapping
+6. Do NOT expand into:
+   - full model routing/fallback project
+   - heavy 3D runtime overhaul
+   - Live2D/VRM asset production
+   - complex cinematic camera scripting
+   - complex relationship system
+   - ASR deep integration
+7. Assume future avatar asset route prefers purchased VRoid/commercial 3D assets; do not spend time generating character assets.
+
+MiniMax WS details to explicitly respect:
+- Endpoint: wss://api.minimaxi.com/ws/v1/t2a_v2
+- Lifecycle: connected_success -> task_start -> task_started -> task_continue -> task_continued -> task_finish / task_finished
+- data.audio is hex chunks
+- is_final marks request completion
+- idle timeout: if no new event >120s after last result, websocket auto disconnects
+- whisper support caveat: whisper only works on speech-2.6-hd / speech-2.6-turbo; 2.8 does not support whisper. Implement safe downgrade.
+
+Expected work plan:
+A. Audit old spike and write a short reuse plan.
+B. Build/repair core M2 skeleton around the frozen contract.
+C. Implement MiniMax WS adapter + segmenter + queue + interrupt/stop/reset handling.
+D. Implement deterministic policy layer and expression bundle mapping.
+E. Integrate UI state sync and light camera/expression/motion sync.
+F. Implement fast/balanced/deep provider mapping.
+G. Run self-tests and produce a remediation report.
+
+Deliverables:
+- Code changes in repo
+- A short audit note: what was reused vs rewritten vs discarded from spike/m2-expression-wip
+- Self-test package / commands run
+- Remediation report describing what M2 now does, known limitations, and what still needs second-view real validation
+
+Verification requirements:
+- Show exact commands you ran
+- At minimum run project verification/build/smoke plus any M2-specific checks you add
+- Verify streaming text path, voice-mode toggle, MiniMax WS adapter behavior (mocked or real where safe), interrupt handling, state sync, and thinking mode mapping
+- If a real MiniMax key is needed for a limited smoke path, say so clearly rather than faking success
+
+Risks:
+- Old spike may contain misleading structure
+- MiniMax WS timing and interrupt behavior may need careful queue design
+- whisper support is model-specific and must degrade safely
+
+NeedDecision:
+- None for now; proceed with the frozen contract. Escalate only if the contract itself blocks implementation.
+
+Return format when reporting back:
+1. audit summary
+2. changed files
+3. verification commands + results
+4. blockers/risks
+5. next recommended action
+
+When completely finished, run this command to notify main immediately:
+openclaw system event --text "Codex CLI M2 done: return audit summary, changed files, verification results, blockers, and next action." --mode now

@@ -11,13 +11,15 @@ export const minimaxMessagesAdapter = {
   defaultApiKeyEnv: "MINIMAX_API_KEY",
   defaultAnthropicVersion: "2023-06-01",
   defaultEndpointPath: "v1/messages",
+  streamFormat: "anthropic-messages-sse",
   capabilities: {
     chatCompletions: false,
     messagesApi: true,
     separateSystemPrompt: true,
     supportsTextBlocks: true,
     supportsThinkingBlocks: true,
-    anthropicCompatible: true
+    anthropicCompatible: true,
+    supportsStreamingText: true
   },
   buildHeaders({ apiKey, config }) {
     return {
@@ -25,11 +27,13 @@ export const minimaxMessagesAdapter = {
       "anthropic-version": config.llm.anthropicVersion
     };
   },
-  buildRequest({ context, config }) {
+  buildRequest({ context, config, stream = false, requestTuning = null }) {
     return buildAnthropicMessagesRequest({
       context,
       config,
-      adapter: this
+      adapter: this,
+      stream,
+      requestTuning
     });
   },
   parseResponse({ payload, responseHeaders, endpoint, config }) {

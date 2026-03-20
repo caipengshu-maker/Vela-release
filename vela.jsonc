@@ -25,6 +25,7 @@
     "apiKeyEnv": "OPENAI_API_KEY",
     "temperature": 0.9,
     "maxTokens": 260,
+    "thinkingMode": "balanced",
     "endpointPath": "",
     "headers": {},
     "anthropicVersion": "2023-06-01",
@@ -39,7 +40,24 @@
   },
   "tts": {
     "enabled": false,
-    "provider": "placeholder"
+    "provider": "minimax-websocket",
+    "apiKeyEnv": "MINIMAX_API_KEY",
+    "model": "speech-2.8-turbo",
+    "wsUrl": "wss://api.minimaxi.com/ws/v1/t2a_v2",
+    "languageBoost": "Chinese",
+    "voiceId": "Chinese (Mandarin)_Sweet_Lady",
+    "voiceSettings": {
+      "speed": 1,
+      "volume": 1,
+      "pitch": 0,
+      "englishNormalization": false
+    },
+    "audioSettings": {
+      "format": "mp3",
+      "sampleRate": 32000,
+      "bitrate": 128000,
+      "channel": 1
+    }
   },
   "permissions": {
     "filesystem": false,

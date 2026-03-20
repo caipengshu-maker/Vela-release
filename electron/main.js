@@ -78,11 +78,41 @@ ipcMain.handle("vela:bootstrap", async () => {
 });
 
 ipcMain.handle("vela:send-message", async (_event, message) => {
-  return core.handleUserMessage(message);
+  const sendEvent = (payload) => {
+    _event.sender.send("vela:event", payload);
+  };
+
+  return core.handleUserMessage(message, {
+    onEvent: sendEvent
+  });
 });
 
 ipcMain.handle("vela:complete-onboarding", async (_event, payload) => {
   return core.completeOnboarding(payload);
+});
+
+ipcMain.handle("vela:set-voice-mode", async (_event, enabled) => {
+  const sendEvent = (payload) => {
+    _event.sender.send("vela:event", payload);
+  };
+
+  return core.setVoiceMode(enabled, {
+    onEvent: sendEvent
+  });
+});
+
+ipcMain.handle("vela:set-thinking-mode", async (_event, mode) => {
+  return core.setThinkingMode(mode);
+});
+
+ipcMain.handle("vela:interrupt-output", async (_event) => {
+  const sendEvent = (payload) => {
+    _event.sender.send("vela:event", payload);
+  };
+
+  return core.interruptOutput({
+    onEvent: sendEvent
+  });
 });
 
 app.whenReady().then(async () => {

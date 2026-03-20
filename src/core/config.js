@@ -23,19 +23,48 @@ const defaultConfig = {
     sessionMessageLimit: 12
   },
   llm: {
-    provider: "mock",
-    mode: "mock",
+    provider: "openai-compatible",
+    mode: "openai-compatible",
     baseUrl: "",
     model: "gpt-4.1-mini",
     apiKeyEnv: "",
     temperature: 0.9,
     maxTokens: 260,
+    thinkingMode: "balanced",
     endpointPath: "",
     headers: {},
     anthropicVersion: "2023-06-01",
     thinking: {
       enabled: false,
       budgetTokens: 512
+    },
+    fallback: null
+  },
+  asr: {
+    enabled: false,
+    provider: "placeholder",
+    apiKeyEnv: "",
+    model: ""
+  },
+  tts: {
+    enabled: false,
+    provider: "minimax-websocket",
+    apiKeyEnv: "MINIMAX_API_KEY",
+    model: "speech-2.8-turbo",
+    wsUrl: "wss://api.minimaxi.com/ws/v1/t2a_v2",
+    languageBoost: "Chinese",
+    voiceId: "Chinese (Mandarin)_Sweet_Lady",
+    voiceSettings: {
+      speed: 1,
+      volume: 1,
+      pitch: 0,
+      englishNormalization: false
+    },
+    audioSettings: {
+      format: "mp3",
+      sampleRate: 32000,
+      bitrate: 128000,
+      channel: 1
     }
   },
   permissions: {
@@ -49,7 +78,7 @@ const defaultConfig = {
     welcomeBack: true
   },
   avatar: {
-    defaultPresence: "listening",
+    defaultPresence: "idle",
     defaultEmotion: "calm"
   }
 };
@@ -73,26 +102,156 @@ function deepMerge(base, override) {
   return result;
 }
 
-function normalizeLlmConfig(llmConfig) {
-  const provider = llmConfig.provider || llmConfig.mode || "mock";
+function normalizeNumber(value, fallback) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
+function normalizeProviderId(value, fallback = "mock") {
+  const providerId = String(value || fallback).trim().toLowerCase();
+  return providerId || fallback;
+}
+
+function normalizeThinkingConfig(thinkingConfig = {}) {
+  return {
+    enabled: Boolean(thinkingConfig?.enabled),
+    budgetTokens: normalizeNumber(
+      thinkingConfig?.budgetTokens,
+      defaultConfig.llm.thinking.budgetTokens
+    )
+  };
+}
+
+function normalizeFallbackLlmConfig(fallbackConfig, baseLlmConfig) {
+  if (!isPlainObject(fallbackConfig)) {
+    return null;
+  }
+
+  const provider = normalizeProviderId(
+    fallbackConfig.provider || fallbackConfig.mode || baseLlmConfig.provider,
+    baseLlmConfig.provider || "mock"
+  );
   const providerDefaults = getProviderDefaults(provider) || getProviderDefaults("mock");
 
   return {
+    provider,
+    mode: provider,
+    baseUrl: String(
+      fallbackConfig.baseUrl ||
+        baseLlmConfig.baseUrl ||
+        providerDefaults?.baseUrl ||
+        ""
+    ).trim(),
+    model: String(
+      fallbackConfig.model || baseLlmConfig.model || defaultConfig.llm.model
+    ).trim(),
+    apiKeyEnv: String(
+      fallbackConfig.apiKeyEnv ||
+        baseLlmConfig.apiKeyEnv ||
+        providerDefaults?.apiKeyEnv ||
+        ""
+    ).trim(),
+    temperature:
+      typeof fallbackConfig.temperature === "number"
+        ? fallbackConfig.temperature
+        : baseLlmConfig.temperature,
+    maxTokens: normalizeNumber(fallbackConfig.maxTokens, baseLlmConfig.maxTokens),
+    thinkingMode: String(
+      fallbackConfig.thinkingMode || baseLlmConfig.thinkingMode || "balanced"
+    )
+      .trim()
+      .toLowerCase(),
+    endpointPath: String(
+      fallbackConfig.endpointPath || baseLlmConfig.endpointPath || ""
+    ).trim(),
+    headers: isPlainObject(fallbackConfig.headers)
+      ? fallbackConfig.headers
+      : { ...baseLlmConfig.headers },
+    anthropicVersion: String(
+      fallbackConfig.anthropicVersion ||
+        baseLlmConfig.anthropicVersion ||
+        providerDefaults?.anthropicVersion ||
+        "2023-06-01"
+    ).trim(),
+    thinking: normalizeThinkingConfig(
+      isPlainObject(fallbackConfig.thinking)
+        ? fallbackConfig.thinking
+        : baseLlmConfig.thinking
+    )
+  };
+}
+
+function normalizeLlmConfig(llmConfig) {
+  const provider = normalizeProviderId(
+    llmConfig.provider || llmConfig.mode,
+    "openai-compatible"
+  );
+  const providerDefaults = getProviderDefaults(provider) || getProviderDefaults("mock");
+  const normalizedConfig = {
     ...llmConfig,
     provider,
     mode: provider,
     baseUrl: String(llmConfig.baseUrl || providerDefaults.baseUrl || "").trim(),
+    model: String(llmConfig.model || defaultConfig.llm.model).trim(),
     apiKeyEnv: String(llmConfig.apiKeyEnv || providerDefaults.apiKeyEnv || "").trim(),
+    temperature:
+      typeof llmConfig.temperature === "number"
+        ? llmConfig.temperature
+        : defaultConfig.llm.temperature,
+    maxTokens: normalizeNumber(llmConfig.maxTokens, defaultConfig.llm.maxTokens),
     endpointPath: String(llmConfig.endpointPath || "").trim(),
+    thinkingMode: String(llmConfig.thinkingMode || "balanced").trim().toLowerCase(),
     anthropicVersion: String(
       llmConfig.anthropicVersion || providerDefaults.anthropicVersion || "2023-06-01"
     ).trim(),
     headers: isPlainObject(llmConfig.headers) ? llmConfig.headers : {},
-    thinking: {
-      enabled: Boolean(llmConfig.thinking?.enabled),
-      budgetTokens: Number(
-        llmConfig.thinking?.budgetTokens || defaultConfig.llm.thinking.budgetTokens
-      )
+    thinking: normalizeThinkingConfig(llmConfig.thinking)
+  };
+
+  return {
+    ...normalizedConfig,
+    fallback: normalizeFallbackLlmConfig(llmConfig.fallback, normalizedConfig)
+  };
+}
+
+function normalizeAsrConfig(asrConfig = {}) {
+  return {
+    enabled: Boolean(asrConfig.enabled),
+    provider: String(asrConfig.provider || "placeholder").trim().toLowerCase(),
+    apiKeyEnv: String(asrConfig.apiKeyEnv || "").trim(),
+    model: String(asrConfig.model || "").trim()
+  };
+}
+
+function normalizeTtsConfig(ttsConfig = {}) {
+  const voiceSettings = isPlainObject(ttsConfig.voiceSettings)
+    ? ttsConfig.voiceSettings
+    : {};
+  const audioSettings = isPlainObject(ttsConfig.audioSettings)
+    ? ttsConfig.audioSettings
+    : {};
+
+  return {
+    enabled: Boolean(ttsConfig.enabled),
+    provider: String(ttsConfig.provider || "minimax-websocket")
+      .trim()
+      .toLowerCase(),
+    apiKeyEnv: String(ttsConfig.apiKeyEnv || "MINIMAX_API_KEY").trim(),
+    model: String(ttsConfig.model || "speech-2.8-turbo").trim(),
+    wsUrl: String(ttsConfig.wsUrl || "wss://api.minimaxi.com/ws/v1/t2a_v2").trim(),
+    languageBoost: String(ttsConfig.languageBoost || "Chinese").trim(),
+    voiceId: String(ttsConfig.voiceId || "Chinese (Mandarin)_Sweet_Lady").trim(),
+    voiceSettings: {
+      speed: Number(voiceSettings.speed ?? 1),
+      volume: Number(voiceSettings.volume ?? 1),
+      pitch: Number(voiceSettings.pitch ?? 0),
+      englishNormalization: Boolean(voiceSettings.englishNormalization)
+    },
+    audioSettings: {
+      format: String(audioSettings.format || "mp3").trim().toLowerCase(),
+      sampleRate: Number(audioSettings.sampleRate || 32000),
+      bitrate: Number(audioSettings.bitrate || 128000),
+      channel: Number(audioSettings.channel || 1)
     }
   };
 }
@@ -105,6 +264,8 @@ export async function loadConfig(rootDir) {
 
   return {
     ...merged,
-    llm: normalizeLlmConfig(merged.llm)
+    llm: normalizeLlmConfig(merged.llm),
+    asr: normalizeAsrConfig(merged.asr),
+    tts: normalizeTtsConfig(merged.tts)
   };
 }

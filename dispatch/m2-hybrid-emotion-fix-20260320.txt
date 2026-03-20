@@ -1,0 +1,54 @@
+Task: Vela M2 mixed emotion routing closure pass
+Goal: Do a focused M2 remediation pass so M2 matches the newly agreed mixed-mode emotion routing: default auto, force only when needed, with model capability guards and contract/docs/task-board updates.
+
+Workspace: C:\Users\caipe\.openclaw\workspace\Vela
+
+Read first:
+- M2_INTERACTION_CONTRACT.md
+- TASKS.md
+- docs/m2-remediation-report.md
+- docs/m2-spike-audit.md
+- docs/vela-v1-voice-design.md (for current voice work context)
+- local MiniMax docs already reflected in the current decisions:
+  - default auto emotion inference is allowed by docs
+  - emotion field is optional
+  - whisper/fluent support has model limits
+
+Hard scope:
+1. Update the implementation from a preset-heavy emotion path toward the agreed mixed mode:
+   - default: emotion_mode=auto
+   - force emotion only for explicit / constrained / continuity cases
+2. Add/verify model capability guard rules:
+   - speech-2.8-* does NOT support whisper
+   - fluent/whisper only on speech-2.6-*
+   - safe downgrade when unsupported
+3. Make sure TTS layer can omit emotion in auto mode, instead of always sending a mapped provider emotion.
+4. Keep the current default voiceId locked to:
+   - Chinese (Mandarin)_Sweet_Lady
+5. Update docs and task board so M2 closure criteria reflect mixed mode instead of the older always-mapped wording.
+6. Add or update verification so we can prove:
+   - auto mode path works
+   - force mode path works
+   - unsupported whisper downgrades safely
+   - Sweet_Lady default path still works
+
+Do NOT:
+- reopen broad M3 routing work
+- redesign the whole avatar/runtime stack
+- touch unrelated voice-design experiments except where docs/context mention current default voice
+
+Expected deliverables:
+1. code changes
+2. updated M2_INTERACTION_CONTRACT.md
+3. updated TASKS.md (and any related closure docs if needed)
+4. verification commands + results
+5. concise remediation note: what changed for mixed emotion routing
+
+Verification expectations:
+- run build
+- run verify:m2
+- add/update targeted checks for auto/force emotion routing
+- if any check needs adaptation, implement it rather than hand-waving
+
+When completely finished, run this command to notify main immediately:
+openclaw system event --text "Done: Codex CLI finished M2 mixed emotion remediation with verification results." --mode now

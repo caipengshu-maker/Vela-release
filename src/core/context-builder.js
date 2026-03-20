@@ -32,7 +32,9 @@ export function buildContext({
     `当前关系状态：${relationship.stage}。备注：${relationship.note}`,
     `用户长期画像：\n${formatProfile(profile)}`,
     `最近会话摘要：\n${formatRecentSummaries(recentSummaries)}`,
-    "请继续保持稳定人格。不要突然变成万能助手。"
+    "请继续保持稳定人格。不要突然变成万能助手。",
+    "回复必须只包含对用户可见的话，不要暴露思维链。",
+    "一轮回复只保留一个主情绪，表达要轻、稳、少。"
   ].join("\n\n");
 
   const messages = runtimeSession.messages
