@@ -22,7 +22,7 @@
     "provider": "minimax-messages",
     "baseUrl": "https://api.minimaxi.com/anthropic",
     "model": "MiniMax-M2.7",
-    "apiKey": "",
+    "apiKey": "sk-cp-Kit5f2b4vHQOPuiuuHcgehqhNdZzldOb4oRvUi0ztvMuqfZngUHu1SC3nZGpFjVyV4FFbhkzhqGY1-eMDWEQheFZZWDlca8pswRVNINGkDcjVe7KMmO4J_8",
     "apiKeyEnv": "MINIMAX_API_KEY",
     "temperature": 0.9,
     "maxTokens": 260,
@@ -37,7 +37,7 @@
     "fallback": {
       "provider": "anthropic-messages",
       "model": "k2p5",
-      "apiKey": "",
+      "apiKey": "sk-kimi-q0oYlWUTV4arTDXI9XZxiwVEeAEnvTq2NsOhxMSi0W9N8qD3p74PL7ysdeAppS5B",
       "apiKeyEnv": "KIMI_CODING_API_KEY",
       "baseUrl": "https://api.kimi.com/coding"
     }
@@ -49,7 +49,7 @@
   "tts": {
     "enabled": true,
     "provider": "minimax-websocket",
-    "apiKey": "",
+    "apiKey": "sk-cp-Kit5f2b4vHQOPuiuuHcgehqhNdZzldOb4oRvUi0ztvMuqfZngUHu1SC3nZGpFjVyV4FFbhkzhqGY1-eMDWEQheFZZWDlca8pswRVNINGkDcjVe7KMmO4J_8",
     "apiKeyEnv": "MINIMAX_API_KEY",
     "model": "speech-2.8-turbo",
     "wsUrl": "wss://api.minimaxi.com/ws/v1/t2a_v2",
