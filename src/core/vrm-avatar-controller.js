@@ -8,8 +8,8 @@ import {
 
 const CAMERA_PRESETS = {
   wide: {
-    position: new THREE.Vector3(0.04, 1.46, 2.45),
-    target: new THREE.Vector3(0, 1.18, 0.02)
+    position: new THREE.Vector3(0.04, 1.58, 3.2),
+    target: new THREE.Vector3(0, 1.28, 0.02)
   },
   close: {
     position: new THREE.Vector3(0.1, 1.92, 1.92),
@@ -26,18 +26,18 @@ const EMOTION_EXPRESSION_WEIGHTS = {
 
 const EXPRESSION_KEYS = ["happy", "relaxed", "sad", "angry", "blink", "aa", "ih", "oh"];
 const CORE_POSE_BONES = [
-  VRMHumanBoneName.hips,
-  VRMHumanBoneName.spine,
-  VRMHumanBoneName.chest,
-  VRMHumanBoneName.upperChest,
-  VRMHumanBoneName.neck,
-  VRMHumanBoneName.head
+  VRMHumanBoneName.Hips,
+  VRMHumanBoneName.Spine,
+  VRMHumanBoneName.Chest,
+  VRMHumanBoneName.UpperChest,
+  VRMHumanBoneName.Neck,
+  VRMHumanBoneName.Head
 ];
 const ARM_BONES = [
-  VRMHumanBoneName.leftUpperArm,
-  VRMHumanBoneName.rightUpperArm,
-  VRMHumanBoneName.leftLowerArm,
-  VRMHumanBoneName.rightLowerArm
+  VRMHumanBoneName.LeftUpperArm,
+  VRMHumanBoneName.RightUpperArm,
+  VRMHumanBoneName.LeftLowerArm,
+  VRMHumanBoneName.RightLowerArm
 ];
 
 function clampDelta(delta) {
@@ -435,10 +435,10 @@ export class VrmAvatarController {
   }
 
   _applyArmsDown() {
-    const leftUpperArm = this.bones.get(VRMHumanBoneName.leftUpperArm);
-    const rightUpperArm = this.bones.get(VRMHumanBoneName.rightUpperArm);
-    const leftLowerArm = this.bones.get(VRMHumanBoneName.leftLowerArm);
-    const rightLowerArm = this.bones.get(VRMHumanBoneName.rightLowerArm);
+    const leftUpperArm = this.bones.get(VRMHumanBoneName.LeftUpperArm);
+    const rightUpperArm = this.bones.get(VRMHumanBoneName.RightUpperArm);
+    const leftLowerArm = this.bones.get(VRMHumanBoneName.LeftLowerArm);
+    const rightLowerArm = this.bones.get(VRMHumanBoneName.RightLowerArm);
 
     // Rotate upper arms ~70° down from T-pose.
     if (leftUpperArm) {
@@ -468,10 +468,10 @@ export class VrmAvatarController {
 
     // Update rest quaternions to include arms-down as the new rest pose.
     [
-      VRMHumanBoneName.leftUpperArm,
-      VRMHumanBoneName.rightUpperArm,
-      VRMHumanBoneName.leftLowerArm,
-      VRMHumanBoneName.rightLowerArm
+      VRMHumanBoneName.LeftUpperArm,
+      VRMHumanBoneName.RightUpperArm,
+      VRMHumanBoneName.LeftLowerArm,
+      VRMHumanBoneName.RightLowerArm
     ].forEach((boneName) => {
       const bone = this.bones.get(boneName);
       if (bone) {
@@ -493,31 +493,31 @@ export class VrmAvatarController {
     this.armTargetOffsets.clear();
 
     const leftUpperOffset = this._resolveUpperArmOffset({
-      upperArmName: VRMHumanBoneName.leftUpperArm,
-      lowerArmName: VRMHumanBoneName.leftLowerArm,
+      upperArmName: VRMHumanBoneName.LeftUpperArm,
+      lowerArmName: VRMHumanBoneName.LeftLowerArm,
       sideSign: 1
     });
     const rightUpperOffset = this._resolveUpperArmOffset({
-      upperArmName: VRMHumanBoneName.rightUpperArm,
-      lowerArmName: VRMHumanBoneName.rightLowerArm,
+      upperArmName: VRMHumanBoneName.RightUpperArm,
+      lowerArmName: VRMHumanBoneName.RightLowerArm,
       sideSign: -1
     });
 
     if (leftUpperOffset) {
-      this.armTargetOffsets.set(VRMHumanBoneName.leftUpperArm, leftUpperOffset);
+      this.armTargetOffsets.set(VRMHumanBoneName.LeftUpperArm, leftUpperOffset);
     }
 
     if (rightUpperOffset) {
-      this.armTargetOffsets.set(VRMHumanBoneName.rightUpperArm, rightUpperOffset);
+      this.armTargetOffsets.set(VRMHumanBoneName.RightUpperArm, rightUpperOffset);
     }
 
     this._tempEuler.set(0, 0, 0.16, "XYZ");
     this._tempQuatA.setFromEuler(this._tempEuler);
-    this.armTargetOffsets.set(VRMHumanBoneName.leftLowerArm, this._tempQuatA.clone());
+    this.armTargetOffsets.set(VRMHumanBoneName.LeftLowerArm, this._tempQuatA.clone());
 
     this._tempEuler.set(0, 0, -0.16, "XYZ");
     this._tempQuatA.setFromEuler(this._tempEuler);
-    this.armTargetOffsets.set(VRMHumanBoneName.rightLowerArm, this._tempQuatA.clone());
+    this.armTargetOffsets.set(VRMHumanBoneName.RightLowerArm, this._tempQuatA.clone());
   }
 
   _resolveUpperArmOffset({ upperArmName, lowerArmName, sideSign }) {
@@ -825,12 +825,12 @@ export class VrmAvatarController {
       )
     );
 
-    this._applyBoneRotation(VRMHumanBoneName.hips, hips, delta);
-    this._applyBoneRotation(VRMHumanBoneName.spine, spine, delta);
-    this._applyBoneRotation(VRMHumanBoneName.chest, chest, delta);
-    this._applyBoneRotation(VRMHumanBoneName.upperChest, upperChest, delta);
-    this._applyBoneRotation(VRMHumanBoneName.neck, neck, delta);
-    this._applyBoneRotation(VRMHumanBoneName.head, head, delta);
+    this._applyBoneRotation(VRMHumanBoneName.Hips, hips, delta);
+    this._applyBoneRotation(VRMHumanBoneName.Spine, spine, delta);
+    this._applyBoneRotation(VRMHumanBoneName.Chest, chest, delta);
+    this._applyBoneRotation(VRMHumanBoneName.UpperChest, upperChest, delta);
+    this._applyBoneRotation(VRMHumanBoneName.Neck, neck, delta);
+    this._applyBoneRotation(VRMHumanBoneName.Head, head, delta);
   }
 
   _applyBoneRotation(boneName, rotation, delta) {
