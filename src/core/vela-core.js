@@ -628,10 +628,7 @@ export class VelaCore {
     this.persistedState = await this.sessionStore.loadPersistedState();
 
     const nextMemory = await this.loadMemorySnapshot();
-    const settledAvatar = settleAvatarState(speakingAvatar, {
-      voiceModeEnabled: Boolean(this.runtimeSession.voiceModeEnabled)
-    });
-    this.currentAvatar = settledAvatar;
+    this.currentAvatar = speakingAvatar;
 
     if (speech) {
       void speech.finish().catch((error) => {
@@ -644,7 +641,7 @@ export class VelaCore {
 
     const nextState = await this.buildAppState({
       memorySnapshot: nextMemory,
-      avatar: settledAvatar,
+      avatar: speakingAvatar,
       messages: this.runtimeSession.messages,
       welcomeNote: "",
       onboarding: {
@@ -659,7 +656,7 @@ export class VelaCore {
       content: assistantReply,
       providerMeta: assistantResponse.providerMeta
     });
-    await this.emitAvatarState(options.onEvent, settledAvatar);
+    await this.emitAvatarState(options.onEvent, speakingAvatar);
 
     return nextState;
   }
