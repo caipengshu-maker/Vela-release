@@ -1,4 +1,11 @@
-function decodeBase64ToArrayBuffer(input) {
+/**
+ * Streaming audio player using MediaSource Extensions (MSE).
+ *
+ * MSE handles MP3 frame boundaries natively, eliminating the micro-gaps
+ * that Web Audio API's decodeAudioData introduces between chunks.
+ */
+
+function decodeBase64ToUint8Array(input) {
   const normalized = String(input || "")
     .trim()
     .replace(/^data:audio\/[^;]+;base64,/, "")
@@ -17,10 +24,10 @@ function decodeBase64ToArrayBuffer(input) {
     bytes[index] = binary.charCodeAt(index);
   }
 
-  return bytes.buffer;
+  return bytes;
 }
 
-function decodeHexToArrayBuffer(input) {
+function decodeHexToUint8Array(input) {
   const normalized = String(input || "").replace(/\s+/g, "");
   if (!normalized) {
     return null;
@@ -36,186 +43,219 @@ function decodeHexToArrayBuffer(input) {
     );
   }
 
-  return bytes.buffer;
+  return bytes;
 }
 
-function resolveChunkBuffer(chunk) {
+function resolveChunkBytes(chunk) {
   if (!chunk) {
     return null;
   }
 
   if (chunk.base64) {
-    return decodeBase64ToArrayBuffer(chunk.base64);
+    return decodeBase64ToUint8Array(chunk.base64);
   }
 
   if (chunk.audioBase64) {
-    return decodeBase64ToArrayBuffer(chunk.audioBase64);
+    return decodeBase64ToUint8Array(chunk.audioBase64);
   }
 
   if (chunk.audio) {
-    return decodeBase64ToArrayBuffer(chunk.audio);
+    return decodeBase64ToUint8Array(chunk.audio);
   }
 
   if (chunk.hex) {
-    return decodeHexToArrayBuffer(chunk.hex);
+    return decodeHexToUint8Array(chunk.hex);
   }
 
   return null;
 }
 
-function getAudioContextCtor() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window.AudioContext || window.webkitAudioContext || null;
-}
+const MSE_MIME = "audio/mpeg";
 
 export class AudioPlayerService {
-  constructor({ lookAheadSeconds = 0.02 } = {}) {
-    this.lookAheadSeconds = lookAheadSeconds;
-    this.audioContext = null;
-    this.activeSources = new Set();
-    this.decodeChain = Promise.resolve();
-    this.playhead = 0;
+  constructor() {
+    this.audio = null;
+    this.mediaSource = null;
+    this.sourceBuffer = null;
+    this.pendingChunks = [];
     this.sessionId = null;
     this.playbackToken = 0;
+    this.isAppending = false;
+    this.streamFinished = false;
+    this.sourceOpen = false;
+    this.initialized = false;
   }
 
-  ensureContext() {
-    if (this.audioContext) {
-      return this.audioContext;
+  _createElements() {
+    if (this.audio) {
+      return;
     }
 
-    const AudioContextCtor = getAudioContextCtor();
-    if (!AudioContextCtor) {
-      return null;
-    }
-
-    this.audioContext = new AudioContextCtor();
-    return this.audioContext;
+    this.audio = document.createElement("audio");
+    this.audio.style.display = "none";
+    document.body.appendChild(this.audio);
   }
 
-  async ensureContextReady() {
-    const context = this.ensureContext();
-    if (!context) {
-      return null;
+  _initMediaSource() {
+    if (this.initialized) {
+      return;
     }
 
-    if (context.state === "suspended") {
+    this._createElements();
+    this.initialized = true;
+
+    this.mediaSource = new MediaSource();
+    this.audio.src = URL.createObjectURL(this.mediaSource);
+
+    this.mediaSource.addEventListener("sourceopen", () => {
+      this.sourceOpen = true;
+
       try {
-        await context.resume();
-      } catch {
-        // Ignore autoplay-like resume failures in background states.
+        this.sourceBuffer = this.mediaSource.addSourceBuffer(MSE_MIME);
+        this.sourceBuffer.mode = "sequence";
+
+        this.sourceBuffer.addEventListener("updateend", () => {
+          this.isAppending = false;
+          this._drainQueue();
+        });
+
+        this._drainQueue();
+      } catch (error) {
+        console.error("[AudioPlayer] Failed to add SourceBuffer:", error);
       }
+    });
+  }
+
+  _drainQueue() {
+    if (
+      this.isAppending ||
+      !this.sourceBuffer ||
+      !this.sourceOpen ||
+      this.pendingChunks.length === 0
+    ) {
+      if (
+        this.streamFinished &&
+        this.pendingChunks.length === 0 &&
+        !this.isAppending &&
+        this.sourceOpen &&
+        this.mediaSource?.readyState === "open"
+      ) {
+        try {
+          this.mediaSource.endOfStream();
+        } catch {
+          // Ignore if already ended.
+        }
+      }
+
+      return;
     }
 
-    return context;
+    const chunk = this.pendingChunks.shift();
+    this.isAppending = true;
+
+    try {
+      this.sourceBuffer.appendBuffer(chunk);
+    } catch (error) {
+      console.error("[AudioPlayer] appendBuffer failed:", error);
+      this.isAppending = false;
+    }
   }
 
   beginSession(sessionId) {
     const nextSessionId = String(sessionId || "vela-tts").trim() || "vela-tts";
-    if (this.sessionId === nextSessionId) {
+    if (this.sessionId === nextSessionId && this.initialized) {
       return;
     }
 
     this.reset();
     this.sessionId = nextSessionId;
+    this._initMediaSource();
   }
 
   appendChunk(chunk) {
-    const audioBuffer = resolveChunkBuffer(chunk);
-    if (!audioBuffer) {
+    const bytes = resolveChunkBytes(chunk);
+    if (!bytes) {
       return;
     }
 
     this.beginSession(chunk?.sessionId);
-    const tokenAtSchedule = this.playbackToken;
+    this.pendingChunks.push(bytes);
 
-    this.decodeChain = this.decodeChain
-      .then(async () => {
-        if (tokenAtSchedule !== this.playbackToken) {
-          return;
-        }
-
-        const context = await this.ensureContextReady();
-        if (!context) {
-          return;
-        }
-
-        let decoded;
-        try {
-          decoded = await context.decodeAudioData(audioBuffer.slice(0));
-        } catch {
-          return;
-        }
-
-        if (tokenAtSchedule !== this.playbackToken) {
-          return;
-        }
-
-        this.scheduleDecodedBuffer(decoded);
-      })
-      .catch(() => {});
-  }
-
-  scheduleDecodedBuffer(decoded) {
-    if (!decoded || !this.audioContext) {
-      return;
+    if (this.sourceBuffer && this.sourceOpen) {
+      this._drainQueue();
     }
 
-    const source = this.audioContext.createBufferSource();
-    source.buffer = decoded;
-    source.connect(this.audioContext.destination);
-
-    const now = this.audioContext.currentTime + this.lookAheadSeconds;
-    const startAt = Math.max(now, this.playhead || 0);
-    this.playhead = startAt + decoded.duration;
-
-    this.activeSources.add(source);
-    source.addEventListener("ended", () => {
-      this.activeSources.delete(source);
-    });
-
-    source.start(startAt);
+    // Start playback as soon as we have data.
+    if (this.audio && this.audio.paused) {
+      this.audio.play().catch(() => {
+        // Autoplay may be blocked; user interaction will resume.
+      });
+    }
   }
 
   finish(sessionId) {
     if (sessionId && this.sessionId && sessionId !== this.sessionId) {
       return;
     }
+
+    this.streamFinished = true;
+
+    if (
+      this.pendingChunks.length === 0 &&
+      !this.isAppending &&
+      this.sourceOpen &&
+      this.mediaSource?.readyState === "open"
+    ) {
+      try {
+        this.mediaSource.endOfStream();
+      } catch {
+        // Ignore.
+      }
+    }
   }
 
   reset() {
     this.playbackToken += 1;
-    this.decodeChain = Promise.resolve();
-    this.playhead = 0;
-    this.sessionId = null;
+    this.pendingChunks = [];
+    this.isAppending = false;
+    this.streamFinished = false;
+    this.sourceOpen = false;
+    this.initialized = false;
 
-    for (const source of this.activeSources) {
-      try {
-        source.stop();
-      } catch {
-        // Ignore sources that already ended.
-      }
+    if (this.audio) {
+      this.audio.pause();
+      this.audio.currentTime = 0;
     }
 
-    this.activeSources.clear();
+    if (this.sourceBuffer) {
+      try {
+        this.mediaSource.removeSourceBuffer(this.sourceBuffer);
+      } catch {
+        // Ignore cleanup errors.
+      }
+
+      this.sourceBuffer = null;
+    }
+
+    if (this.mediaSource) {
+      if (this.audio?.src) {
+        URL.revokeObjectURL(this.audio.src);
+        this.audio.removeAttribute("src");
+        this.audio.load();
+      }
+
+      this.mediaSource = null;
+    }
+
+    this.sessionId = null;
   }
 
   async dispose() {
     this.reset();
 
-    if (!this.audioContext) {
-      return;
+    if (this.audio) {
+      this.audio.remove();
+      this.audio = null;
     }
-
-    try {
-      await this.audioContext.close();
-    } catch {
-      // Ignore context close errors during shutdown.
-    }
-
-    this.audioContext = null;
   }
 }
