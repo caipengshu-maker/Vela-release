@@ -22,6 +22,7 @@
     "provider": "minimax-messages",
     "baseUrl": "https://api.minimaxi.com/anthropic",
     "model": "MiniMax-M2.7",
+    "apiKey": "",
     "apiKeyEnv": "MINIMAX_API_KEY",
     "temperature": 0.9,
     "maxTokens": 260,
@@ -36,6 +37,7 @@
     "fallback": {
       "provider": "anthropic-messages",
       "model": "k2p5",
+      "apiKey": "",
       "apiKeyEnv": "KIMI_CODING_API_KEY",
       "baseUrl": "https://api.kimi.com/coding"
     }

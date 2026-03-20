@@ -66,7 +66,7 @@ async function createRequest({
     throw new Error("Global fetch is not available in this runtime");
   }
 
-  const apiKey = process.env[config.llm.apiKeyEnv];
+  const apiKey = config.llm.apiKey || process.env[config.llm.apiKeyEnv];
   const request = adapter.buildRequest({
     context,
     config,

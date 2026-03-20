@@ -6,22 +6,22 @@
 
 ## 当前主线
 
-### M2：管道闭环 — 流式文本 + 状态机 + thinking + 基础 fallback
+### M3：在场感闭环（语音 + 表情 + 动作 + 镜头）
 
-M1 已正式关门（2026-03-20）。当前主线是 M2。
+M2 已正式关门（2026-03-20）。当前主线切到 M3。
 
-M2 要做这 4 件事：
-1. **流式文本输出** — 回复自然流式出现，不再整段蹦出
-2. **状态机骨架** — `idle / listening / thinking / speaking` 四态切换正确，UI 消费状态事件
-3. **三档 thinking mode** — `fast / balanced / deep`，各 provider 有映射
-4. **基础 model fallback** — provider 挂了 / 额度耗尽不直接卡死
+M3 要做：
+- 语音模式按钮（开/关语音模式）
+- TTS 流式开口（MiniMax WebSocket 优先）
+- 表情 / 动作轻反馈（状态机驱动）
+- `wide / close` 远近景切换
+- TTS / 表情 / 动作 / 镜头与状态机完全联动
 
-### M2 通过标准
-- 文本流式体验自然，不再整段突兀蹦出
-- 状态机四态切换正确且 UI 可视
-- thinking 三档真实落地，不是只改配置不验
-- 基础 fallback 可工作，provider 故障时用户可感知降级而非卡死
-- 施工位自测 → 第二视角验收 → 主控 closure 全走完
+### M2 closure（已完成）
+- M2 仅收**文字主链路**：流式文本 + 状态机 + thinking + 基础 fallback
+- 已在**真实 MiniMax 主脑**下通过，不再是假绿
+- 已通过 **k2p5** 第二视角真实验收
+- TTS / ASR / MiniMax WebSocket 语音链路不计入 M2，通过后续统一进入 M3
 
 ---
 

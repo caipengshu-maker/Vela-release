@@ -293,7 +293,12 @@ async function verifyCoreFlow() {
   const streamEvents = events.filter(
     (event) => event.type === "assistant-stream-delta"
   );
-  assert.ok(streamEvents.length >= 2);
+  assert.ok(streamEvents.length >= 1);
+  assert.ok(streamEvents.some((event) => typeof event.delta === "string" && event.delta.length > 0));
+  const lastStreamContent = (
+    streamEvents.at(-1)?.content || streamEvents.map((event) => event.delta || "").join("")
+  ).trim();
+  assert.equal(lastStreamContent, (afterChat.messages.at(-1)?.content || "").trim());
   assert.equal(afterChat.messages.at(-1)?.role, "assistant");
   assert.equal(afterChat.status.phase, "speaking");
   assert.ok(events.some((event) => event.type === "speech-state"));

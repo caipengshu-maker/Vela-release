@@ -27,6 +27,7 @@ const defaultConfig = {
     mode: "openai-compatible",
     baseUrl: "",
     model: "gpt-4.1-mini",
+    apiKey: "",
     apiKeyEnv: "",
     temperature: 0.9,
     maxTokens: 260,
@@ -145,6 +146,9 @@ function normalizeFallbackLlmConfig(fallbackConfig, baseLlmConfig) {
     model: String(
       fallbackConfig.model || baseLlmConfig.model || defaultConfig.llm.model
     ).trim(),
+    apiKey: String(
+      fallbackConfig.apiKey || baseLlmConfig.apiKey || ""
+    ).trim(),
     apiKeyEnv: String(
       fallbackConfig.apiKeyEnv ||
         baseLlmConfig.apiKeyEnv ||
@@ -193,6 +197,7 @@ function normalizeLlmConfig(llmConfig) {
     mode: provider,
     baseUrl: String(llmConfig.baseUrl || providerDefaults.baseUrl || "").trim(),
     model: String(llmConfig.model || defaultConfig.llm.model).trim(),
+    apiKey: String(llmConfig.apiKey || "").trim(),
     apiKeyEnv: String(llmConfig.apiKeyEnv || providerDefaults.apiKeyEnv || "").trim(),
     temperature:
       typeof llmConfig.temperature === "number"

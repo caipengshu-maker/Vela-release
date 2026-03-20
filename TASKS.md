@@ -17,6 +17,11 @@
 ## 当前总体目标
 把文本管道从"整段蹦出"升级为自然流式，同时打通基础 provider 稳定性，为后续语音和在场感奠基。
 
+## 当前阶段范围冻结（2026-03-20 追加钉板）
+- **M2 只做文字链路闭环**：流式文本、状态机、thinking、基础 fallback
+- **TTS / ASR / MiniMax WebSocket 语音链路不属于 M2 通过条件**，统一放到 M3
+- M2 仍要求真实 MiniMax 主脑接入与 k2p5 第二视角复验，但验收对象限定为**文字主链路**
+
 ## 当前额外施工约束
 - `M1-T1 ~ M1-T6` 默认在**一个连续施工上下文**内推进，不碎成多个新会话
 - 长任务默认派 **CLI 施工位**
@@ -115,53 +120,70 @@
 ## M2 - 管道闭环（流式文本 + 状态机 + thinking + 基础 fallback）
 
 ### M2-T1 流式文本输出
-- 状态：TODO
+- 状态：DONE
 - 优先级：P0
 - Owner：Codex
 - DoD：
-  - [ ] 回复自然流式出现，不再整段突然蹦出
-  - [ ] SSE / streaming 适配已覆盖 OpenAI-compatible 和 Anthropic Messages 两类 provider
+  - [x] 回复自然流式出现，不再整段突然蹦出
+  - [x] SSE / streaming 适配已覆盖 OpenAI-compatible 和 Anthropic Messages 两类 provider
 
 ### M2-T2 状态机骨架
-- 状态：TODO
+- 状态：DONE
 - 优先级：P0
 - Owner：Codex
 - DoD：
-  - [ ] `idle / listening / thinking / speaking` 四态切换正确
-  - [ ] UI 层消费状态机事件，状态可视
+  - [x] `idle / listening / thinking / speaking` 四态切换正确
+  - [x] UI 层消费状态机事件，状态可视
 
 ### M2-T3 三档 thinking mode
-- 状态：TODO
+- 状态：DONE
 - 优先级：P1
 - Owner：Codex
 - DoD：
-  - [ ] 用户可配置 `fast / balanced / deep`
-  - [ ] 各 provider 有映射策略
-  - [ ] 真实测试 + 整改报告齐备
+  - [x] 用户可配置 `fast / balanced / deep`
+  - [x] 各 provider 有映射策略
+  - [x] 真实测试 + 整改报告齐备
 
 ### M2-T4 基础 model fallback
-- 状态：TODO
+- 状态：DONE
 - 优先级：P0
 - Owner：Codex
 - DoD：
-  - [ ] 默认模型请求失败 / 额度耗尽时自动尝试 fallback 模型
-  - [ ] 不直接卡死，用户可感知降级
-  - [ ] 低级模型风险做用户提示，不做死封
+  - [x] 默认模型请求失败 / 额度耗尽时自动尝试 fallback 模型
+  - [x] 不直接卡死，用户可感知降级
+  - [x] 低级模型风险做用户提示，不做死封
 
 ### M2-G1 施工位自测
-- 状态：TODO
+- 状态：DONE
 - 优先级：P0
 - Owner：Codex
+- DoD：
+  - [x] `verify:core` 通过
+  - [x] `verify:m2` 通过
+  - [x] `smoke` 通过
+  - [x] 主线自测已基于真实 MiniMax 文字链路重跑，不再是假绿
 
 ### M2-G2 第二视角真实验收
-- 状态：TODO
+- 状态：DONE
 - 优先级：P0
-- Owner：待定
+- Owner：k2p5
+- DoD：
+  - [x] 使用 **真实 MiniMax key / 真实 provider 链路** 完成主脑接入验证（不是 mock，不是假服务）
+  - [x] 使用 **k2p5** 作为第二视角完成真实复验
+  - [x] 验证通过后形成可审计验收结论，交由主控汇报并决定是否关闭 M2
+- 结论：PASS（2026-03-20）。允许主控进入 M2 closure。报告：`reports/m2-k2p5-real-review-2026-03-20.md`
 
 ### M2-G3 主控 closure
-- 状态：TODO
+- 状态：DONE
 - 优先级：P0
 - Owner：小新
+- 关闭日期：2026-03-20
+- DoD：
+  - [x] 锁定 M2 仅收文字主链路的阶段边界
+  - [x] 主控复核真实 MiniMax 接入 / `verify:core` / `verify:m2` / `smoke`
+  - [x] 吸收 k2p5 第二视角真实验收结论
+  - [x] 对用户输出 closure 汇报并宣布主线切到 M3
+- 结论：M2 通过。文字主链路（流式文本 + 状态机 + thinking + 基础 fallback）已在真实 MiniMax 主脑下成立，并通过 k2p5 第二视角真实验收。TTS / ASR / MiniMax WebSocket 语音链路不计入 M2，通过后续统一进入 M3。
 
 ---
 

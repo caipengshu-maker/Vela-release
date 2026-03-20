@@ -21,8 +21,20 @@ function getMockAdapter() {
   return getProviderAdapter("mock");
 }
 
+function resolveApiKey(llmConfig) {
+  if (llmConfig.apiKey) {
+    return llmConfig.apiKey;
+  }
+
+  if (llmConfig.apiKeyEnv) {
+    return process.env[llmConfig.apiKeyEnv] || "";
+  }
+
+  return "";
+}
+
 function hasApiKey(llmConfig) {
-  return Boolean(llmConfig.apiKeyEnv && process.env[llmConfig.apiKeyEnv]);
+  return Boolean(resolveApiKey(llmConfig));
 }
 
 function ensureTextResponse(response) {

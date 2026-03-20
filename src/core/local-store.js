@@ -17,9 +17,12 @@ export class LocalStore {
   async readJson(relativePath, fallbackValue) {
     try {
       const raw = await fs.readFile(this.resolve(relativePath), "utf8");
+      if (!raw.trim()) {
+        return structuredClone(fallbackValue);
+      }
       return JSON.parse(raw);
     } catch (error) {
-      if (error.code === "ENOENT") {
+      if (error.code === "ENOENT" || error instanceof SyntaxError) {
         return structuredClone(fallbackValue);
       }
 
