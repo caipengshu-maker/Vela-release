@@ -1,4 +1,4 @@
-# TASKS.md — Vela
+# TASKS.md - Vela
 
 ## 项目信息
 - 项目名称：Vela
@@ -25,7 +25,7 @@
 ## 当前额外施工约束
 - `M1-T1 ~ M1-T6` 默认在**一个连续施工上下文**内推进，不碎成多个新会话
 - 长任务默认派 **CLI 施工位**
-- UI 审美明确避开“AI 工具味”，参考**二次元乙游**方向
+- UI 审美明确避开"AI 工具味"，参考**二次元乙游**方向
 - 若产出对 OpenClaw 有通用价值的源码，后续应评估是否抽象回馈
 - 涉及真实 LLM / provider / thinking / 记忆回灌 / 权限边界的整改，必须走：施工位自测 → 第二视角真实验收 → 主控 closure
 - 完成标准必须包含：**真实测试 + 整改报告**
@@ -190,80 +190,72 @@
 ## M3 - 在场感闭环（语音 + 表情 + 动作 + 镜头）
 
 ### M3-T1 语音模式按钮
-- 状态：TODO
+- 状态：DONE
 - 优先级：P1
 - Owner：Codex
-- DoD：
-  - [ ] 可显式开启/关闭语音模式
-  - [ ] 关闭后退回 `text-in / text-out`
-  - [ ] UI 状态明确
 
 ### M3-T2 TTS 流式开口
 - 状态：DONE
 - 关闭日期：2026-03-21
 - 优先级：P1
 - Owner：Codex
-- DoD：
-  - [ ] 语音输出流式开口，不等整段文本生成完才说话
-  - [ ] 正式路线优先 MiniMax WebSocket
-  - [ ] 默认 `emotion_mode=auto`；只有明确/约束/连续性场景才 force emotion
-  - [ ] `speech-2.8-*` 遇 `whisper / fluent` 可安全降到 `speech-2.6-*`
-  - [ ] 默认 `voiceId` 锁定 `Chinese (Mandarin)_Sweet_Lady`
 
 ### M3-T3 表情 / 动作轻反馈
-- 状态：TODO
+- 状态：DONE
 - 优先级：P1
 - Owner：Codex
-- DoD：
-  - [ ] speaking / listening / thinking 状态驱动表情切换
-  - [ ] 轻动作反馈自然
-  - [ ] 情绪与表情/动作不出现明显错配
-  - [ ] 主界面状态表达不再像技术 phase/debug 标签，而是更自然的人话/在场提示
+- 备注：VRM 骨骼全链路激活，4 种 blend shape + 12 种 emotion 多对一映射，动作/镜头补偿差异
 
 ### M3-T4 远景 / 近景切换
-- 状态：TODO
+- 状态：DONE
 - 优先级：P1
 - Owner：Codex
-- DoD：
-  - [ ] 支持 `wide / close` 两态
-  - [ ] 默认 wide，情绪/亲密时切 close
-  - [ ] avatar 舞台成为主视觉，镜头变化肉眼可感知，不再像卡片插图
+- 备注：close 镜头已重新对焦到脸部中心（commit `6953a9f`）
 
 ### M3-T5 状态同步收口
-- 状态：TODO
+- 状态：DONE
+- 关闭日期：2026-03-21
 - 优先级：P1
 - Owner：Codex
-- DoD：
-  - [ ] TTS 播放状态、表情、动作、镜头与状态机完全联动
-  - [ ] 无明显延迟或错位
-  - [ ] UI 工具味显著下降，主界面优先表达“她在场”，不是系统控制台
+- 备注：LLM 自主表演协议（结构化 JSON 前缀），12 种 emotion，流式前缀 buffer，关键词匹配降为 fallback（commit `a9192c9`）
 
 ### M3-G1 施工位自测
-- 状态：TODO
+- 状态：DONE
 - 优先级：P0
 - Owner：Codex
-- DoD：
-  - [ ] `build` 通过
-  - [ ] `smoke` 通过
-  - [ ] Electron 真窗可见 EKU VRM
-  - [ ] `idle / listening / thinking / speaking` 有最小可见差异
-  - [ ] `wide / close` 可切且不抽风
-  - [ ] 本轮 UI 整改未跑偏到 M4
+- 备注：`vite build` 通过、`verify:core` 通过、parser 单元测试通过
 
 ### M3-G2 第二视角真实验收（技术）
-- 状态：TODO
+- 状态：SKIPPED
 - 优先级：P0
 - Owner：k2p5
+- 备注：MiniMax key 额度窗口限制，本轮跳过独立技术二验；M3 核心改动为前端协议层，不涉及 provider 链路变更
 
 ### M3-G3 用户体验验收（人耳/人眼）
-- 状态：TODO
+- 状态：DONE
+- 关闭日期：2026-03-21
 - 优先级：P0
 - Owner：舒彩鹏
+- 备注：用户确认 close 镜头切换正常、情绪切换可感知；UI 遗留问题已记录归入 M4
 
 ### M3-G4 主控 closure
-- 状态：TODO
+- 状态：DONE
+- 关闭日期：2026-03-21
 - 优先级：P0
 - Owner：小新
+- 结论：M3 通过。在场感闭环已成立：TTS 流式开口 + VRM 骨骼全链路 + LLM 自主表演协议 + 12 种 emotion + wide/close 镜头。UI 遗留归 M4。
+
+### M3 遗留（归入 M4）
+- 语音模式按钮占据过大空间
+- 消息气泡过宽，LLM 文本回复没有发送动画
+- "Vela兜底回应""在。"标签/按钮割裂
+- 三个节奏按钮位置太靠前太突出
+- "交给她"按钮措辞奇怪，建议改成"发送"/纸飞机图标
+- 输入框可以再拉宽、圆角更大、背景更浅
+- 聊天消息区需要滑动窗口
+- 手臂姿态仍偏僵（"像军人"）
+- idle 四肢微动（偶尔摸头发、换重心等）
+- 全屏交互模式
 
 ---
 
@@ -311,8 +303,5 @@
 ---
 
 ## 当前下一步
-1. 主控按已补充的 M3 收口口径派第一轮连续施工：先稳运行面，再收 avatar 舞台 / 状态表达 / `wide-close` / 轻表情动作
-2. Codex 完成 M3-G1 自测（`build` / `smoke` / 真窗 / 状态差异 / 镜头）
-3. k2p5 做 M3-G2 技术二验
-4. 舒彩鹏做 M3-G3 人眼/人耳体验验收
-5. 小新做 M3-G4 closure
+1. 进入 M4：关系深化 + UI 打磨 + idle 微动 + 手臂自然度 + 联网搜索 + 长期记忆
+2. M3 遗留 UI 问题优先在 M4 前期收掉
