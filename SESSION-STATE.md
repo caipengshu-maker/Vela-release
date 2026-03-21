@@ -1,16 +1,15 @@
 # SESSION-STATE.md
 
-- Current task: M1-T1 ~ M1-T5 first runnable skeleton for Vela
-- Owner: Codex
-- Status: DONE
+- Current task: Vela M4 Round 1 cleanup / closure packaging
+- Owner: 小新
+- Status: IN-PROGRESS
 - Latest decisions:
-  - Electron + Vite + React desktop shell
-  - Single source config in `vela.jsonc`
-  - Local persistence under `.vela-data/` for MVP verification
-  - Default chat provider uses local mock; OpenAI-compatible mode stays configurable
+  - Phase A remains the closure baseline
+  - Standalone CODEX one-shot prompt artifacts under `Vela/docs` have been removed
+  - No Phase B scope expansion until Round 1 closure docs and worktree are consistent
 - Next actions:
-  - Main control can run local acceptance on `npm run dev`
-  - Switch `vela.jsonc` to an actual OpenAI-compatible provider when API is ready
-  - Continue with M2 voice mode in a separate scoped pass
+  - Align docs wording with current repo state
+  - Keep Phase B deferred until Phase A closure is formally packaged
+  - Prepare the final closure commit separately from Phase B work if needed
 - Waiting on: none
 - Blockers: none

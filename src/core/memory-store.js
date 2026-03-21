@@ -58,8 +58,21 @@ function defaultRelationship() {
 function defaultSummaryIndex() {
   return {
     updatedAt: null,
-    recent: []
+    recent: [],
+    bridgeSummary: null,
+    openFollowUps: []
   };
+}
+
+function normalizeStringList(values, limit = 3) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values
+    .map((value) => String(value?.text || value?.summary || value || "").trim())
+    .filter(Boolean)
+    .slice(0, limit);
 }
 
 function mergeProfile(profile = {}) {
@@ -324,6 +337,8 @@ export class MemoryStore {
           0,
           this.config.runtime.recentSummaryLimit
         ),
+        bridgeSummary: summaryIndex.bridgeSummary || null,
+        openFollowUps: normalizeStringList(summaryIndex.openFollowUps, 3),
         userFacts
       };
     } catch (error) {
@@ -332,6 +347,8 @@ export class MemoryStore {
         profile: defaultProfile(),
         relationship: defaultRelationship(),
         recentSummaries: [],
+        bridgeSummary: null,
+        openFollowUps: [],
         userFacts: []
       };
     }
@@ -388,14 +405,37 @@ export class MemoryStore {
         SUMMARY_INDEX_FILE,
         defaultSummaryIndex()
       );
-      const recent = [summary, ...(summaryIndex.recent || [])].slice(
-        0,
-        this.config.runtime.summaryIndexLimit
+      const shouldIndex = Boolean(
+        String(summary?.bridgeSummary || "").trim() ||
+          normalizeStringList(summary?.openFollowUps, 3).length > 0 ||
+          summary?.pinToIndex
       );
+      const recent = shouldIndex
+        ? [summary, ...(summaryIndex.recent || [])].slice(
+            0,
+            this.config.runtime.summaryIndexLimit
+          )
+        : summaryIndex.recent || [];
+      const bridgeSummaryText = String(
+        summary?.bridgeSummary || summary?.summary || ""
+      ).trim();
+      const openFollowUps = normalizeStringList(summary?.openFollowUps, 3);
 
       await this.store.writeJson(SUMMARY_INDEX_FILE, {
-        updatedAt: summary.createdAt,
-        recent
+        updatedAt: shouldIndex ? summary.createdAt : summaryIndex.updatedAt,
+        recent,
+        bridgeSummary: shouldIndex && bridgeSummaryText
+          ? {
+              summary: bridgeSummaryText,
+              createdAt: summary.createdAt,
+              turnIndex: summary.turnIndex || 0,
+              topicLabel: summary.topicLabel || ""
+            }
+          : summaryIndex.bridgeSummary || null,
+        openFollowUps:
+          shouldIndex && openFollowUps.length > 0
+            ? openFollowUps
+            : summaryIndex.openFollowUps || []
       });
     } catch (error) {
       console.warn("append turn summary failed:", error?.message || error);

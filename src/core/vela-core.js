@@ -1,4 +1,4 @@
-import path from "node:path";
+﻿import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "./config.js";
 import {
@@ -12,7 +12,10 @@ import { MemoryRetriever, inferEmotionFromText } from "./memory-retriever.js";
 import { MemorySummarizer } from "./memory-summarizer.js";
 import { SessionStateStore } from "./session-state.js";
 import { buildContext } from "./context-builder.js";
-import { updateBehaviorPatternsIfNeeded } from "./behavior-patterns.js";
+import {
+  loadBehaviorPatterns,
+  updateBehaviorPatternsIfNeeded
+} from "./behavior-patterns.js";
 import { buildContextFusion } from "./context-fusion.js";
 import { getTimeAwareness } from "./context-providers/time-provider.js";
 import { getWeatherAwareness } from "./context-providers/weather-provider.js";
@@ -64,9 +67,16 @@ function extractTopicLabel(text) {
   return cleaned ? clipText(cleaned, 18) : "近况";
 }
 
-function createTurnSummary({ sessionId, userMessage, assistantReply, avatar }) {
+function createTurnSummary({
+  sessionId,
+  userMessage,
+  assistantReply,
+  avatar,
+  triggerReasons = []
+}) {
   const createdAt = new Date().toISOString();
   const topicLabel = extractTopicLabel(userMessage);
+  const shouldBridge = Array.isArray(triggerReasons) && triggerReasons.length > 0;
 
   return {
     id: randomUUID(),
@@ -74,18 +84,30 @@ function createTurnSummary({ sessionId, userMessage, assistantReply, avatar }) {
     createdAt,
     topicLabel,
     summary: `聊到“${topicLabel}”，Vela 以${avatar.emotionLabel}、克制的方式把这轮对话接住了。`,
+    bridgeSummary: shouldBridge
+      ? `聊到“${topicLabel}”，这轮话题已经接住。`
+      : "",
+    openFollowUps: [],
     userSnippet: clipText(userMessage, 48),
     assistantSnippet: clipText(assistantReply, 60),
     avatar
   };
 }
+function buildWelcomeNote(memory) {
+  const bridgeSummary = String(
+    memory?.bridgeSummary?.summary || memory?.bridgeSummary?.text || memory?.bridgeSummary || ""
+  ).trim();
 
-function buildWelcomeNote(recentSummary) {
-  if (!recentSummary) {
-    return "如果你今天有想继续的事，或者只想先说一句，也可以直接开始。";
+  if (bridgeSummary) {
+    return `上次我们停在“${clipText(bridgeSummary, 30)}”。想接着说的话，直接从这里继续就行。`;
   }
 
-  return `上次我们停在“${recentSummary.topicLabel || clipText(recentSummary.summary, 24)}”。如果你愿意，可以从那里继续，也可以换一件新的事。`;
+  const recentSummary = memory?.recentSummaries?.[0];
+  if (recentSummary) {
+    return `上次我们停在“${recentSummary.topicLabel || clipText(recentSummary.summary, 24)}”。想继续的话可以从这里接上。`;
+  }
+
+  return "如果你想接着刚才的话题，或者只是随便说一句，都可以直接开始。";
 }
 
 function buildOnboardingState(profile) {
@@ -100,7 +122,7 @@ function buildOnboardingState(profile) {
   return {
     required: true,
     completed: false,
-    prompt: "先告诉我，我该怎么称呼你。轻轻一句就够了。",
+    prompt: "先告诉我，你希望我怎么称呼你。",
     fields: {
       velaName: onboarding.velaName || "Vela",
       userName: onboarding.userName || "",
@@ -112,12 +134,50 @@ function buildOnboardingState(profile) {
 }
 
 function buildMemoryPeek(memory) {
-  return memory.recentSummaries[0]
+  const source = memory.bridgeSummary || memory.recentSummaries[0];
+
+  return source
     ? {
-        summary: memory.recentSummaries[0].summary,
-        createdAtLabel: formatTime(memory.recentSummaries[0].createdAt)
+        summary: source.summary || source.text || String(source).trim(),
+        createdAtLabel: formatTime(source.createdAt || source.updatedAt)
       }
     : null;
+}
+
+function getHoursSince(isoString) {
+  const timestamp = Date.parse(isoString || "");
+
+  if (!Number.isFinite(timestamp)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return Math.max(0, (Date.now() - timestamp) / 3600000);
+}
+
+function buildSummaryTriggers({ turnIndex, lastActiveAt, userMessage, assistantReply, avatar }) {
+  const reasons = [];
+
+  if (turnIndex <= 1) {
+    reasons.push("session-start");
+  }
+
+  if (turnIndex > 0 && turnIndex % 5 === 0) {
+    reasons.push("cadence");
+  }
+
+  if (getHoursSince(lastActiveAt) >= 12) {
+    reasons.push("return-gap");
+  }
+
+  if (String(userMessage || "").length >= 140 || String(assistantReply || "").length >= 200) {
+    reasons.push("long-turn");
+  }
+
+  if (String(avatar?.emotion || "calm") !== "calm") {
+    reasons.push("notable-emotion");
+  }
+
+  return reasons;
 }
 
 function buildAvatarAssetState(config) {
@@ -414,7 +474,7 @@ export class VelaCore {
         welcomeNote ??
         (nextOnboarding.required
           ? "第一面不用填表。先决定她怎么叫你，再从第一句话开始。"
-          : buildWelcomeNote(memory.recentSummaries[0])),
+          : buildWelcomeNote(memory)),
       memoryPeek: buildMemoryPeek(memory),
       voiceMode: this.buildVoiceModeState(),
       thinkingMode: this.runtimeSession.thinkingMode,
@@ -716,11 +776,9 @@ export class VelaCore {
   }
 
   async buildAwarenessPacket(memory, relevantMemories, options = {}) {
-    const behaviorPatterns = await updateBehaviorPatternsIfNeeded({
-      store: this.localStore,
-      memoryStore: this.memoryStore,
-      turnIndex: this.runtimeSession.lifetimeTurnCount
-    }).catch(() => null);
+    const behaviorPatterns = await loadBehaviorPatterns(this.localStore).catch(
+      () => null
+    );
     const timeAwareness = getTimeAwareness({
       runtimeSession: this.runtimeSession,
       lastActiveAt: this.persistedState?.lastActiveAt || null
@@ -735,6 +793,8 @@ export class VelaCore {
       weather,
       profile: memory.profile,
       relationship: memory.relationship,
+      bridgeSummary: memory.bridgeSummary,
+      openFollowUps: memory.openFollowUps || [],
       recentSummaries: memory.recentSummaries,
       relevantMemories,
       userFacts: memory.userFacts || [],
@@ -799,7 +859,8 @@ export class VelaCore {
     const inferredEmotion = inferEmotionFromText(trimmedMessage);
     const relevantMemories = await this.memoryRetriever.retrieveRelevantMemories({
       userInput: trimmedMessage,
-      currentEmotion: inferredEmotion
+      currentEmotion: inferredEmotion,
+      limit: this.config.runtime.relevantMemoryLimit || 3
     });
     const { awarenessPacket, relationshipUnlockHints } =
       await this.buildAwarenessPacket(memory, relevantMemories, options);
@@ -807,10 +868,13 @@ export class VelaCore {
       persona: this.persona,
       profile: memory.profile,
       relationship: memory.relationship,
+      bridgeSummary: memory.bridgeSummary,
+      openFollowUps: memory.openFollowUps || [],
       recentSummaries: memory.recentSummaries,
       relevantMemories,
       userFacts: memory.userFacts || [],
       runtimeSession: this.runtimeSession,
+      recentTranscriptBudget: this.config.runtime.recentTranscriptBudget || 3600,
       awarenessPacket,
       relationshipUnlockHints
     });
@@ -959,11 +1023,20 @@ export class VelaCore {
       -this.config.runtime.sessionMessageLimit
     );
 
+    const triggerReasons = buildSummaryTriggers({
+      turnIndex: this.runtimeSession.lifetimeTurnCount,
+      lastActiveAt: this.persistedState?.lastActiveAt || null,
+      userMessage: trimmedMessage,
+      assistantReply,
+      avatar: speakingAvatar
+    });
+
     const summary = createTurnSummary({
       sessionId: this.runtimeSession.sessionId,
       userMessage: trimmedMessage,
       assistantReply,
-      avatar: speakingAvatar
+      avatar: speakingAvatar,
+      triggerReasons
     });
 
     await this.memoryStore.appendTurnSummary(summary);
@@ -1024,22 +1097,37 @@ export class VelaCore {
 
   async runBackgroundMemoryTasks({ userMessage, assistantReply, avatar, turnIndex }) {
     try {
-      await this.memorySummarizer?.summarizeTurn({
+      const triggerReasons = buildSummaryTriggers({
+        turnIndex,
+        lastActiveAt: this.persistedState?.lastActiveAt || null,
         userMessage,
         assistantReply,
-        emotion: avatar?.emotion,
-        action: avatar?.action,
-        turnIndex
+        avatar
       });
 
-      if (turnIndex > 0 && turnIndex % 10 === 0) {
+      if (triggerReasons.length > 0) {
+        await this.memorySummarizer?.summarizeTurn({
+          userMessage,
+          assistantReply,
+          emotion: avatar?.emotion,
+          action: avatar?.action,
+          turnIndex,
+          triggerReasons,
+          lastActiveAt: this.persistedState?.lastActiveAt || null
+        });
+      }
+
+      if (turnIndex > 0 && turnIndex % 12 === 0) {
         const episodes =
           (await this.memoryRetriever?.loadEpisodes?.()) ||
           (await this.memoryStore.loadEpisodes());
         await this.memoryStore.evaluateRelationship(episodes);
       }
 
-      if (turnIndex > 0 && turnIndex % 20 === 0) {
+      if (
+        turnIndex > 0 &&
+        turnIndex % (this.config.runtime.behaviorPatternRefreshTurns || 24) === 0
+      ) {
         await updateBehaviorPatternsIfNeeded({
           store: this.localStore,
           memoryStore: this.memoryStore,

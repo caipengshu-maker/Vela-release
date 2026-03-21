@@ -32,7 +32,6 @@
 - `src/core/context-providers/weather-provider.js`
 - `src/core/behavior-patterns.js`
 - `src/core/context-fusion.js`
-- `docs/CODEX-R1-PROMPT.md`
 
 ### 重点修改
 - `src/core/config.js`
@@ -151,6 +150,9 @@
 2. 根据后续使用反馈做必要微调
 3. 维持 Round 1 关闭基线，不再扩展 Phase A 范围
 4. 后续如需，再评估 M4 Round 2：旧话题续接 / 自然提旧事 / 轻主动 / idle 微动 / 手臂自然度
+
+
+
 
 
 

@@ -1,4 +1,4 @@
-const PERFORMANCE_PROTOCOL_PROMPT = `# 表演协议
+﻿const PERFORMANCE_PROTOCOL_PROMPT = `# 表演协议
 
 你的每条回复必须严格遵守以下格式：
 第一行输出一个 JSON 对象，描述你这轮回复的表演意图。
@@ -41,7 +41,7 @@ function formatProfile(profile) {
   return notes.length > 0 ? notes.join("\n") : "暂无明确的长期画像。";
 }
 
-function formatRelevantMemories(relevantMemories) {
+function formatRelevantMemories(relevantMemories = []) {
   if (!Array.isArray(relevantMemories) || relevantMemories.length === 0) {
     return "暂无命中的长期记忆。";
   }
@@ -52,20 +52,70 @@ function formatRelevantMemories(relevantMemories) {
     .join("\n");
 }
 
-function formatRecentSummaries(recentSummaries) {
+function formatRecentSummaries(recentSummaries = []) {
   if (!Array.isArray(recentSummaries) || recentSummaries.length === 0) {
-    return "暂无最近摘要。";
+    return "暂无近期摘要。";
   }
 
   return recentSummaries
-    .slice(0, 3)
+    .slice(0, 2)
     .map((summary, index) => `${index + 1}. ${summary.summary}`)
     .join("\n");
+}
+
+function formatBridgeSummary(bridgeSummary) {
+  const summary = String(
+    bridgeSummary?.summary || bridgeSummary?.text || bridgeSummary || ""
+  ).trim();
+
+  return summary ? `桥接摘要：${summary}` : "";
+}
+
+function formatOpenFollowUps(openFollowUps = []) {
+  const lines = Array.isArray(openFollowUps)
+    ? openFollowUps
+        .map((entry) => String(entry?.text || entry?.summary || entry || "").trim())
+        .filter(Boolean)
+        .slice(0, 3)
+    : [];
+
+  if (lines.length === 0) {
+    return "";
+  }
+
+  return `待跟进：\n${lines.map((line, index) => `${index + 1}. ${line}`).join("\n")}`;
+}
+
+function estimateMessageBudgetCost(message) {
+  const content = String(message?.content || "").trim();
+  const blockCost = Array.isArray(message?.blocks) ? message.blocks.length * 48 : 0;
+  return Math.max(32, Math.ceil(content.length / 2) + blockCost + 24);
+}
+
+function selectRecentTranscriptMessages(messages = [], budget = 3600) {
+  const selected = [];
+  let usedBudget = 0;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const cost = estimateMessageBudgetCost(message);
+
+    if (selected.length > 0 && usedBudget + cost > budget) {
+      break;
+    }
+
+    selected.push(message);
+    usedBudget += cost;
+  }
+
+  return selected.reverse();
 }
 
 function buildFallbackAwareness({
   profile,
   relationship,
+  bridgeSummary,
+  openFollowUps,
   recentSummaries,
   relevantMemories
 }) {
@@ -73,19 +123,26 @@ function buildFallbackAwareness({
     "当前感知层信息：",
     formatProfile(profile),
     `关系状态：${relationship?.stage || "warm"}。备注：${relationship?.note || "保持自然靠近。"}`,
+    formatBridgeSummary(bridgeSummary),
+    formatOpenFollowUps(openFollowUps),
     `长期记忆：\n${formatRelevantMemories(relevantMemories)}`,
     `近期摘要：\n${formatRecentSummaries(recentSummaries)}`
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export function buildContext({
   persona,
   profile,
   relationship,
+  bridgeSummary = null,
+  openFollowUps = [],
   recentSummaries,
   relevantMemories = [],
   userFacts = [],
   runtimeSession,
+  recentTranscriptBudget = 3600,
   awarenessPacket = "",
   relationshipUnlockHints = []
 }) {
@@ -95,18 +152,23 @@ export function buildContext({
     awarenessPacket || buildFallbackAwareness({
       profile,
       relationship,
+      bridgeSummary,
+      openFollowUps,
       recentSummaries,
       relevantMemories
     }),
     relationshipUnlockHints?.length
       ? `关系表达提示：${relationshipUnlockHints.join("；")}`
-      : "关系表达提示：先保持自然和分寸，不要突然使用过强亲密称呼。",
-    "请继续保持稳定人设，不要突然变成通用助手。",
+      : "关系表达提示：先保持自然和克制，不要突然过度亲密。",
+    "保持人格稳定，不要突然变成通用助手。",
     "回复里只输出用户可见内容，不暴露思维链。",
-    "主动关心要自然触发，优先结合当下时间、气氛和用户状态。"
+    "主动关心要自然触发，优先结合当前时间、氛围和用户状态。"
   ].join("\n\n");
 
-  const messages = runtimeSession.messages.slice(-6).map((message) => {
+  const messages = selectRecentTranscriptMessages(
+    runtimeSession.messages,
+    recentTranscriptBudget
+  ).map((message) => {
     const normalizedMessage = {
       role: message.role,
       content: message.content
@@ -124,6 +186,8 @@ export function buildContext({
     messages,
     memory: {
       recentSummaries,
+      bridgeSummary,
+      openFollowUps,
       relevantMemories,
       userFacts,
       profile,

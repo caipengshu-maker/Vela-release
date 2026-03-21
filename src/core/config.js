@@ -18,9 +18,12 @@ const defaultConfig = {
     storageRoot: "./.vela-data",
     cacheRoot: "./.vela-cache",
     assetRoot: "./assets",
-    recentSummaryLimit: 3,
-    summaryIndexLimit: 12,
-    sessionMessageLimit: 12
+    recentSummaryLimit: 2,
+    summaryIndexLimit: 8,
+    sessionMessageLimit: 24,
+    recentTranscriptBudget: 3600,
+    relevantMemoryLimit: 3,
+    behaviorPatternRefreshTurns: 24
   },
   user: {
     location: {

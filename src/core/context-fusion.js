@@ -40,7 +40,10 @@ function isWeatherWorthMentioning(weather) {
     return true;
   }
 
-  if (Number.isFinite(weather.temperature) && (weather.temperature <= 5 || weather.temperature >= 32)) {
+  if (
+    Number.isFinite(weather.temperature) &&
+    (weather.temperature <= 5 || weather.temperature >= 32)
+  ) {
     return true;
   }
 
@@ -68,7 +71,7 @@ function formatWeatherLine(weather) {
     parts.push(`风速偏大（${weather.windSpeed} km/h）`);
   }
 
-  return `环境感知：${parts.join("，")}。只有和当前话题自然相关时再提起。`;
+  return `环境感知：${parts.join("，")}。只在和当前话题自然相关时再提起。`;
 }
 
 function formatFacts(userFacts = [], profile = null) {
@@ -89,6 +92,29 @@ function formatFacts(userFacts = [], profile = null) {
   return lines.length > 0 ? `用户画像：${lines.join("；")}。` : "";
 }
 
+function formatBridgeSummary(bridgeSummary) {
+  const summary = String(
+    bridgeSummary?.summary || bridgeSummary?.text || bridgeSummary || ""
+  ).trim();
+
+  return summary ? `桥接摘要：${summary}` : "";
+}
+
+function formatOpenFollowUps(openFollowUps = []) {
+  const lines = Array.isArray(openFollowUps)
+    ? openFollowUps
+        .map((entry) => String(entry?.text || entry?.summary || entry || "").trim())
+        .filter(Boolean)
+        .slice(0, 3)
+    : [];
+
+  if (lines.length === 0) {
+    return "";
+  }
+
+  return `待跟进：\n${lines.map((line, index) => `${index + 1}. ${line}`).join("\n")}`;
+}
+
 function formatRecentSummaries(recentSummaries = []) {
   const lines = recentSummaries
     .slice(0, 2)
@@ -104,7 +130,7 @@ function formatRelevantMemories(relevantMemories = []) {
     .map((summary) => String(summary || "").trim())
     .filter(Boolean);
 
-  return lines.length > 0 ? `相关旧记忆：${lines.join(" / ")}。` : "";
+  return lines.length > 0 ? `相关记忆：${lines.join(" / ")}。` : "";
 }
 
 function formatPatterns(behaviorPatterns) {
@@ -114,27 +140,33 @@ function formatPatterns(behaviorPatterns) {
 
   const parts = [];
 
-  if (Array.isArray(behaviorPatterns.peakChatTimes) && behaviorPatterns.peakChatTimes.length > 0) {
+  if (
+    Array.isArray(behaviorPatterns.peakChatTimes) &&
+    behaviorPatterns.peakChatTimes.length > 0
+  ) {
     const topTime = behaviorPatterns.peakChatTimes
       .slice(0, 2)
       .map((entry) => entry.label)
       .join("、");
-    parts.push(`常聊时段偏向 ${topTime}`);
+    parts.push(`常聊时段 ${topTime}`);
   }
 
-  if (Array.isArray(behaviorPatterns.topTopics) && behaviorPatterns.topTopics.length > 0) {
+  if (
+    Array.isArray(behaviorPatterns.topTopics) &&
+    behaviorPatterns.topTopics.length > 0
+  ) {
     const topics = behaviorPatterns.topTopics
       .slice(0, 3)
       .map((entry) => entry.label)
       .join("、");
-    parts.push(`高频话题有 ${topics}`);
+    parts.push(`高频话题 ${topics}`);
   }
 
   if (Array.isArray(behaviorPatterns.routines) && behaviorPatterns.routines.length > 0) {
     parts.push(behaviorPatterns.routines[0]);
   }
 
-  return parts.length > 0 ? `行为模式：${parts.join("；")}。` : "";
+  return parts.length > 0 ? `行为模式（可选）：${parts.join("；")}。` : "";
 }
 
 function formatRelationshipLine(relationship, relationshipUnlockHints = []) {
@@ -169,6 +201,8 @@ export function buildContextFusion({
   weather = null,
   profile = null,
   relationship = null,
+  bridgeSummary = null,
+  openFollowUps = [],
   recentSummaries = [],
   relevantMemories = [],
   userFacts = [],
@@ -181,6 +215,8 @@ export function buildContextFusion({
   pushLine(lines, formatWeatherLine(weather));
   pushLine(lines, formatRelationshipLine(relationship, relationshipUnlockHints));
   pushLine(lines, formatFacts(userFacts, profile));
+  pushLine(lines, formatBridgeSummary(bridgeSummary));
+  pushLine(lines, formatOpenFollowUps(openFollowUps));
   pushLine(lines, formatRecentSummaries(recentSummaries));
   pushLine(lines, formatRelevantMemories(relevantMemories));
   pushLine(lines, formatPatterns(behaviorPatterns));

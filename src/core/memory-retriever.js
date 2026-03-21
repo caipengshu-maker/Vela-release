@@ -173,7 +173,7 @@ export class MemoryRetriever {
     }
   }
 
-  async retrieveRelevantMemories({ userInput, currentEmotion, limit = 5 }) {
+  async retrieveRelevantMemories({ userInput, currentEmotion, limit = 3 }) {
     try {
       const trimmedInput = String(userInput || "").trim();
 
