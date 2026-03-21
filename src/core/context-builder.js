@@ -41,6 +41,39 @@ function formatProfile(profile) {
   return notes.length > 0 ? notes.join("\n") : "暂无明确的长期画像。";
 }
 
+function formatUserFacts(userFacts, profile) {
+  const lines = [
+    profile.user.name ? `用户称呼：${profile.user.name}` : ""
+  ];
+
+  for (const fact of userFacts) {
+    if (!fact?.key || !fact?.value) {
+      continue;
+    }
+
+    const confidenceLabel = Number.isFinite(Number(fact.confidence))
+      ? `（置信度 ${Number(fact.confidence).toFixed(2)}）`
+      : "";
+    lines.push(`- [${fact.type || "fact"}] ${fact.key}：${fact.value}${confidenceLabel}`);
+  }
+
+  if (lines.length === 0) {
+    return formatProfile(profile);
+  }
+
+  return lines.join("\n");
+}
+
+function formatRelevantMemories(relevantMemories) {
+  if (!relevantMemories.length) {
+    return "暂无命中的长期记忆。";
+  }
+
+  return relevantMemories
+    .map((summary, index) => `${index + 1}. ${summary}`)
+    .join("\n");
+}
+
 function formatRecentSummaries(recentSummaries) {
   if (!recentSummaries.length) {
     return "暂无最近摘要。";
@@ -56,14 +89,20 @@ export function buildContext({
   profile,
   relationship,
   recentSummaries,
+  relevantMemories = [],
+  userFacts = [],
   runtimeSession
 }) {
   const systemPrompt = [
     PERFORMANCE_PROTOCOL_PROMPT,
     persona.seedPrompt,
-    `当前关系状态：${relationship.stage}。备注：${relationship.note}`,
-    `用户长期画像：\n${formatProfile(profile)}`,
-    `最近会话摘要：\n${formatRecentSummaries(recentSummaries)}`,
+    [
+      "以下是当前对话的感知层信息。",
+      `用户画像（自动提取）：\n${formatUserFacts(userFacts, profile)}`,
+      `关系状态：${relationship.stage}。备注：${relationship.note}`,
+      `长期记忆（检索命中）：\n${formatRelevantMemories(relevantMemories)}`,
+      `短期记忆（最近 3 轮摘要）：\n${formatRecentSummaries(recentSummaries)}`
+    ].join("\n\n"),
     "请继续保持稳定人设。不要突然变成万能助手。",
     "回复必须只包含对用户可见的话，不要暴露思维链。",
     "一轮回复只保留一个主情绪，表达要轻、稳、少。"
@@ -89,6 +128,8 @@ export function buildContext({
     messages,
     memory: {
       recentSummaries,
+      relevantMemories,
+      userFacts,
       profile,
       relationship
     },

@@ -34,6 +34,9 @@ function buildMockReply(context) {
   );
   const greeting = /(你好|在吗|早上好|晚上好|晚安|嗨)/.test(latestUserMessage);
   const wantsContinuation = /(上次|之前|继续|后来|记得)/.test(latestUserMessage);
+  const requestsLongSpeech = /long enough to queue speech|queue speech|慢一点说|说长一点/i.test(
+    latestUserMessage
+  );
 
   const continuityLine =
     recentSummary && (isFirstTurnThisLaunch || wantsContinuation)
@@ -49,6 +52,11 @@ function buildMockReply(context) {
   } else if (emotionalSignal) {
     body = "先别急着把自己绷得太紧。把最卡的那一段交给我，我们一点点拆。";
     close = "不用一次说完整，我能跟上。";
+  } else if (requestsLongSpeech) {
+    body =
+      "好，那我放慢一点接你。先把你最想说明白的那层留住，再把后面那些还没来得及整理的细节，一点点摊开。";
+    close =
+      "你不用赶，我会按你的节奏接着听，也会把每一段都接稳，不让它一下子散掉。";
   } else if (asksForJudgment) {
     body = "如果只说我的判断，我会先看你现在最想保住的是什么，再谈动作。";
     close = "你把最难取舍的那一点补给我，我会说得更准。";

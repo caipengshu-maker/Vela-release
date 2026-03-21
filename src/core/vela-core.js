@@ -8,6 +8,8 @@ import {
 } from "./default-persona.js";
 import { LocalStore } from "./local-store.js";
 import { MemoryStore } from "./memory-store.js";
+import { MemoryRetriever, inferEmotionFromText } from "./memory-retriever.js";
+import { MemorySummarizer } from "./memory-summarizer.js";
 import { SessionStateStore } from "./session-state.js";
 import { buildContext } from "./context-builder.js";
 import {
@@ -140,6 +142,8 @@ export class VelaCore {
     this.persona = null;
     this.localStore = null;
     this.memoryStore = null;
+    this.memoryRetriever = null;
+    this.memorySummarizer = null;
     this.sessionStore = null;
     this.runtimeSession = null;
     this.persistedState = null;
@@ -166,6 +170,13 @@ export class VelaCore {
 
     this.localStore = new LocalStore(storageRoot);
     this.memoryStore = new MemoryStore(this.localStore, this.config);
+    this.memoryRetriever = new MemoryRetriever({
+      store: this.localStore
+    });
+    this.memorySummarizer = new MemorySummarizer({
+      memoryStore: this.memoryStore,
+      config: this.config
+    });
     this.sessionStore = new SessionStateStore(this.localStore);
 
     await this.memoryStore.initialize();
@@ -382,8 +393,8 @@ export class VelaCore {
       voiceModeEnabled: this.runtimeSession.voiceModeEnabled,
       onEvent: (event) => {
         if (event.type === "speech-finished") {
+          speech.lifecycle.finished = true;
           onEvent?.(event);
-
           if (!event.cancelled) {
             this.currentAvatar = this.buildPresenceAvatar(
               this.runtimeSession.voiceModeEnabled ? "listening" : "idle"
@@ -395,13 +406,70 @@ export class VelaCore {
           return;
         }
 
+        if (event.type === "speech-error") {
+          speech.lifecycle.sawError = true;
+        }
+
         onEvent?.(event);
       }
     });
 
+    speech.lifecycle = {
+      sawError: false,
+      finished: false
+    };
     this.currentSpeech = speech;
     speech.emitCurrentState();
     return speech;
+  }
+
+  async settleSpeechAfterFailure(onEvent, speech, error) {
+    if (error) {
+      onEvent?.({
+        type: "speech-error",
+        message: error?.message || "speech finish failed"
+      });
+    }
+
+    if (this.currentSpeech !== speech) {
+      return;
+    }
+
+    if (speech?.lifecycle?.finished) {
+      return;
+    }
+
+    speech.lifecycle.finished = true;
+    this.currentAvatar = this.buildPresenceAvatar(
+      this.runtimeSession.voiceModeEnabled ? "listening" : "idle"
+    );
+    this.currentSpeech = null;
+    onEvent?.({
+      type: "speech-finished",
+      sessionId: speech?.getState?.().sessionId || null,
+      cancelled: false,
+      failed: true
+    });
+    await this.emitAvatarState(onEvent, this.currentAvatar);
+  }
+
+  async cancelCurrentSpeech(onEvent) {
+    const speech = this.currentSpeech;
+
+    if (!speech) {
+      return;
+    }
+
+    await speech.cancel();
+
+    if (this.currentSpeech === speech) {
+      this.currentSpeech = null;
+      onEvent?.({
+        type: "speech-finished",
+        sessionId: speech?.getState?.().sessionId || null,
+        cancelled: true
+      });
+    }
   }
 
   async getBootstrapState() {
@@ -469,8 +537,7 @@ export class VelaCore {
     await this.sessionStore.savePreferences(this.runtimeSession);
 
     if (!enabled && this.currentSpeech) {
-      await this.currentSpeech.cancel();
-      this.currentSpeech = null;
+      await this.cancelCurrentSpeech(options.onEvent);
     }
 
     this.currentAvatar = settleAvatarState(this.currentAvatar || this.buildPresenceAvatar("idle"), {
@@ -495,8 +562,7 @@ export class VelaCore {
 
   async interruptOutput(options = {}) {
     if (this.currentSpeech) {
-      await this.currentSpeech.cancel();
-      this.currentSpeech = null;
+      await this.cancelCurrentSpeech(options.onEvent);
     }
 
     this.currentAvatar = this.buildPresenceAvatar(
@@ -516,8 +582,7 @@ export class VelaCore {
     }
 
     if (this.currentSpeech) {
-      await this.currentSpeech.cancel();
-      this.currentSpeech = null;
+      await this.cancelCurrentSpeech(options.onEvent);
     }
 
     const memory = await this.loadMemorySnapshot();
@@ -538,11 +603,18 @@ export class VelaCore {
     this.currentAvatar = this.buildPresenceAvatar("thinking");
     await this.emitAvatarState(options.onEvent, this.currentAvatar);
 
+    const inferredEmotion = inferEmotionFromText(trimmedMessage);
+    const relevantMemories = await this.memoryRetriever.retrieveRelevantMemories({
+      userInput: trimmedMessage,
+      currentEmotion: inferredEmotion
+    });
     const context = buildContext({
       persona: this.persona,
       profile: memory.profile,
       relationship: memory.relationship,
       recentSummaries: memory.recentSummaries,
+      relevantMemories,
+      userFacts: memory.userFacts || [],
       runtimeSession: this.runtimeSession
     });
 
@@ -694,12 +766,18 @@ export class VelaCore {
     this.currentAvatar = speakingAvatar;
 
     if (speech) {
-      void speech.finish().catch((error) => {
-        options.onEvent?.({
-          type: "speech-error",
-          message: error.message || "speech finish failed"
-        });
-      });
+      void speech
+        .finish()
+        .then(() => {
+          if (speech.lifecycle?.sawError && !speech.lifecycle?.finished) {
+            return this.settleSpeechAfterFailure(options.onEvent, speech);
+          }
+
+          return null;
+        })
+        .catch((error) =>
+          this.settleSpeechAfterFailure(options.onEvent, speech, error)
+        );
     }
 
     const nextState = await this.buildAppState({
@@ -721,6 +799,34 @@ export class VelaCore {
     });
     await this.emitAvatarState(options.onEvent, speakingAvatar);
 
+    void this.runBackgroundMemoryTasks({
+      userMessage: trimmedMessage,
+      assistantReply,
+      avatar: speakingAvatar,
+      turnIndex: this.runtimeSession.lifetimeTurnCount
+    });
+
     return nextState;
+  }
+
+  async runBackgroundMemoryTasks({ userMessage, assistantReply, avatar, turnIndex }) {
+    try {
+      await this.memorySummarizer?.summarizeTurn({
+        userMessage,
+        assistantReply,
+        emotion: avatar?.emotion,
+        action: avatar?.action,
+        turnIndex
+      });
+
+      if (turnIndex > 0 && turnIndex % 10 === 0) {
+        const episodes =
+          (await this.memoryRetriever?.loadEpisodes?.()) ||
+          (await this.memoryStore.loadEpisodes());
+        await this.memoryStore.evaluateRelationship(episodes);
+      }
+    } catch (error) {
+      console.warn("background memory task failed:", error?.message || error);
+    }
   }
 }
