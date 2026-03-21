@@ -13,8 +13,8 @@ const CAMERA_PRESETS = {
     target: new THREE.Vector3(0, 1.28, 0.02)
   },
   close: {
-    position: new THREE.Vector3(0.08, 1.52, 1.35),
-    target: new THREE.Vector3(0.01, 1.46, 0.02)
+    position: new THREE.Vector3(0.04, 1.88, 1.45),
+    target: new THREE.Vector3(0.0, 1.82, 0.0)
   }
 };
 
