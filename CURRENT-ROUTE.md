@@ -1,5 +1,11 @@
-# CURRENT-ROUTE.md
+﻿# CURRENT-ROUTE.md
 
+## Phase A State
+- Phase A is complete and serves as the current closure baseline.
+- Duplicate status surfaces were removed from the main chat surface.
+- Session turn counts are no longer shown in the primary conversation header.
+- Fallback status now stays quiet unless it is actually affecting the current reply path.
+- Phase B next: context-first continuity with lightweight memory.
 > Vela 当前主线钉板。只回答：现在先做什么，什么别碰。
 
 ---
@@ -10,13 +16,25 @@
 
 M3 已正式关门（2026-03-21）。当前主线切到 M4。
 
-M4 要做：
-- UI 打磨（M3 遗留清单）
+**当前所在轮次：M4 Round 1 已关闭。**
+
+Round 1 已完成：
+- 感知融合（时间 / 天气 / 行为模式 / 记忆 / 关系状态）
+- Provider 优雅降级（2 次失败熔断 + 5 小时 cooldown + fallback routing）
+- `/model minimax|k2p5|auto` 手动切模型
+- UI 重做（SVG 化、输入区重构、fallback/model 轻提示、assistant replay）
+- 技术验证通过（`build` / `smoke` / `verify:core` / `verify:providers` / `verify:m2`）
+
+**当前待办：进入 Phase B，做 context-first continuity + lightweight memory。**
+
+M4 后续仍要做：
+- UI 打磨（Phase B 后续）
 - idle 微动 / 手臂自然度
-- 长期记忆
+- 长期记忆深化
 - 联网搜索
 - 动作编排（预设小动作轮播）
 - 声画同步精调
+- 轻主动节奏
 
 ### M3 closure（已完成）
 - TTS 流式开口（MiniMax WebSocket MSE）
@@ -115,3 +133,6 @@ M4 要做：
 ## 一句话钉死
 
 **M3 已关门；M2 已关门；M1 已关门。当前进入 M4：让她像个人，不只是在场。**
+
+
+

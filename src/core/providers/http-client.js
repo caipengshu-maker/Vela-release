@@ -85,11 +85,38 @@ async function createRequest({
     config.llm.headers
   );
 
-  const response = await fetchImpl(endpoint, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(request.body)
-  });
+  const controller =
+    typeof AbortController === "function" ? new AbortController() : null;
+  const timeoutId = controller
+    ? setTimeout(() => {
+        controller.abort(new Error("LLM request timed out"));
+      }, 45000)
+    : null;
+
+  let response;
+
+  try {
+    response = await fetchImpl(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(request.body),
+      ...(controller ? { signal: controller.signal } : {})
+    });
+  } catch (error) {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    if (error?.name === "AbortError") {
+      throw new Error("LLM request timed out");
+    }
+
+    throw error;
+  }
+
+  if (timeoutId) {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();

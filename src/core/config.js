@@ -22,6 +22,11 @@ const defaultConfig = {
     summaryIndexLimit: 12,
     sessionMessageLimit: 12
   },
+  user: {
+    location: {
+      city: "Shanghai"
+    }
+  },
   llm: {
     provider: "openai-compatible",
     mode: "openai-compatible",
@@ -187,7 +192,7 @@ function normalizeFallbackLlmConfig(fallbackConfig, baseLlmConfig) {
   };
 }
 
-function normalizeLlmConfig(llmConfig) {
+function normalizeLlmConfig(llmConfig = {}) {
   const provider = normalizeProviderId(
     llmConfig.provider || llmConfig.mode,
     "openai-compatible"
@@ -282,6 +287,16 @@ function normalizeAvatarConfig(avatarConfig = {}) {
   };
 }
 
+function normalizeUserConfig(userConfig = {}) {
+  return {
+    location: {
+      city: String(
+        userConfig?.location?.city || defaultConfig.user.location.city
+      ).trim() || defaultConfig.user.location.city
+    }
+  };
+}
+
 export async function loadConfig(rootDir) {
   const configPath = path.join(rootDir, "vela.jsonc");
   const raw = await fs.readFile(configPath, "utf8");
@@ -291,6 +306,7 @@ export async function loadConfig(rootDir) {
 
   return {
     ...merged,
+    user: normalizeUserConfig(merged.user),
     llm: normalizedLlm,
     asr: normalizeAsrConfig(merged.asr),
     tts: normalizeTtsConfig(merged.tts, normalizedLlm),

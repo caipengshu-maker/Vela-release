@@ -9,6 +9,9 @@ import {
   resolveRequestTuning
 } from "./providers/thinking-mode.js";
 
+const PRIMARY_FAILURE_THRESHOLD = 2;
+const PRIMARY_COOLDOWN_MS = 5 * 60 * 60 * 1000;
+
 function getRequestedProviderId(target) {
   if (target?.llm) {
     return target.llm.provider || target.llm.mode || "mock";
@@ -19,6 +22,89 @@ function getRequestedProviderId(target) {
 
 function getMockAdapter() {
   return getProviderAdapter("mock");
+}
+
+function normalizeAlias(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function guessModelDescriptor(llmConfig, fallback = false) {
+  const providerId = String(llmConfig?.provider || llmConfig?.mode || "").trim().toLowerCase();
+  const model = String(llmConfig?.model || "").trim();
+  const baseUrl = String(llmConfig?.baseUrl || "").trim().toLowerCase();
+  const normalizedModel = normalizeAlias(model);
+
+  if (providerId.includes("minimax") || normalizedModel.includes("minimax")) {
+    return {
+      id: "minimax",
+      label: "MiniMax",
+      aliases: ["minimax", providerId, normalizedModel, "primary"].filter(Boolean)
+    };
+  }
+
+  if (
+    normalizedModel.includes("k2p5") ||
+    normalizedModel.includes("k25") ||
+    baseUrl.includes("kimi")
+  ) {
+    return {
+      id: "k2p5",
+      label: "K2.5",
+      aliases: ["k2p5", "k25", providerId, normalizedModel, "fallback"].filter(Boolean)
+    };
+  }
+
+  const fallbackId = fallback ? "fallback" : "primary";
+
+  return {
+    id: normalizedModel || normalizeAlias(providerId) || fallbackId,
+    label: model || providerId || fallbackId,
+    aliases: [fallbackId, providerId, normalizedModel].filter(Boolean)
+  };
+}
+
+export function listAvailableModels(config) {
+  const primaryDescriptor = guessModelDescriptor(config.llm, false);
+  const models = [
+    {
+      ...primaryDescriptor,
+      kind: "primary",
+      config: config.llm
+    }
+  ];
+
+  if (config.llm?.fallback) {
+    models.push({
+      ...guessModelDescriptor(config.llm.fallback, true),
+      kind: "fallback",
+      config: config.llm.fallback
+    });
+  }
+
+  return models;
+}
+
+export function resolveModelSelection(config, selection = "auto") {
+  const normalizedSelection = normalizeAlias(selection);
+
+  if (!normalizedSelection || normalizedSelection === "auto") {
+    return {
+      id: "auto",
+      label: "自动",
+      kind: "auto",
+      config: null
+    };
+  }
+
+  const models = listAvailableModels(config);
+  return (
+    models.find((entry) => entry.id === normalizedSelection) ||
+    models.find((entry) => entry.aliases.includes(normalizedSelection)) ||
+    null
+  );
 }
 
 function resolveApiKey(llmConfig) {
@@ -52,7 +138,7 @@ function buildAttemptConfig(config, llmConfig) {
   };
 }
 
-function buildProviderAttempt(config, llmConfig, thinkingMode) {
+function buildProviderAttempt(config, llmConfig, thinkingMode, route = null) {
   const providerId = getRequestedProviderId(llmConfig);
   const adapter = getProviderAdapter(providerId);
   const attemptConfig = buildAttemptConfig(config, llmConfig);
@@ -60,6 +146,7 @@ function buildProviderAttempt(config, llmConfig, thinkingMode) {
   return {
     providerId,
     adapter,
+    route,
     config: attemptConfig,
     requestTuning: adapter
       ? resolveRequestTuning({
@@ -91,9 +178,14 @@ function attachResponseMeta(
   {
     requestTuning = null,
     requestedProvider = null,
+    activeRoute = null,
+    modelSelection = "auto",
+    manualSelection = false,
     fallbackUsed = false,
     fallbackReason = null,
-    fallbackChain = []
+    fallbackChain = [],
+    primaryCooldownUntil = null,
+    primaryCooldownActive = false
   } = {}
 ) {
   if (!response?.providerMeta) {
@@ -106,11 +198,113 @@ function attachResponseMeta(
       ...response.providerMeta,
       requestTuning,
       requestedProvider,
+      activeProvider: response.providerMeta.adapter,
+      activeRouteId: activeRoute?.id || null,
+      activeRouteLabel: activeRoute?.label || null,
+      modelSelection,
+      manualSelection,
       fallbackUsed,
       fallbackReason,
-      fallbackChain
+      fallbackChain,
+      primaryCooldownUntil,
+      primaryCooldownActive
     }
   };
+}
+
+function normalizeProviderState(providerState = {}, selectedModel = "auto") {
+  return {
+    selectedModel:
+      String(providerState?.selectedModel || selectedModel || "auto").trim() || "auto",
+    primaryFailures: Number.isFinite(Number(providerState?.primaryFailures))
+      ? Number(providerState.primaryFailures)
+      : 0,
+    cooldownUntil: providerState?.cooldownUntil || null,
+    lastFailureAt: providerState?.lastFailureAt || null,
+    lastErrorReason: providerState?.lastErrorReason || null,
+    lastResolved: providerState?.lastResolved || null
+  };
+}
+
+function isCooldownActive(providerState) {
+  const cooldownUntil = Date.parse(providerState?.cooldownUntil || "");
+  return Number.isFinite(cooldownUntil) && cooldownUntil > Date.now();
+}
+
+function isCircuitBreakerError(error) {
+  const reason = String(error?.message || error || "").toLowerCase();
+
+  return (
+    reason.includes(" 429 ") ||
+    reason.includes("429") ||
+    reason.includes("timeout") ||
+    reason.includes("timed out") ||
+    reason.includes("abort") ||
+    reason.includes("unavailable") ||
+    reason.includes("overloaded") ||
+    reason.includes("temporarily") ||
+    reason.includes(" 502 ") ||
+    reason.includes(" 503 ") ||
+    reason.includes(" 504 ")
+  );
+}
+
+async function persistProviderState(options, providerState) {
+  if (typeof options.persistProviderState !== "function") {
+    return providerState;
+  }
+
+  await options.persistProviderState(providerState);
+  return providerState;
+}
+
+async function handlePrimaryFailure(options, providerState, error) {
+  if (!isCircuitBreakerError(error)) {
+    return providerState;
+  }
+
+  const failures = Number(providerState.primaryFailures || 0) + 1;
+  const nextState = {
+    ...providerState,
+    primaryFailures: failures,
+    lastFailureAt: new Date().toISOString(),
+    lastErrorReason: error?.message || String(error || "provider-failed"),
+    cooldownUntil:
+      failures >= PRIMARY_FAILURE_THRESHOLD
+        ? new Date(Date.now() + PRIMARY_COOLDOWN_MS).toISOString()
+        : providerState.cooldownUntil
+  };
+
+  return persistProviderState(options, nextState);
+}
+
+async function clearPrimaryCooldown(options, providerState, responseMeta = null) {
+  const nextState = {
+    ...providerState,
+    primaryFailures: 0,
+    cooldownUntil: null,
+    lastErrorReason: null,
+    lastResolved: responseMeta
+      ? {
+          ...responseMeta,
+          at: new Date().toISOString()
+        }
+      : providerState.lastResolved
+  };
+
+  return persistProviderState(options, nextState);
+}
+
+async function updateLastResolved(options, providerState, responseMeta) {
+  const nextState = {
+    ...providerState,
+    lastResolved: {
+      ...responseMeta,
+      at: new Date().toISOString()
+    }
+  };
+
+  return persistProviderState(options, nextState);
 }
 
 async function executeAttempt({
@@ -176,9 +370,12 @@ async function executeMockFallback({
   stream,
   requestedProvider,
   requestTuning,
-  failures
+  failures,
+  activeRoute,
+  providerState,
+  modelSelection,
+  manualSelection
 }) {
-  const mockAdapter = getMockAdapter();
   const thinkingMode = normalizeThinkingMode(
     options.thinkingMode || config.llm.thinkingMode
   );
@@ -189,7 +386,8 @@ async function executeMockFallback({
       provider: "mock",
       mode: "mock"
     },
-    thinkingMode
+    thinkingMode,
+    activeRoute
   );
   const fallbackReason = formatFallbackReason(failures);
   const response = await executeAttempt({
@@ -204,113 +402,209 @@ async function executeMockFallback({
     }
   });
 
-  return attachResponseMeta(response, {
+  const attached = attachResponseMeta(response, {
     requestTuning,
     requestedProvider,
+    activeRoute,
+    modelSelection,
+    manualSelection,
     fallbackUsed: true,
     fallbackReason,
-    fallbackChain: failures
+    fallbackChain: failures,
+    primaryCooldownUntil: providerState.cooldownUntil,
+    primaryCooldownActive: isCooldownActive(providerState)
   });
+
+  await updateLastResolved(options, providerState, attached.providerMeta);
+  return attached;
+}
+
+function buildRouteAttempts(config, thinkingMode, modelSelection, providerState) {
+  const selectedRoute = resolveModelSelection(config, modelSelection);
+  const manualSelection = Boolean(selectedRoute && selectedRoute.kind !== "auto");
+  const models = listAvailableModels(config);
+  const primaryRoute = models.find((entry) => entry.kind === "primary") || null;
+  const fallbackRoute = models.find((entry) => entry.kind === "fallback") || null;
+
+  if (manualSelection && selectedRoute) {
+    return {
+      manualSelection,
+      primaryRoute,
+      requestedRoute: selectedRoute,
+      primaryAttempt:
+        selectedRoute.kind === "primary"
+          ? buildProviderAttempt(config, selectedRoute.config, thinkingMode, selectedRoute)
+          : null,
+      fallbackAttempt:
+        selectedRoute.kind === "fallback"
+          ? buildProviderAttempt(config, selectedRoute.config, thinkingMode, selectedRoute)
+          : fallbackRoute
+            ? buildProviderAttempt(config, fallbackRoute.config, thinkingMode, fallbackRoute)
+            : null
+    };
+  }
+
+  return {
+    manualSelection: false,
+    primaryRoute,
+    requestedRoute: primaryRoute,
+    primaryAttempt: primaryRoute
+      ? buildProviderAttempt(config, primaryRoute.config, thinkingMode, primaryRoute)
+      : null,
+    fallbackAttempt: fallbackRoute
+      ? buildProviderAttempt(config, fallbackRoute.config, thinkingMode, fallbackRoute)
+      : null
+  };
 }
 
 async function generateWithFallback(context, config, options = {}, stream = false) {
   const thinkingMode = normalizeThinkingMode(
     options.thinkingMode || config.llm.thinkingMode
   );
-  const primaryAttempt = buildProviderAttempt(config, config.llm, thinkingMode);
+  let providerState = normalizeProviderState(
+    options.providerState,
+    options.modelSelection
+  );
+  const modelSelection = providerState.selectedModel || options.modelSelection || "auto";
+  const routeAttempts = buildRouteAttempts(
+    config,
+    thinkingMode,
+    modelSelection,
+    providerState
+  );
+  const failures = [];
+  const autoCooldownActive =
+    !routeAttempts.manualSelection && isCooldownActive(providerState);
 
-  if (primaryAttempt.adapter?.id === "mock") {
-    const response = await executeAttempt({
-      attempt: primaryAttempt,
-      context,
-      options,
-      stream
-    });
-
-    return attachResponseMeta(response, {
-      requestTuning: primaryAttempt.requestTuning,
-      requestedProvider: primaryAttempt.providerId
-    });
+  if (
+    autoCooldownActive &&
+    routeAttempts.fallbackAttempt &&
+    routeAttempts.requestedRoute?.kind === "primary"
+  ) {
+    failures.push(buildFailure(routeAttempts.primaryAttempt.providerId, "primary-cooldown-active"));
   }
 
-  const failures = [];
-
-  if (!primaryAttempt.adapter) {
-    failures.push(buildFailure(primaryAttempt.providerId, "unknown-provider"));
-  } else {
-    try {
+  if (
+    routeAttempts.primaryAttempt &&
+    (!autoCooldownActive || routeAttempts.manualSelection)
+  ) {
+    if (routeAttempts.primaryAttempt.adapter?.id === "mock") {
       const response = await executeAttempt({
-        attempt: primaryAttempt,
+        attempt: routeAttempts.primaryAttempt,
         context,
         options,
         stream
       });
-
-      return attachResponseMeta(response, {
-        requestTuning: primaryAttempt.requestTuning,
-        requestedProvider: primaryAttempt.providerId
+      const attached = attachResponseMeta(response, {
+        requestTuning: routeAttempts.primaryAttempt.requestTuning,
+        requestedProvider: routeAttempts.primaryAttempt.providerId,
+        activeRoute: routeAttempts.requestedRoute,
+        modelSelection,
+        manualSelection: routeAttempts.manualSelection,
+        primaryCooldownUntil: providerState.cooldownUntil,
+        primaryCooldownActive: autoCooldownActive
       });
-    } catch (error) {
-      failures.push(normalizeAttemptError(primaryAttempt.providerId, error));
+      await updateLastResolved(options, providerState, attached.providerMeta);
+      return attached;
+    }
+
+    if (!routeAttempts.primaryAttempt.adapter) {
+      failures.push(
+        buildFailure(routeAttempts.primaryAttempt.providerId, "unknown-provider")
+      );
+    } else {
+      try {
+        const response = await executeAttempt({
+          attempt: routeAttempts.primaryAttempt,
+          context,
+          options,
+          stream
+        });
+        const attached = attachResponseMeta(response, {
+          requestTuning: routeAttempts.primaryAttempt.requestTuning,
+          requestedProvider: routeAttempts.primaryAttempt.providerId,
+          activeRoute: routeAttempts.requestedRoute,
+          modelSelection,
+          manualSelection: routeAttempts.manualSelection,
+          primaryCooldownUntil: providerState.cooldownUntil,
+          primaryCooldownActive: autoCooldownActive
+        });
+
+        if (routeAttempts.requestedRoute?.kind === "primary") {
+          providerState = await clearPrimaryCooldown(
+            options,
+            providerState,
+            attached.providerMeta
+          );
+        } else {
+          providerState = await updateLastResolved(
+            options,
+            providerState,
+            attached.providerMeta
+          );
+        }
+
+        return attached;
+      } catch (error) {
+        failures.push(normalizeAttemptError(routeAttempts.primaryAttempt.providerId, error));
+
+        if (routeAttempts.requestedRoute?.kind === "primary") {
+          providerState = await handlePrimaryFailure(options, providerState, error);
+        }
+      }
     }
   }
 
-  const primaryFailure = failures[0];
-  const fallbackConfig = config.llm.fallback;
-
-  if (fallbackConfig) {
-    const fallbackAttempt = buildProviderAttempt(config, fallbackConfig, thinkingMode);
-
-    if (!fallbackAttempt.adapter) {
-      const fallbackFailure = buildFailure(
-        fallbackAttempt.providerId,
-        "unknown-provider"
-      );
-      failures.push(fallbackFailure);
-      console.warn(
-        `LLM provider "${primaryAttempt.providerId}" failed and fallback provider "${fallbackAttempt.providerId}" is unknown, falling back to mock:`,
-        primaryFailure.reason
+  if (
+    routeAttempts.fallbackAttempt &&
+    routeAttempts.fallbackAttempt.providerId !== routeAttempts.primaryAttempt?.providerId
+  ) {
+    if (!routeAttempts.fallbackAttempt.adapter) {
+      failures.push(
+        buildFailure(routeAttempts.fallbackAttempt.providerId, "unknown-provider")
       );
     } else {
-      console.warn(
-        `LLM provider "${primaryAttempt.providerId}" failed, attempting fallback provider "${fallbackAttempt.providerId}":`,
-        primaryFailure.reason
-      );
-
       try {
         const response = await executeAttempt({
-          attempt: fallbackAttempt,
+          attempt: routeAttempts.fallbackAttempt,
           context,
           options,
           stream,
           mockFallback: {
-            requestedProvider: primaryAttempt.providerId,
-            reason: primaryFailure.reason,
+            requestedProvider: routeAttempts.primaryAttempt?.providerId || null,
+            reason: failures[0]?.reason || null,
             chain: failures
           }
         });
-
-        return attachResponseMeta(response, {
-          requestTuning: fallbackAttempt.requestTuning || primaryAttempt.requestTuning,
-          requestedProvider: primaryAttempt.providerId,
-          fallbackUsed: true,
-          fallbackReason: primaryFailure.reason,
-          fallbackChain: failures
+        const fallbackReason = failures[0]?.reason || null;
+        const attached = attachResponseMeta(response, {
+          requestTuning:
+            routeAttempts.fallbackAttempt.requestTuning ||
+            routeAttempts.primaryAttempt?.requestTuning ||
+            null,
+          requestedProvider:
+            routeAttempts.primaryAttempt?.providerId ||
+            routeAttempts.fallbackAttempt.providerId,
+          activeRoute: routeAttempts.fallbackAttempt.route,
+          modelSelection,
+          manualSelection: routeAttempts.manualSelection,
+          fallbackUsed: Boolean(failures.length > 0 || autoCooldownActive),
+          fallbackReason,
+          fallbackChain: failures,
+          primaryCooldownUntil: providerState.cooldownUntil,
+          primaryCooldownActive: autoCooldownActive
         });
-      } catch (error) {
-        const fallbackFailure = normalizeAttemptError(fallbackAttempt.providerId, error);
-        failures.push(fallbackFailure);
-        console.warn(
-          `Fallback LLM provider "${fallbackAttempt.providerId}" failed, falling back to mock:`,
-          fallbackFailure.reason
+
+        providerState = await updateLastResolved(
+          options,
+          providerState,
+          attached.providerMeta
         );
+        return attached;
+      } catch (error) {
+        failures.push(normalizeAttemptError(routeAttempts.fallbackAttempt.providerId, error));
       }
     }
-  } else {
-    console.warn(
-      `LLM provider "${primaryAttempt.providerId}" failed, falling back to mock:`,
-      primaryFailure.reason
-    );
   }
 
   return executeMockFallback({
@@ -318,9 +612,16 @@ async function generateWithFallback(context, config, options = {}, stream = fals
     config,
     options,
     stream,
-    requestedProvider: primaryAttempt.providerId,
-    requestTuning: primaryAttempt.requestTuning,
-    failures
+    requestedProvider: routeAttempts.primaryAttempt?.providerId || config.llm.provider,
+    requestTuning:
+      routeAttempts.primaryAttempt?.requestTuning ||
+      routeAttempts.fallbackAttempt?.requestTuning ||
+      null,
+    failures,
+    activeRoute: routeAttempts.fallbackAttempt?.route || routeAttempts.requestedRoute,
+    providerState,
+    modelSelection,
+    manualSelection: routeAttempts.manualSelection
   });
 }
 

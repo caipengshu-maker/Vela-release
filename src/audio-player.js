@@ -1,8 +1,6 @@
 /**
  * Streaming audio player using MediaSource Extensions (MSE).
- *
- * MSE handles MP3 frame boundaries natively, eliminating the micro-gaps
- * that Web Audio API's decodeAudioData introduces between chunks.
+ * It also keeps a replayable blob per completed TTS session.
  */
 
 function decodeBase64ToUint8Array(input) {
@@ -84,6 +82,9 @@ export class AudioPlayerService {
     this.streamFinished = false;
     this.sourceOpen = false;
     this.initialized = false;
+    this.currentChunkBytes = [];
+    this.currentMimeType = MSE_MIME;
+    this.replayCache = new Map();
   }
 
   _createElements() {
@@ -111,7 +112,7 @@ export class AudioPlayerService {
       this.sourceOpen = true;
 
       try {
-        this.sourceBuffer = this.mediaSource.addSourceBuffer(MSE_MIME);
+        this.sourceBuffer = this.mediaSource.addSourceBuffer(this.currentMimeType);
         this.sourceBuffer.mode = "sequence";
 
         this.sourceBuffer.addEventListener("updateend", () => {
@@ -161,66 +162,14 @@ export class AudioPlayerService {
     }
   }
 
-  beginSession(sessionId) {
-    const nextSessionId = String(sessionId || "vela-tts").trim() || "vela-tts";
-    if (this.sessionId === nextSessionId && this.initialized) {
-      return;
-    }
-
-    this.reset();
-    this.sessionId = nextSessionId;
-    this._initMediaSource();
-  }
-
-  appendChunk(chunk) {
-    const bytes = resolveChunkBytes(chunk);
-    if (!bytes) {
-      return;
-    }
-
-    this.beginSession(chunk?.sessionId);
-    this.pendingChunks.push(bytes);
-
-    if (this.sourceBuffer && this.sourceOpen) {
-      this._drainQueue();
-    }
-
-    // Start playback as soon as we have data.
-    if (this.audio && this.audio.paused) {
-      this.audio.play().catch(() => {
-        // Autoplay may be blocked; user interaction will resume.
-      });
-    }
-  }
-
-  finish(sessionId) {
-    if (sessionId && this.sessionId && sessionId !== this.sessionId) {
-      return;
-    }
-
-    this.streamFinished = true;
-
-    if (
-      this.pendingChunks.length === 0 &&
-      !this.isAppending &&
-      this.sourceOpen &&
-      this.mediaSource?.readyState === "open"
-    ) {
-      try {
-        this.mediaSource.endOfStream();
-      } catch {
-        // Ignore.
-      }
-    }
-  }
-
-  reset() {
-    this.playbackToken += 1;
+  _cleanupCurrentStream() {
     this.pendingChunks = [];
     this.isAppending = false;
     this.streamFinished = false;
     this.sourceOpen = false;
     this.initialized = false;
+    this.currentChunkBytes = [];
+    this.currentMimeType = MSE_MIME;
 
     if (this.audio) {
       this.audio.pause();
@@ -250,8 +199,121 @@ export class AudioPlayerService {
     this.sessionId = null;
   }
 
+  beginSession(sessionId, mimeType = MSE_MIME) {
+    const nextSessionId = String(sessionId || "vela-tts").trim() || "vela-tts";
+    if (this.sessionId === nextSessionId && this.initialized) {
+      return;
+    }
+
+    this.reset();
+    this.sessionId = nextSessionId;
+    this.currentMimeType = mimeType || MSE_MIME;
+    this.currentChunkBytes = [];
+    this._initMediaSource();
+  }
+
+  appendChunk(chunk) {
+    const bytes = resolveChunkBytes(chunk);
+    if (!bytes) {
+      return;
+    }
+
+    this.beginSession(chunk?.sessionId, chunk?.mimeType || MSE_MIME);
+    this.pendingChunks.push(bytes);
+    this.currentChunkBytes.push(bytes);
+
+    if (this.sourceBuffer && this.sourceOpen) {
+      this._drainQueue();
+    }
+
+    if (this.audio && this.audio.paused) {
+      this.audio.play().catch(() => {
+        // Autoplay may be blocked; user interaction will resume.
+      });
+    }
+  }
+
+  finish(sessionId) {
+    if (sessionId && this.sessionId && sessionId !== this.sessionId) {
+      return null;
+    }
+
+    this.streamFinished = true;
+
+    if (this.currentChunkBytes.length > 0 && this.sessionId) {
+      const blob = new Blob(this.currentChunkBytes, {
+        type: this.currentMimeType || MSE_MIME
+      });
+      const existingReplay = this.replayCache.get(this.sessionId);
+      if (existingReplay?.url) {
+        URL.revokeObjectURL(existingReplay.url);
+      }
+
+      this.replayCache.set(this.sessionId, {
+        url: URL.createObjectURL(blob),
+        mimeType: this.currentMimeType || MSE_MIME
+      });
+    }
+
+    if (
+      this.pendingChunks.length === 0 &&
+      !this.isAppending &&
+      this.sourceOpen &&
+      this.mediaSource?.readyState === "open"
+    ) {
+      try {
+        this.mediaSource.endOfStream();
+      } catch {
+        // Ignore.
+      }
+    }
+
+    return this.getReplay(this.sessionId);
+  }
+
+  getReplay(sessionId) {
+    if (!sessionId) {
+      return null;
+    }
+
+    const replay = this.replayCache.get(sessionId);
+    if (!replay) {
+      return null;
+    }
+
+    return {
+      sessionId,
+      url: replay.url,
+      mimeType: replay.mimeType
+    };
+  }
+
+  playReplay(replay) {
+    if (!replay?.url) {
+      return;
+    }
+
+    this._createElements();
+    this.audio.pause();
+    this.audio.src = replay.url;
+    this.audio.currentTime = 0;
+    void this.audio.play().catch(() => {});
+  }
+
+  reset() {
+    this.playbackToken += 1;
+    this._cleanupCurrentStream();
+  }
+
   async dispose() {
     this.reset();
+
+    for (const replay of this.replayCache.values()) {
+      if (replay?.url) {
+        URL.revokeObjectURL(replay.url);
+      }
+    }
+    this.replayCache.clear();
 
     if (this.audio) {
       this.audio.remove();

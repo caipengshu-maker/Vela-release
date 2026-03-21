@@ -12,6 +12,10 @@ import { MemoryRetriever, inferEmotionFromText } from "./memory-retriever.js";
 import { MemorySummarizer } from "./memory-summarizer.js";
 import { SessionStateStore } from "./session-state.js";
 import { buildContext } from "./context-builder.js";
+import { updateBehaviorPatternsIfNeeded } from "./behavior-patterns.js";
+import { buildContextFusion } from "./context-fusion.js";
+import { getTimeAwareness } from "./context-providers/time-provider.js";
+import { getWeatherAwareness } from "./context-providers/weather-provider.js";
 import {
   mapAvatarState,
   settleAvatarState
@@ -24,7 +28,12 @@ import {
   buildInteractionIntent,
   resolveInteractionPlan
 } from "./interaction-policy.js";
-import { generateReply, generateReplyStream } from "./provider.js";
+import {
+  generateReply,
+  generateReplyStream,
+  listAvailableModels,
+  resolveModelSelection
+} from "./provider.js";
 import {
   listThinkingModes,
   normalizeThinkingMode
@@ -51,12 +60,8 @@ function formatTime(isoString) {
 }
 
 function extractTopicLabel(text) {
-  const cleaned = text.replace(/\s+/g, " ").trim();
-  if (!cleaned) {
-    return "近况";
-  }
-
-  return clipText(cleaned, 18);
+  const cleaned = String(text || "").replace(/\s+/g, " ").trim();
+  return cleaned ? clipText(cleaned, 18) : "近况";
 }
 
 function createTurnSummary({ sessionId, userMessage, assistantReply, avatar }) {
@@ -68,7 +73,7 @@ function createTurnSummary({ sessionId, userMessage, assistantReply, avatar }) {
     sessionId,
     createdAt,
     topicLabel,
-    summary: `聊到“${topicLabel}”，Vela 用${avatar.emotionLabel}而克制的方式把这轮对话接住了。`,
+    summary: `聊到“${topicLabel}”，Vela 以${avatar.emotionLabel}、克制的方式把这轮对话接住了。`,
     userSnippet: clipText(userMessage, 48),
     assistantSnippet: clipText(assistantReply, 60),
     avatar
@@ -77,7 +82,7 @@ function createTurnSummary({ sessionId, userMessage, assistantReply, avatar }) {
 
 function buildWelcomeNote(recentSummary) {
   if (!recentSummary) {
-    return "我在。今天如果有想继续的事，或者只是想随便说一句，都可以直接开始。";
+    return "如果你今天有想继续的事，或者只想先说一句，也可以直接开始。";
   }
 
   return `上次我们停在“${recentSummary.topicLabel || clipText(recentSummary.summary, 24)}”。如果你愿意，可以从那里继续，也可以换一件新的事。`;
@@ -95,7 +100,7 @@ function buildOnboardingState(profile) {
   return {
     required: true,
     completed: false,
-    prompt: "先告诉我，我该怎么称呼你。轻轻一句就好。",
+    prompt: "先告诉我，我该怎么称呼你。轻轻一句就够了。",
     fields: {
       velaName: onboarding.velaName || "Vela",
       userName: onboarding.userName || "",
@@ -132,6 +137,100 @@ function replaceTextBlocks(blocks, text) {
   return blocks.map((block) =>
     block?.type === "text" ? { ...block, text } : block
   );
+}
+
+function buildRelationshipUnlockHints(relationship) {
+  const stage = String(relationship?.stage || "warm").trim().toLowerCase();
+
+  switch (stage) {
+    case "reserved":
+      return ["先保持礼貌和分寸，重点是接住情绪，不要抢着靠近。"];
+    case "warm":
+      return ["可以有一点朦胧和靠近感，但不要突然使用强亲密称呼。"];
+    case "close":
+      return ["亲密感可以更自然一点，但仍然以真实和克制为先。"];
+    case "intimate":
+      return ["已经足够熟悉，也要避免用力过猛，保持自然流动。"];
+    default:
+      return ["先保持自然和分寸，不要突然越级表达。"];
+  }
+}
+
+function parseModelCommand(message) {
+  const match = String(message || "")
+    .trim()
+    .match(/^\/model\s+([^\s]+)\s*$/i);
+
+  return match ? match[1] : null;
+}
+
+function buildModelStatus(config, runtimeSession, persistedState) {
+  const availableModels = listAvailableModels(config).map((model) => ({
+    id: model.id,
+    label: model.label,
+    kind: model.kind
+  }));
+  const providerRouting =
+    runtimeSession?.providerRouting || persistedState?.providerRouting || {};
+  const selectedModel =
+    runtimeSession?.selectedModel || providerRouting.selectedModel || "auto";
+  const resolvedSelection = resolveModelSelection(config, selectedModel);
+  const lastResolved = providerRouting.lastResolved || null;
+  const cooldownUntil = providerRouting.cooldownUntil || null;
+  const cooldownUntilMs = Date.parse(cooldownUntil || "");
+  const cooldownActive =
+    Number.isFinite(cooldownUntilMs) && cooldownUntilMs > Date.now();
+
+  return {
+    availableModels,
+    selectedModel,
+    selectedLabel:
+      selectedModel === "auto"
+        ? "自动"
+        : resolvedSelection?.label || selectedModel,
+    activeLabel:
+      lastResolved?.activeRouteLabel ||
+      resolvedSelection?.label ||
+      availableModels[0]?.label ||
+      "主模型",
+    fallbackUsed: Boolean(lastResolved?.fallbackUsed),
+    fallbackReason: lastResolved?.fallbackReason || null,
+    manualSelection: selectedModel !== "auto",
+    cooldownUntil,
+    cooldownActive
+  };
+}
+
+function buildModelSwitchMessage(config, selectedModel) {
+  const selection =
+    selectedModel === "auto"
+      ? { label: "自动路由" }
+      : resolveModelSelection(config, selectedModel);
+
+  return {
+    id: randomUUID(),
+    role: "assistant",
+    variant: "system-tip",
+    createdAt: new Date().toISOString(),
+    content:
+      selectedModel === "auto"
+        ? "模型已切回自动路由。主模型可用时优先走主模型，必要时再优雅降级。"
+        : `已切换到 ${selection?.label || selectedModel}。后续对话会优先按这个选择发送。`
+  };
+}
+
+function buildInvalidModelMessage(config) {
+  const options = listAvailableModels(config)
+    .map((entry) => entry.id)
+    .join(" / ");
+
+  return {
+    id: randomUUID(),
+    role: "assistant",
+    variant: "system-tip",
+    createdAt: new Date().toISOString(),
+    content: `可用模型：auto / ${options}。用法：/model <name>`
+  };
 }
 
 export class VelaCore {
@@ -187,6 +286,8 @@ export class VelaCore {
     this.runtimeSession.thinkingMode = normalizeThinkingMode(
       this.runtimeSession.thinkingMode
     );
+    this.runtimeSession.selectedModel =
+      this.runtimeSession.providerRouting?.selectedModel || "auto";
 
     this.memorySnapshot = await this.memoryStore.loadMemorySnapshot();
     this.persona = buildPersona(this.memorySnapshot.profile);
@@ -281,8 +382,11 @@ export class VelaCore {
     const nextAvatar =
       avatar ||
       this.currentAvatar ||
-      this.buildPresenceAvatar(this.runtimeSession.voiceModeEnabled ? "listening" : "idle");
-    const nextOnboarding = onboarding ||
+      this.buildPresenceAvatar(
+        this.runtimeSession.voiceModeEnabled ? "listening" : "idle"
+      );
+    const nextOnboarding =
+      onboarding ||
       (memory.profile.onboarding?.completed
         ? {
             required: false,
@@ -309,7 +413,7 @@ export class VelaCore {
       welcomeNote:
         welcomeNote ??
         (nextOnboarding.required
-          ? "第一次见面，不用填表。先决定我叫什么、像什么样的人、要用什么距离靠近你。"
+          ? "第一面不用填表。先决定她怎么叫你，再从第一句话开始。"
           : buildWelcomeNote(memory.recentSummaries[0])),
       memoryPeek: buildMemoryPeek(memory),
       voiceMode: this.buildVoiceModeState(),
@@ -318,6 +422,11 @@ export class VelaCore {
       tts,
       asr,
       status: this.buildStatusSnapshot(nextAvatar),
+      modelStatus: buildModelStatus(
+        this.config,
+        this.runtimeSession,
+        this.persistedState
+      ),
       onboarding: nextOnboarding,
       session: {
         launchTurnCount: this.runtimeSession.launchTurnCount,
@@ -383,7 +492,12 @@ export class VelaCore {
       avatar,
       status: this.buildStatusSnapshot(avatar),
       voiceMode: this.buildVoiceModeState(),
-      thinkingMode: this.runtimeSession.thinkingMode
+      thinkingMode: this.runtimeSession.thinkingMode,
+      modelStatus: buildModelStatus(
+        this.config,
+        this.runtimeSession,
+        this.persistedState
+      )
     });
   }
 
@@ -431,11 +545,7 @@ export class VelaCore {
       });
     }
 
-    if (this.currentSpeech !== speech) {
-      return;
-    }
-
-    if (speech?.lifecycle?.finished) {
+    if (this.currentSpeech !== speech || speech?.lifecycle?.finished) {
       return;
     }
 
@@ -521,10 +631,11 @@ export class VelaCore {
         {
           id: randomUUID(),
           role: "assistant",
+          createdAt: new Date().toISOString(),
           content: replyText
         }
       ],
-      welcomeNote: "唤醒成功。现在你可以把第一句话交给她。",
+      welcomeNote: "唤醒完成。现在可以把第一句话交给她。",
       onboarding: {
         required: false,
         completed: true
@@ -540,9 +651,12 @@ export class VelaCore {
       await this.cancelCurrentSpeech(options.onEvent);
     }
 
-    this.currentAvatar = settleAvatarState(this.currentAvatar || this.buildPresenceAvatar("idle"), {
-      voiceModeEnabled: Boolean(enabled)
-    });
+    this.currentAvatar = settleAvatarState(
+      this.currentAvatar || this.buildPresenceAvatar("idle"),
+      {
+        voiceModeEnabled: Boolean(enabled)
+      }
+    );
 
     await this.emitAvatarState(options.onEvent, this.currentAvatar);
 
@@ -560,6 +674,19 @@ export class VelaCore {
     });
   }
 
+  async setModelSelection(selection) {
+    const normalizedSelection = String(selection || "").trim().toLowerCase() || "auto";
+
+    this.runtimeSession.selectedModel = normalizedSelection;
+    this.runtimeSession.providerRouting = {
+      ...this.runtimeSession.providerRouting,
+      selectedModel: normalizedSelection
+    };
+
+    await this.sessionStore.saveProviderRouting(this.runtimeSession);
+    this.persistedState = await this.sessionStore.loadPersistedState();
+  }
+
   async interruptOutput(options = {}) {
     if (this.currentSpeech) {
       await this.cancelCurrentSpeech(options.onEvent);
@@ -575,10 +702,75 @@ export class VelaCore {
     });
   }
 
+  async persistProviderRouting(providerRouting) {
+    this.runtimeSession.providerRouting = {
+      ...this.runtimeSession.providerRouting,
+      ...providerRouting
+    };
+    this.runtimeSession.selectedModel =
+      this.runtimeSession.providerRouting.selectedModel ||
+      this.runtimeSession.selectedModel ||
+      "auto";
+    await this.sessionStore.saveProviderRouting(this.runtimeSession);
+    this.persistedState = await this.sessionStore.loadPersistedState();
+  }
+
+  async buildAwarenessPacket(memory, relevantMemories, options = {}) {
+    const behaviorPatterns = await updateBehaviorPatternsIfNeeded({
+      store: this.localStore,
+      memoryStore: this.memoryStore,
+      turnIndex: this.runtimeSession.lifetimeTurnCount
+    }).catch(() => null);
+    const timeAwareness = getTimeAwareness({
+      runtimeSession: this.runtimeSession,
+      lastActiveAt: this.persistedState?.lastActiveAt || null
+    });
+    const weather = await getWeatherAwareness({
+      config: this.config,
+      fetchImpl: options.fetchImpl
+    }).catch(() => null);
+    const relationshipUnlockHints = buildRelationshipUnlockHints(memory.relationship);
+    const awarenessPacket = buildContextFusion({
+      timeAwareness,
+      weather,
+      profile: memory.profile,
+      relationship: memory.relationship,
+      recentSummaries: memory.recentSummaries,
+      relevantMemories,
+      userFacts: memory.userFacts || [],
+      behaviorPatterns,
+      relationshipUnlockHints
+    });
+
+    return {
+      awarenessPacket,
+      relationshipUnlockHints
+    };
+  }
+
   async handleUserMessage(message, options = {}) {
-    const trimmedMessage = message.trim();
+    const trimmedMessage = String(message || "").trim();
     if (!trimmedMessage) {
       return this.getBootstrapState();
+    }
+
+    const modelCommand = parseModelCommand(trimmedMessage);
+    if (modelCommand) {
+      const selection = modelCommand.toLowerCase();
+
+      if (selection !== "auto" && !resolveModelSelection(this.config, selection)) {
+        return this.buildAppState({
+          messages: [...this.runtimeSession.messages, buildInvalidModelMessage(this.config)],
+          welcomeNote: ""
+        });
+      }
+
+      await this.setModelSelection(selection);
+
+      return this.buildAppState({
+        messages: [...this.runtimeSession.messages, buildModelSwitchMessage(this.config, selection)],
+        welcomeNote: ""
+      });
     }
 
     if (this.currentSpeech) {
@@ -590,6 +782,7 @@ export class VelaCore {
       id: randomUUID(),
       role: "user",
       content: trimmedMessage,
+      createdAt: new Date().toISOString(),
       blocks: [
         {
           type: "text",
@@ -608,6 +801,8 @@ export class VelaCore {
       userInput: trimmedMessage,
       currentEmotion: inferredEmotion
     });
+    const { awarenessPacket, relationshipUnlockHints } =
+      await this.buildAwarenessPacket(memory, relevantMemories, options);
     const context = buildContext({
       persona: this.persona,
       profile: memory.profile,
@@ -615,7 +810,9 @@ export class VelaCore {
       recentSummaries: memory.recentSummaries,
       relevantMemories,
       userFacts: memory.userFacts || [],
-      runtimeSession: this.runtimeSession
+      runtimeSession: this.runtimeSession,
+      awarenessPacket,
+      relationshipUnlockHints
     });
 
     const assistantMessageId = randomUUID();
@@ -625,6 +822,16 @@ export class VelaCore {
     let prefixBuffer = null;
     let streamingIntent = null;
     let streamingAvatarResolved = false;
+
+    const providerOptions = {
+      thinkingMode: this.runtimeSession.thinkingMode,
+      fetchImpl: options.fetchImpl,
+      modelSelection: this.runtimeSession.selectedModel,
+      providerState: this.runtimeSession.providerRouting,
+      persistProviderState: async (providerRouting) => {
+        await this.persistProviderRouting(providerRouting);
+      }
+    };
 
     if (options.onEvent) {
       options.onEvent({
@@ -639,8 +846,7 @@ export class VelaCore {
       prefixBuffer = createStreamPrefixBuffer();
 
       assistantResponse = await generateReplyStream(context, this.config, {
-        thinkingMode: this.runtimeSession.thinkingMode,
-        fetchImpl: options.fetchImpl,
+        ...providerOptions,
         onEvent: (event) => {
           if (event.type === "thinking-delta") {
             options.onEvent?.({
@@ -696,10 +902,7 @@ export class VelaCore {
         }
       });
     } else {
-      assistantResponse = await generateReply(context, this.config, {
-        thinkingMode: this.runtimeSession.thinkingMode,
-        fetchImpl: options.fetchImpl
-      });
+      assistantResponse = await generateReply(context, this.config, providerOptions);
     }
 
     const parsedPerformance = options.onEvent
@@ -723,7 +926,11 @@ export class VelaCore {
     const { avatar: speakingAvatar, plan } = this.buildSpeakingAvatar({
       replyText: assistantReply,
       userMessage: trimmedMessage,
-      llmIntent: parsedPerformance.intent || streamingIntent || prefixBuffer?.getIntent() || null
+      llmIntent:
+        parsedPerformance.intent ||
+        streamingIntent ||
+        prefixBuffer?.getIntent() ||
+        null
     });
     this.policyHistory = {
       ...this.policyHistory,
@@ -734,6 +941,7 @@ export class VelaCore {
       id: assistantMessageId,
       role: "assistant",
       content: assistantReply,
+      createdAt: new Date().toISOString(),
       blocks: assistantResponse.blocks,
       llm: {
         text: assistantResponse.text,
@@ -759,7 +967,12 @@ export class VelaCore {
     });
 
     await this.memoryStore.appendTurnSummary(summary);
-    await this.sessionStore.save(this.runtimeSession, speakingAvatar, summary);
+    await this.sessionStore.save(
+      this.runtimeSession,
+      speakingAvatar,
+      summary,
+      assistantResponse.providerMeta
+    );
     this.persistedState = await this.sessionStore.loadPersistedState();
 
     const nextMemory = await this.loadMemorySnapshot();
@@ -824,6 +1037,14 @@ export class VelaCore {
           (await this.memoryRetriever?.loadEpisodes?.()) ||
           (await this.memoryStore.loadEpisodes());
         await this.memoryStore.evaluateRelationship(episodes);
+      }
+
+      if (turnIndex > 0 && turnIndex % 20 === 0) {
+        await updateBehaviorPatternsIfNeeded({
+          store: this.localStore,
+          memoryStore: this.memoryStore,
+          turnIndex
+        });
       }
     } catch (error) {
       console.warn("background memory task failed:", error?.message || error);

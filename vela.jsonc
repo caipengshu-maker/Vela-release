@@ -18,6 +18,11 @@
     "summaryIndexLimit": 12,
     "sessionMessageLimit": 12
   },
+  "user": {
+    "location": {
+      "city": "Shanghai"
+    }
+  },
   "llm": {
     "provider": "minimax-messages",
     "baseUrl": "https://api.minimaxi.com/anthropic",

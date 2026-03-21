@@ -1,11 +1,11 @@
-# TASKS.md - Vela
+﻿# TASKS.md - Vela
 
 ## 项目信息
 - 项目名称：Vela
-- 当前阶段：M1 收口中
+- 当前阶段：M4 Phase A 已完成并冻结，Phase B 待启动（context-first continuity）
 - 项目责任人：小新
 - 默认编码施工位：Codex（GPT-5.4 xhigh）
-- 最后更新：2026-03-19
+- 最后更新：2026-03-21
 
 ## 状态枚举
 - TODO
@@ -15,15 +15,14 @@
 - DONE
 
 ## 当前总体目标
-把文本管道从"整段蹦出"升级为自然流式，同时打通基础 provider 稳定性，为后续语音和在场感奠基。
+完成 M4 Round 1 收口：把感知融合、provider 优雅降级、模型切换、UI 重做和语音重播整理到可体验、可审计、可继续推进的状态。
 
-## 当前阶段范围冻结（2026-03-20 追加钉板）
-- **M2 只做文字链路闭环**：流式文本、状态机、thinking、基础 fallback
-- **TTS / ASR / MiniMax WebSocket 语音链路不属于 M2 通过条件**，统一放到 M3
-- M2 仍要求真实 MiniMax 主脑接入与 k2p5 第二视角复验，但验收对象限定为**文字主链路**
+## 当前阶段范围冻结（2026-03-21）
+- **Round 1 聚焦三件事**：感知融合、provider 优雅降级、UI 重做
+- **Round 1 已通过技术验证**：`build` / `smoke` / `verify:core` / `verify:providers` / `verify:m2` 全通过
+- **当前待办**：进入 Phase B（context-first continuity + lightweight memory）
 
 ## 当前额外施工约束
-- `M1-T1 ~ M1-T6` 默认在**一个连续施工上下文**内推进，不碎成多个新会话
 - 长任务默认派 **CLI 施工位**
 - UI 审美明确避开"AI 工具味"，参考**二次元乙游**方向
 - 若产出对 OpenClaw 有通用价值的源码，后续应评估是否抽象回馈
@@ -262,14 +261,16 @@
 ## M4 - 关系深化与轻主动
 
 ### M4-T1 启动续接旧话题
-- 状态：TODO
+- 状态：IN-REVIEW
 - 优先级：P1
 - Owner：Codex
+- 备注：Round 0 记忆系统已落地；Round 1 感知融合已把旧话题续接所需 awareness packet 主链打通，待用户体验验收后正式关门
 
 ### M4-T2 会话内自然提旧事
-- 状态：TODO
+- 状态：IN-REVIEW
 - 优先级：P1
 - Owner：Codex
+- 备注：相关旧记忆已进入 context fusion，待体验验收确认“自然而不硬提”
 
 ### M4-T3 轻主动节奏
 - 状态：TODO
@@ -280,13 +281,31 @@
   - [ ] 节奏可控
 
 ### M4-T4 provider 稳定性收尾
-- 状态：TODO
+- 状态：IN-REVIEW
 - 优先级：P1
 - Owner：Codex
 - DoD：
-  - [ ] OpenAI-compatible / Anthropic / MiniMax 三类长期稳定
-  - [ ] 模型能力标签 / 提示完善
-  - [ ] 关键异常不把系统打死
+  - [x] OpenAI-compatible / Anthropic / MiniMax 三类长期稳定适配仍可通过验证
+  - [x] provider cooldown / fallback routing / 手动模型切换已接入
+  - [x] 关键异常不把系统打死（`build` / `smoke` / `verify:*` 已过）
+  - [ ] 用户体验确认 fallback 提示不过分打扰
+
+### M4-R1 感知融合 + Provider 优雅降级 + UI 重做
+- 状态：IN-REVIEW
+- 优先级：P0
+- Owner：Codex / 小新 / 舒彩鹏
+- 产物：`docs/M4-R1-REPORT.md`
+- DoD：
+  - [x] `time-provider` / `weather-provider` / `behavior-patterns` / `context-fusion` 已接入主链
+  - [x] `/model minimax|k2p5|auto` 已接入
+  - [x] provider 连续失败 2 次后进入 5 小时 cooldown，并支持自动走 fallback
+  - [x] UI 完成 SVG 化、输入区重做、fallback/model 轻提示、assistant replay 支持
+  - [x] `npm run build`
+  - [x] `npm run smoke`
+  - [x] `npm run verify:core`
+  - [x] `npm run verify:providers`
+  - [x] `npm run verify:m2`
+  - [ ] 用户人眼 / 体验验收
 
 ---
 
@@ -303,5 +322,10 @@
 ---
 
 ## 当前下一步
-1. 进入 M4：关系深化 + UI 打磨 + idle 微动 + 手臂自然度 + 联网搜索 + 长期记忆
-2. M3 遗留 UI 问题优先在 M4 前期收掉
+1. 用户打开 Vela 做 M4 Round 1 人眼 / 体验验收
+2. 根据体验反馈补最后一轮 UI / 交互微调（如果需要）
+3. 完成 Round 1 最终 commit / push / closure
+4. 再切到 M4 Round 2：轻主动 / 自然提旧事深化 / idle 微动 / 手臂自然度 / 联网搜索
+
+
+
