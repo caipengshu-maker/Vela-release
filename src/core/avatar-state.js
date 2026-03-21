@@ -8,12 +8,16 @@ const presenceLabels = {
 const emotionLabels = {
   calm: "平静",
   happy: "轻松",
-  affectionate: "柔和",
+  affectionate: "温和",
   playful: "逗趣",
   concerned: "关切",
   sad: "低落",
-  angry: "克制地硬一点",
-  whisper: "轻声"
+  angry: "克制",
+  whisper: "轻声",
+  surprised: "惊讶",
+  curious: "好奇",
+  shy: "害羞",
+  determined: "坚定"
 };
 
 const cameraLabels = {
@@ -24,9 +28,12 @@ const cameraLabels = {
 const actionLabels = {
   none: "停稳",
   nod: "轻点头",
-  "lean-in": "轻前倾",
+  "lean-in": "向前靠",
   "soft-smile": "轻笑",
   "head-tilt": "轻歪头",
+  "look-away": "移开视线",
+  "shake-head": "摇头",
+  wave: "挥手",
   "listen-settle": "听你说"
 };
 
@@ -67,9 +74,10 @@ export function settleAvatarState(avatar, { voiceModeEnabled }) {
     action: targetPresence === "listening" ? "listen-settle" : "none",
     actionLabel:
       actionLabels[targetPresence === "listening" ? "listen-settle" : "none"],
-    caption: targetPresence === "listening"
-      ? "我在，继续吧。"
-      : "在这里，等你把下一句慢慢说出来。"
+    caption:
+      targetPresence === "listening"
+        ? "我在，继续吧。"
+        : "在这里，等你把下一句慢慢说出来。"
   };
 }
 

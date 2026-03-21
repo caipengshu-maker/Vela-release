@@ -7,7 +7,11 @@ export const EMOTION_FAMILIES = [
   "concerned",
   "sad",
   "angry",
-  "whisper"
+  "whisper",
+  "surprised",
+  "curious",
+  "shy",
+  "determined"
 ];
 export const TTS_EMOTION_MODES = ["auto", "force"];
 export const CAMERA_STATES = ["wide", "close"];
@@ -17,6 +21,9 @@ export const ACTION_INTENTS = [
   "lean-in",
   "soft-smile",
   "head-tilt",
+  "look-away",
+  "shake-head",
+  "wave",
   "listen-settle"
 ];
 export const EMOTION_STRENGTHS = ["light", "normal"];
@@ -64,7 +71,53 @@ export const TTS_PRESET_MAP = {
   whisper: {
     id: "whisper",
     providerEmotion: "whisper"
+  },
+  surprised: {
+    id: "surprised",
+    providerEmotion: "surprised"
+  },
+  curious: {
+    id: "curious",
+    providerEmotion: "fluent"
+  },
+  shy: {
+    id: "shy",
+    providerEmotion: "calm"
+  },
+  determined: {
+    id: "determined",
+    providerEmotion: "fluent"
   }
+};
+
+export const EMOTION_TO_VRM_EXPRESSION = {
+  calm: "neutral",
+  happy: "happy",
+  playful: "happy",
+  surprised: "happy",
+  affectionate: "relaxed",
+  shy: "relaxed",
+  whisper: "relaxed",
+  concerned: "sad",
+  sad: "sad",
+  angry: "angry",
+  determined: "angry",
+  curious: "neutral"
+};
+
+export const EMOTION_TO_TTS_PROVIDER = {
+  calm: "calm",
+  happy: "happy",
+  playful: "happy",
+  surprised: "surprised",
+  affectionate: "calm",
+  shy: "calm",
+  whisper: "whisper",
+  concerned: "calm",
+  sad: "sad",
+  angry: "angry",
+  determined: "fluent",
+  curious: "fluent"
 };
 
 export function sanitizeEnum(value, allowedValues, fallback) {

@@ -4,48 +4,67 @@ import {
   CAMERA_SWITCH_COOLDOWN_MS,
   CLOSE_HOLD_MS,
   EMOTION_FAMILIES,
+  EMOTION_TO_VRM_EXPRESSION,
   EMOTION_STRENGTHS,
   RELATIONSHIP_STAGES,
   TTS_EMOTION_MODES,
   TTS_FORCE_CONTINUITY_WINDOW_MS,
   TTS_PRESET_MAP,
   normalizeTtsEmotionMode,
-  supportsMiniMaxProviderEmotion,
   sanitizeEnum,
+  supportsMiniMaxProviderEmotion,
   supportsMiniMaxWhisper
 } from "./interaction-contract.js";
 import { normalizeThinkingMode } from "./providers/thinking-mode.js";
 
+const EMOTION_TO_DEFAULT_MOTION = {
+  calm: "still",
+  happy: "tiny-nod",
+  affectionate: "soft-lean",
+  playful: "tiny-head-tilt",
+  concerned: "soft-lean",
+  sad: "head-down-light",
+  angry: "still",
+  whisper: "soft-lean",
+  surprised: "tiny-head-tilt",
+  curious: "tiny-head-tilt",
+  shy: "still",
+  determined: "tiny-nod"
+};
+
 function inferEmotionIntent({ replyText, userMessage, relationshipStage }) {
-  if (/(小声|轻一点|靠近一点|只跟你说|低声)/.test(replyText)) {
+  const reply = String(replyText || "");
+  const user = String(userMessage || "");
+
+  if (/(小声|轻一点|靠近一点|只跟你说|低声|悄悄)/.test(reply)) {
     return relationshipStage === "close" ? "whisper" : "affectionate";
   }
 
-  if (/(别急|慢一点|先缓|我在|先停一下|接住)/.test(replyText)) {
+  if (/(别急|慢一点|先缓一缓|我在|先停一下|接住|疼|受伤|摔|磕|流血|难受|不舒服)/.test(user + reply)) {
     return "concerned";
   }
 
-  if (/(记得|陪你|靠近|在这儿|继续吧|慢慢说)/.test(replyText)) {
+  if (/(记得|陪你|靠近|在这里|继续听|慢慢说)/.test(reply)) {
     return relationshipStage === "reserved" ? "calm" : "affectionate";
   }
 
-  if (/(哼|才不是|逗你|嘴硬|又来)/.test(replyText)) {
+  if (/(逗你|逗我|又来|嘴硬|调皮|打趣|故意气我)/.test(reply + user)) {
     return "playful";
   }
 
-  if (/(好呀|当然|挺好|高兴|轻松一点)/.test(replyText)) {
+  if (/(哈哈|好笑|笑死|太逗|开心|高兴|太好了|真好|真棒|好耶|太棒了|喜欢|舒心)/.test(reply + user)) {
     return "happy";
   }
 
-  if (/(遗憾|难过|心酸|轻轻地|慢一些)/.test(replyText)) {
+  if (/(遗憾|难过|心酸|低落|失落|沮丧|糟糕|可惜)/.test(reply + user)) {
     return "sad";
   }
 
-  if (/(不该|不能这样|够了|别再)/.test(replyText) && /(我会|先|但)/.test(replyText)) {
+  if (/(不该|不能这样|够了|别再|停下|太过分|我会|我来处理)/.test(reply + user)) {
     return "angry";
   }
 
-  if (/(累|难过|焦虑|害怕|失眠|崩|压力)/.test(userMessage)) {
+  if (/(紧张|焦虑|害怕|失眠|压力|心慌|慌|担心)/.test(user)) {
     return "concerned";
   }
 
@@ -80,6 +99,14 @@ function defaultActionForEmotion(emotion) {
       return "none";
     case "whisper":
       return "lean-in";
+    case "surprised":
+      return "head-tilt";
+    case "curious":
+      return "head-tilt";
+    case "shy":
+      return "look-away";
+    case "determined":
+      return "nod";
     default:
       return "none";
   }
@@ -106,7 +133,10 @@ function cohereAction(emotion, action, relationshipStage) {
 function cohereEmotion(emotion, relationshipStage, lateNight, gapMs) {
   let nextEmotion = sanitizeEnum(emotion, EMOTION_FAMILIES, "calm");
 
-  if (relationshipStage === "reserved" && nextEmotion === "whisper") {
+  if (
+    relationshipStage === "reserved" &&
+    (nextEmotion === "whisper" || nextEmotion === "shy")
+  ) {
     nextEmotion = "calm";
   }
 
@@ -138,21 +168,7 @@ function resolveExpressionForPresence(presence, emotion) {
     return "neutral";
   }
 
-  switch (emotion) {
-    case "happy":
-    case "playful":
-      return "happy";
-    case "affectionate":
-    case "concerned":
-    case "whisper":
-      return "relaxed";
-    case "sad":
-      return "sad";
-    case "angry":
-      return "angry";
-    default:
-      return "neutral";
-  }
+  return EMOTION_TO_VRM_EXPRESSION[emotion] || "neutral";
 }
 
 function resolveMotionForPresence(presence, emotion) {
@@ -168,22 +184,7 @@ function resolveMotionForPresence(presence, emotion) {
     return "tiny-head-drop";
   }
 
-  switch (emotion) {
-    case "happy":
-      return "tiny-nod";
-    case "affectionate":
-    case "concerned":
-    case "whisper":
-      return "soft-lean";
-    case "playful":
-      return "tiny-head-tilt";
-    case "sad":
-      return "head-down-light";
-    case "angry":
-    case "calm":
-    default:
-      return "still";
-  }
+  return EMOTION_TO_DEFAULT_MOTION[emotion] || "still";
 }
 
 function shouldAllowCloseCamera({
@@ -217,7 +218,7 @@ function resolveCamera({
   presence
 }) {
   if (presence !== "speaking") {
-    return presence === "listening" ? "wide" : "wide";
+    return "wide";
   }
 
   return shouldAllowCloseCamera({
@@ -300,16 +301,20 @@ function resolveTtsPreset({
 
 function buildCaption({ presence, emotion, camera, voiceModeEnabled }) {
   if (presence === "thinking") {
-    return "让我先把语境和旧事接稳。";
+    return "我先把语境和旧事接起来。";
   }
 
   if (presence === "speaking") {
     if (emotion === "concerned") {
-      return camera === "close" ? "她靠近了一点，语气也放轻了。" : "她把语气放轻了，但没有飘。";
+      return camera === "close"
+        ? "她靠近了一点，语气也放轻了。"
+        : "她把语气放轻了，但没有躲开。";
     }
 
     if (emotion === "affectionate" || emotion === "whisper") {
-      return camera === "close" ? "她把这句话贴近了一点说出来。" : "她把回应放得更柔了一些。";
+      return camera === "close"
+        ? "她把这句话贴近了一点说出来。"
+        : "她把回应放得更柔了一些。";
     }
 
     if (emotion === "playful") {
@@ -318,6 +323,22 @@ function buildCaption({ presence, emotion, camera, voiceModeEnabled }) {
 
     if (emotion === "angry") {
       return "她语气更硬了一点，但仍然克制。";
+    }
+
+    if (emotion === "surprised") {
+      return "她明显顿了一下，情绪先抬起来了。";
+    }
+
+    if (emotion === "curious") {
+      return "她把注意力往前收了一点，在认真追问。";
+    }
+
+    if (emotion === "shy") {
+      return "她有点不好意思，视线收了回去。";
+    }
+
+    if (emotion === "determined") {
+      return "她把态度立住了，说得很认真。";
     }
 
     return "她已经把回应接上来了。";
@@ -336,9 +357,26 @@ export function buildInteractionIntent({
   assistantResponse,
   thinkingMode,
   userMessage,
-  relationshipStage
+  relationshipStage,
+  llmIntent = null
 }) {
   const replyText = String(assistantResponse?.text || "").trim();
+
+  if (llmIntent) {
+    return {
+      replyText,
+      thinkingMode: normalizeThinkingMode(thinkingMode),
+      emotionIntent: sanitizeEnum(llmIntent.emotion, EMOTION_FAMILIES, "calm"),
+      cameraIntent: sanitizeEnum(llmIntent.camera, CAMERA_STATES, "wide"),
+      actionIntent: sanitizeEnum(llmIntent.action, ACTION_INTENTS, "none"),
+      emotionStrength: inferEmotionStrength({
+        emotion: llmIntent.emotion,
+        replyText,
+        lateNight: false
+      })
+    };
+  }
+
   const emotionIntent = inferEmotionIntent({
     replyText,
     userMessage,

@@ -15,6 +15,10 @@ import {
   settleAvatarState
 } from "./avatar-state.js";
 import {
+  createStreamPrefixBuffer,
+  parsePerformancePrefix
+} from "./performance-parser.js";
+import {
   buildInteractionIntent,
   resolveInteractionPlan
 } from "./interaction-policy.js";
@@ -116,6 +120,16 @@ function buildAvatarAssetState(config) {
     path: assetPath,
     fileName: assetPath ? path.basename(assetPath) : ""
   };
+}
+
+function replaceTextBlocks(blocks, text) {
+  if (!Array.isArray(blocks)) {
+    return blocks;
+  }
+
+  return blocks.map((block) =>
+    block?.type === "text" ? { ...block, text } : block
+  );
 }
 
 export class VelaCore {
@@ -319,14 +333,15 @@ export class VelaCore {
     return mapAvatarState(plan);
   }
 
-  buildSpeakingAvatar({ replyText, userMessage }) {
+  buildSpeakingAvatar({ replyText, userMessage, llmIntent = null }) {
     const intent = buildInteractionIntent({
       assistantResponse: {
         text: replyText
       },
       thinkingMode: this.runtimeSession.thinkingMode,
       userMessage,
-      relationshipStage: this.memorySnapshot?.relationship.stage || "warm"
+      relationshipStage: this.memorySnapshot?.relationship.stage || "warm",
+      llmIntent
     });
 
     const plan = resolveInteractionPlan({
@@ -535,6 +550,9 @@ export class VelaCore {
     let assistantResponse = null;
     let streamedText = "";
     let speech = null;
+    let prefixBuffer = null;
+    let streamingIntent = null;
+    let streamingAvatarResolved = false;
 
     if (options.onEvent) {
       options.onEvent({
@@ -545,6 +563,8 @@ export class VelaCore {
       if (this.runtimeSession.voiceModeEnabled) {
         speech = this.createSpeechOrchestrator(options.onEvent);
       }
+
+      prefixBuffer = createStreamPrefixBuffer();
 
       assistantResponse = await generateReplyStream(context, this.config, {
         thinkingMode: this.runtimeSession.thinkingMode,
@@ -560,23 +580,40 @@ export class VelaCore {
           }
 
           if (event.type === "text-delta") {
-            streamedText = event.text || `${streamedText}${event.delta}`;
+            const prefixResult = prefixBuffer.push(event.delta);
+
+            if (!prefixResult.resolved) {
+              return;
+            }
+
+            if (!streamingAvatarResolved) {
+              streamingAvatarResolved = true;
+              streamingIntent = prefixResult.intent || null;
+              streamedText = prefixResult.textDelta;
+            } else {
+              streamedText += prefixResult.textDelta;
+            }
+
             const { avatar, plan } = this.buildSpeakingAvatar({
               replyText: streamedText,
-              userMessage: trimmedMessage
+              userMessage: trimmedMessage,
+              llmIntent: streamingIntent
             });
 
             this.currentAvatar = avatar;
             void this.emitAvatarState(options.onEvent, avatar);
-            options.onEvent?.({
-              type: "assistant-stream-delta",
-              messageId: assistantMessageId,
-              delta: event.delta,
-              content: streamedText
-            });
 
-            if (speech) {
-              void speech.pushDelta(event.delta, plan).catch((error) => {
+            if (prefixResult.textDelta) {
+              options.onEvent?.({
+                type: "assistant-stream-delta",
+                messageId: assistantMessageId,
+                delta: prefixResult.textDelta,
+                content: streamedText
+              });
+            }
+
+            if (speech && prefixResult.textDelta) {
+              void speech.pushDelta(prefixResult.textDelta, plan).catch((error) => {
                 options.onEvent?.({
                   type: "speech-error",
                   message: error.message || "speech delta failed"
@@ -593,12 +630,28 @@ export class VelaCore {
       });
     }
 
+    const parsedPerformance = options.onEvent
+      ? prefixBuffer?.isResolved()
+        ? {
+            intent: streamingIntent || prefixBuffer.getIntent(),
+            text: streamedText
+          }
+        : parsePerformancePrefix(assistantResponse.text)
+      : parsePerformancePrefix(assistantResponse.text);
+
+    assistantResponse.text = parsedPerformance.text;
+    assistantResponse.blocks = replaceTextBlocks(
+      assistantResponse.blocks,
+      assistantResponse.text
+    );
+
     const assistantReply = assistantResponse.text;
     this.lastReplyText = assistantReply;
 
     const { avatar: speakingAvatar, plan } = this.buildSpeakingAvatar({
       replyText: assistantReply,
-      userMessage: trimmedMessage
+      userMessage: trimmedMessage,
+      llmIntent: parsedPerformance.intent || streamingIntent || prefixBuffer?.getIntent() || null
     });
     this.policyHistory = {
       ...this.policyHistory,

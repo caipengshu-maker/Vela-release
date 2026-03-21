@@ -5,6 +5,7 @@ import {
   VRMLoaderPlugin,
   VRMUtils
 } from "@pixiv/three-vrm";
+import { EMOTION_TO_VRM_EXPRESSION } from "./interaction-contract.js";
 
 const CAMERA_PRESETS = {
   wide: {
@@ -12,8 +13,8 @@ const CAMERA_PRESETS = {
     target: new THREE.Vector3(0, 1.28, 0.02)
   },
   close: {
-    position: new THREE.Vector3(0.1, 1.92, 1.92),
-    target: new THREE.Vector3(0.02, 1.86, 0.02)
+    position: new THREE.Vector3(0.08, 1.52, 1.35),
+    target: new THREE.Vector3(0.01, 1.46, 0.02)
   }
 };
 
@@ -22,6 +23,21 @@ const EMOTION_EXPRESSION_WEIGHTS = {
   relaxed: 0.58,
   sad: 0.66,
   angry: 0.62
+};
+
+const EMOTION_TO_SAFE_MOTION = {
+  calm: "still",
+  happy: "tiny-nod",
+  affectionate: "soft-lean",
+  playful: "tiny-head-tilt",
+  concerned: "soft-lean",
+  sad: "head-down-light",
+  angry: "still",
+  whisper: "soft-lean",
+  surprised: "tiny-head-tilt",
+  curious: "tiny-head-tilt",
+  shy: "still",
+  determined: "tiny-nod"
 };
 
 const EXPRESSION_KEYS = ["happy", "relaxed", "sad", "angry", "blink", "aa", "ih", "oh"];
@@ -156,8 +172,8 @@ function resolveSafePresentation(avatar) {
 
   const safeState = {
     ...state,
-    expression: state.expression || "neutral",
-    motion: state.motion || "still"
+    expression: state.expression || EMOTION_TO_VRM_EXPRESSION[state.emotion] || "neutral",
+    motion: state.motion || EMOTION_TO_SAFE_MOTION[state.emotion] || "still"
   };
 
   if (safeState.emotion === "sad") {
@@ -179,6 +195,41 @@ function resolveSafePresentation(avatar) {
         safeState.motion === "tiny-head-tilt" || safeState.motion === "tiny-nod"
           ? "still"
           : safeState.motion
+    };
+  }
+
+  if (safeState.emotion === "surprised") {
+    return {
+      ...safeState,
+      expression: "happy",
+      motion: safeState.motion === "still" ? "tiny-head-tilt" : safeState.motion
+    };
+  }
+
+  if (safeState.emotion === "curious") {
+    return {
+      ...safeState,
+      expression: "neutral",
+      motion:
+        safeState.motion === "still" || safeState.motion === "tiny-nod"
+          ? "tiny-head-tilt"
+          : safeState.motion
+    };
+  }
+
+  if (safeState.emotion === "shy") {
+    return {
+      ...safeState,
+      expression: "relaxed",
+      motion: "still"
+    };
+  }
+
+  if (safeState.emotion === "determined") {
+    return {
+      ...safeState,
+      expression: "angry",
+      motion: safeState.motion === "still" ? "tiny-nod" : safeState.motion
     };
   }
 
@@ -875,6 +926,16 @@ export class VrmAvatarController {
 
     if (presentation.emotion === "playful") {
       this._tempVecB.x += 0.08;
+    }
+
+    if (presentation.emotion === "shy") {
+      this._tempVecB.x += 0.18;
+      this._tempVecB.y -= 0.04;
+    }
+
+    if (presentation.emotion === "curious") {
+      this._tempVecB.y += 0.08;
+      this._tempVecB.z -= 0.02;
     }
 
     dampVector(this.lookAtTarget.position, this._tempVecB, 10, delta);
