@@ -1,8 +1,13 @@
 const PERFORMANCE_DELIMITER = "\n---\n";
 const PERFORMANCE_BOUNDARY = "\n---";
+const THINK_TAG_RE = /<think>[\s\S]*?<\/think>\s*/g;
+
+function stripThinkingTags(text) {
+  return text.replace(THINK_TAG_RE, "").trim();
+}
 
 function extractPerformanceSplit(raw) {
-  const text = String(raw || "");
+  const text = stripThinkingTags(String(raw || ""));
   const delimiterIndex = text.indexOf(PERFORMANCE_DELIMITER);
 
   if (delimiterIndex >= 0) {
@@ -45,7 +50,7 @@ function normalizeIntent(parsed) {
 }
 
 export function parsePerformancePrefix(raw) {
-  const rawText = String(raw || "");
+  const rawText = stripThinkingTags(String(raw || ""));
   const split = extractPerformanceSplit(rawText);
 
   if (!split.found) {
@@ -79,9 +84,11 @@ export function createStreamPrefixBuffer() {
   let buffer = "";
   let resolved = false;
   let intent = null;
+  let insideThink = false;
 
   function resolveFromBuffer() {
-    const split = extractPerformanceSplit(buffer);
+    const cleaned = stripThinkingTags(buffer);
+    const split = extractPerformanceSplit(cleaned);
 
     if (!split.found) {
       return null;
@@ -108,19 +115,22 @@ export function createStreamPrefixBuffer() {
       const nextDelta = String(delta || "");
 
       if (resolved) {
+        // Even after resolved, strip any residual thinking tags from pass-through deltas.
+        const cleanDelta = stripThinkingTags(nextDelta);
         return {
           resolved: true,
           intent,
-          textDelta: nextDelta
+          textDelta: cleanDelta
         };
       }
 
       buffer += nextDelta;
 
-      if (buffer.length > 500) {
+      // Increase limit to 1500 to accommodate thinking blocks before the JSON prefix.
+      if (buffer.length > 1500) {
         resolved = true;
         intent = null;
-        const textDelta = buffer;
+        const textDelta = stripThinkingTags(buffer);
         buffer = "";
 
         return {

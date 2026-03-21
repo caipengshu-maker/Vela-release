@@ -29,4 +29,25 @@ console.assert(s3.resolved, 'S3: should still be resolved');
 console.assert(s3.textDelta === '真的吗', 'S3: textDelta should pass through');
 
 console.log('Final intent:', JSON.stringify(buf.getIntent()));
+
+// Test 4: Thinking tags in non-stream parse
+const thinkInput = '<think>好，说个短的。有个人每天路过同一条街。不是什么好故事。</think> {"emotion":"calm","camera":"wide","action":"soft-smile"}\n---\n行，说个短的。有个人每天路过同一条街。';
+const r4 = parsePerformancePrefix(thinkInput);
+console.log('Test4 thinking:', JSON.stringify(r4));
+console.assert(r4.intent?.emotion === 'calm', 'T4: emotion should be calm');
+console.assert(!r4.text.includes('<think>'), 'T4: text should not contain <think>');
+console.assert(!r4.text.includes('</think>'), 'T4: text should not contain </think>');
+console.assert(r4.text.startsWith('行，说个短的'), 'T4: text should start with actual response');
+
+// Test 5: Thinking tags in stream buffer
+const buf2 = createStreamPrefixBuffer();
+buf2.push('<think>');
+buf2.push('这是思考内容，用户不应该看到');
+buf2.push('</think> ');
+const s5 = buf2.push('{"emotion":"sad","camera":"close","action":"lean-in"}\n---\n我听到了...');
+console.log('Test5 stream-think:', JSON.stringify(s5));
+console.assert(s5.resolved, 'S5: should be resolved');
+console.assert(s5.intent?.emotion === 'sad', 'S5: emotion should be sad');
+console.assert(!s5.textDelta.includes('<think>'), 'S5: textDelta should not contain thinking');
+
 console.log('\nAll tests passed!');

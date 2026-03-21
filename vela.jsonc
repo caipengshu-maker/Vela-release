@@ -25,7 +25,7 @@
     "apiKey": "sk-cp-Kit5f2b4vHQOPuiuuHcgehqhNdZzldOb4oRvUi0ztvMuqfZngUHu1SC3nZGpFjVyV4FFbhkzhqGY1-eMDWEQheFZZWDlca8pswRVNINGkDcjVe7KMmO4J_8",
     "apiKeyEnv": "MINIMAX_API_KEY",
     "temperature": 0.9,
-    "maxTokens": 260,
+    "maxTokens": 512,
     "thinkingMode": "balanced",
     "endpointPath": "",
     "headers": {},
