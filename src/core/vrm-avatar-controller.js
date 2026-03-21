@@ -511,11 +511,11 @@ export class VrmAvatarController {
       this.armTargetOffsets.set(VRMHumanBoneName.RightUpperArm, rightUpperOffset);
     }
 
-    this._tempEuler.set(0, 0, 0.16, "XYZ");
+    this._tempEuler.set(0, 0, 0.35, "XYZ");
     this._tempQuatA.setFromEuler(this._tempEuler);
     this.armTargetOffsets.set(VRMHumanBoneName.LeftLowerArm, this._tempQuatA.clone());
 
-    this._tempEuler.set(0, 0, -0.16, "XYZ");
+    this._tempEuler.set(0, 0, -0.35, "XYZ");
     this._tempQuatA.setFromEuler(this._tempEuler);
     this.armTargetOffsets.set(VRMHumanBoneName.RightLowerArm, this._tempQuatA.clone());
   }

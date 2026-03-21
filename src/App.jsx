@@ -311,11 +311,13 @@ function AvatarPanel({
           <div className="avatar-orbit avatar-orbit-a" />
           <div className="avatar-orbit avatar-orbit-b" />
           <VrmAvatarStage avatar={avatar} avatarAsset={avatarAsset} />
+          {!avatarAsset?.path && (
           <div className="stage-copy">
             <span className="stage-kicker">{presenceCopy.kicker}</span>
             <strong>{presenceCopy.title}</strong>
             <p>{avatar?.caption || presenceCopy.caption}</p>
           </div>
+          )}
         </div>
 
         <div className="panel-copy">
