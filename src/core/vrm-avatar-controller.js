@@ -56,6 +56,38 @@ const ARM_BONES = [
   VRMHumanBoneName.RightLowerArm
 ];
 
+// Finger bones confirmed present in Eku VRM0 model (53/54 bones, only jaw missing)
+const FINGER_CURL_BONES = [
+  { name: VRMHumanBoneName.LeftIndexProximal, x: 0.25 },
+  { name: VRMHumanBoneName.LeftIndexIntermediate, x: 0.15 },
+  { name: VRMHumanBoneName.LeftIndexDistal, x: 0.10 },
+  { name: VRMHumanBoneName.LeftMiddleProximal, x: 0.28 },
+  { name: VRMHumanBoneName.LeftMiddleIntermediate, x: 0.18 },
+  { name: VRMHumanBoneName.LeftMiddleDistal, x: 0.12 },
+  { name: VRMHumanBoneName.LeftRingProximal, x: 0.30 },
+  { name: VRMHumanBoneName.LeftRingIntermediate, x: 0.20 },
+  { name: VRMHumanBoneName.LeftRingDistal, x: 0.12 },
+  { name: VRMHumanBoneName.LeftLittleProximal, x: 0.32 },
+  { name: VRMHumanBoneName.LeftLittleIntermediate, x: 0.22 },
+  { name: VRMHumanBoneName.LeftLittleDistal, x: 0.14 },
+  { name: VRMHumanBoneName.LeftThumbProximal, z: 0.20 },
+  { name: VRMHumanBoneName.LeftThumbIntermediate, x: 0.15 },
+  { name: VRMHumanBoneName.RightIndexProximal, x: 0.25 },
+  { name: VRMHumanBoneName.RightIndexIntermediate, x: 0.15 },
+  { name: VRMHumanBoneName.RightIndexDistal, x: 0.10 },
+  { name: VRMHumanBoneName.RightMiddleProximal, x: 0.28 },
+  { name: VRMHumanBoneName.RightMiddleIntermediate, x: 0.18 },
+  { name: VRMHumanBoneName.RightMiddleDistal, x: 0.12 },
+  { name: VRMHumanBoneName.RightRingProximal, x: 0.30 },
+  { name: VRMHumanBoneName.RightRingIntermediate, x: 0.20 },
+  { name: VRMHumanBoneName.RightRingDistal, x: 0.12 },
+  { name: VRMHumanBoneName.RightLittleProximal, x: 0.32 },
+  { name: VRMHumanBoneName.RightLittleIntermediate, x: 0.22 },
+  { name: VRMHumanBoneName.RightLittleDistal, x: 0.14 },
+  { name: VRMHumanBoneName.RightThumbProximal, z: -0.20 },
+  { name: VRMHumanBoneName.RightThumbIntermediate, x: 0.15 }
+];
+
 function clampDelta(delta) {
   if (!Number.isFinite(delta) || delta <= 0) {
     return 1 / 60;
@@ -236,13 +268,13 @@ function resolveSafePresentation(avatar) {
   return safeState;
 }
 
-const IDLE_MOTION_TYPES = ["weight-shift", "gaze-wander", "head-tilt", "subtle-stretch", "blink-burst"];
-const IDLE_MOTION_INTERVAL_MIN = 15;
-const IDLE_MOTION_INTERVAL_MAX = 30;
-const IDLE_RAMP_IN = 0.5;
+const IDLE_MOTION_TYPES = ["weight-shift", "gaze-wander", "head-tilt", "subtle-stretch", "blink-burst", "hair-touch", "shoulder-shrug"];
+const IDLE_MOTION_INTERVAL_MIN = 12;
+const IDLE_MOTION_INTERVAL_MAX = 25;
+const IDLE_RAMP_IN = 0.8;
 const IDLE_HOLD_MIN = 2;
-const IDLE_HOLD_MAX = 4;
-const IDLE_RAMP_OUT = 0.5;
+const IDLE_HOLD_MAX = 5;
+const IDLE_RAMP_OUT = 0.8;
 
 function randomRange(min, max) {
   return min + Math.random() * (max - min);
@@ -309,6 +341,7 @@ export class VrmAvatarController {
     this.bones = new Map();
     this.armBones = new Map();
     this.armTargetOffsets = new Map();
+    this.fingerBones = new Map();
     this.elapsed = 0;
     this.width = 1;
     this.height = 1;
@@ -325,6 +358,8 @@ export class VrmAvatarController {
       head: createBonePose(),
       neck: createBonePose()
     };
+    this.idleArmOverride = { active: false, blendWeight: 0, targets: {} };
+    this.lastIdleMotionType = null;
     this.debugState = {
       cameraFrameCount: 0,
       lastCameraMode: "",
@@ -433,6 +468,7 @@ export class VrmAvatarController {
 
       // Apply arms-down after vrm.update() so raw-bone fallback is not overwritten this frame.
       this._applyArmsDownFrame(delta);
+      this._applyRelaxedHands(delta);
       this._debugPresentation(presentation, mouthOpen, blinkWeight);
     }
 
@@ -457,6 +493,7 @@ export class VrmAvatarController {
     this._fitAvatar(vrm.scene);
     this._cacheBones(vrm);
     this._applyArmsDownFrame(1 / 30);
+    this._applyRelaxedHands(1 / 30);
     this._resetExpressions();
 
     if (vrm.lookAt) {
@@ -521,6 +558,24 @@ export class VrmAvatarController {
 
     this._setupArmTargets();
     this._logArmBoneSummary();
+    this._cacheFingerBones(vrm);
+  }
+
+  _cacheFingerBones(vrm) {
+    this.fingerBones.clear();
+    FINGER_CURL_BONES.forEach((entry) => {
+      const node = vrm.humanoid?.getNormalizedBoneNode(entry.name)
+        || vrm.humanoid?.getRawBoneNode(entry.name)
+        || null;
+      if (node) {
+        this.fingerBones.set(entry.name, {
+          node,
+          restQuaternion: node.quaternion.clone(),
+          curl: { x: entry.x || 0, y: entry.y || 0, z: entry.z || 0 }
+        });
+      }
+    });
+    console.log(`[VRM][fingers] cached ${this.fingerBones.size}/${FINGER_CURL_BONES.length} finger bones`);
   }
 
   _applyArmsDown() {
@@ -700,9 +755,42 @@ export class VrmAvatarController {
         this._tempEuler.set(0, 0, sway, "XYZ");
         this._tempQuatB.setFromEuler(this._tempEuler);
         this._tempQuatA.multiply(this._tempQuatB);
+
+        if (this.idleArmOverride.active && this.idleArmOverride.targets.rightUpperArm) {
+          const ov = this.idleArmOverride.targets.rightUpperArm;
+          const w = this.idleArmOverride.blendWeight;
+          this._tempEuler.set(ov.x * w, ov.y * w, ov.z * w, "XYZ");
+          this._tempQuatB.setFromEuler(this._tempEuler);
+          this._tempQuatA.multiply(this._tempQuatB);
+        }
       }
 
       armInfo.node.quaternion.slerp(this._tempQuatA, dampFactor(18, delta));
+    });
+
+    if (this.idleArmOverride.active && this.idleArmOverride.targets.rightLowerArm) {
+      const lowerArm = this.armBones.get(VRMHumanBoneName.RightLowerArm);
+      if (lowerArm) {
+        const ov = this.idleArmOverride.targets.rightLowerArm;
+        const w = this.idleArmOverride.blendWeight;
+        const armOffset = this.armTargetOffsets.get(VRMHumanBoneName.RightLowerArm);
+        if (armOffset) {
+          this._tempQuatA.copy(lowerArm.restQuaternion).multiply(armOffset);
+          this._tempEuler.set(ov.x * w, ov.y * w, ov.z * w, "XYZ");
+          this._tempQuatB.setFromEuler(this._tempEuler);
+          this._tempQuatA.multiply(this._tempQuatB);
+          lowerArm.node.quaternion.slerp(this._tempQuatA, dampFactor(12, delta));
+        }
+      }
+    }
+  }
+
+  _applyRelaxedHands(delta) {
+    this.fingerBones.forEach((info) => {
+      this._tempEuler.set(info.curl.x, info.curl.y, info.curl.z, "XYZ");
+      this._tempQuatA.setFromEuler(this._tempEuler);
+      this._tempQuatB.copy(info.restQuaternion).multiply(this._tempQuatA);
+      info.node.quaternion.slerp(this._tempQuatB, dampFactor(14, delta));
     });
   }
 
@@ -718,6 +806,7 @@ export class VrmAvatarController {
     this.bones.clear();
     this.armBones.clear();
     this.armTargetOffsets.clear();
+    this.fingerBones.clear();
     this.restQuaternions.clear();
     this._resetExpressions();
   }
@@ -884,7 +973,12 @@ export class VrmAvatarController {
       im.nextTriggerIn -= delta;
       if (im.nextTriggerIn <= 0) {
         im.active = true;
-        im.type = IDLE_MOTION_TYPES[Math.floor(Math.random() * IDLE_MOTION_TYPES.length)];
+        let pick = IDLE_MOTION_TYPES[Math.floor(Math.random() * IDLE_MOTION_TYPES.length)];
+        if (pick === this.lastIdleMotionType && IDLE_MOTION_TYPES.length > 1) {
+          pick = IDLE_MOTION_TYPES[(IDLE_MOTION_TYPES.indexOf(pick) + 1) % IDLE_MOTION_TYPES.length];
+        }
+        this.lastIdleMotionType = pick;
+        im.type = pick;
         im.phase = "ramp-in";
         im.elapsed = 0;
         im.phaseDuration = IDLE_RAMP_IN;
@@ -938,6 +1032,16 @@ export class VrmAvatarController {
         return { magnitude: randomMagnitude(0.025) };
       case "blink-burst":
         return { burstCount: 3, interval: randomRange(1.2, 1.8), elapsed: 0, done: 0 };
+      case "hair-touch":
+        return {
+          side: Math.random() > 0.5 ? "right" : "right",
+          upperArmZ: randomMagnitude(-0.55),
+          upperArmX: randomMagnitude(-0.25),
+          lowerArmZ: randomMagnitude(0.95),
+          headTiltZ: randomMagnitude(0.04)
+        };
+      case "shoulder-shrug":
+        return { magnitude: randomMagnitude(0.04) };
       default:
         return {};
     }
@@ -973,6 +1077,18 @@ export class VrmAvatarController {
         break;
       case "blink-burst":
         break;
+      case "hair-touch":
+        head.z = p.headTiltZ * w;
+        this.idleArmOverride.active = true;
+        this.idleArmOverride.blendWeight = w;
+        this.idleArmOverride.targets = {
+          rightUpperArm: { x: p.upperArmX, y: 0, z: p.upperArmZ },
+          rightLowerArm: { x: 0, y: 0, z: p.lowerArmZ }
+        };
+        break;
+      case "shoulder-shrug":
+        neck.y = p.magnitude * 0.3 * w;
+        break;
       default:
         break;
     }
@@ -984,6 +1100,9 @@ export class VrmAvatarController {
       pose.y = 0;
       pose.z = 0;
     });
+    this.idleArmOverride.active = false;
+    this.idleArmOverride.blendWeight = 0;
+    this.idleArmOverride.targets = {};
   }
 
   _updatePose(presentation, mouthOpen, delta) {
