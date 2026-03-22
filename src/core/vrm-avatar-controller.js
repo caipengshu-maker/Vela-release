@@ -563,6 +563,7 @@ export class VrmAvatarController {
     this._setupArmTargets();
     this._logArmBoneSummary();
     this._cacheFingerBones(vrm);
+    this._diagArmAxes();
   }
 
   _cacheFingerBones(vrm) {
@@ -635,6 +636,64 @@ export class VrmAvatarController {
         `[VRM][arms] ${boneName} source=${armInfo?.source || "missing"} target=${this.armTargetOffsets.has(boneName)}`
       );
     });
+  }
+
+  _diagArmAxes() {
+    const testBones = [VRMHumanBoneName.LeftUpperArm, VRMHumanBoneName.RightUpperArm];
+    const lowerBones = {
+      [VRMHumanBoneName.LeftUpperArm]: VRMHumanBoneName.LeftLowerArm,
+      [VRMHumanBoneName.RightUpperArm]: VRMHumanBoneName.RightLowerArm
+    };
+    const results = {};
+
+    testBones.forEach((boneName) => {
+      const upper = this.armBones.get(boneName);
+      const lower = this.armBones.get(lowerBones[boneName]);
+      if (!upper || !lower) return;
+
+      const initialQuat = upper.node.quaternion.clone();
+      const shoulderPos = new THREE.Vector3();
+      const elbowPos = new THREE.Vector3();
+      const restDir = new THREE.Vector3();
+
+      upper.node.updateWorldMatrix(true, true);
+      lower.node.updateWorldMatrix(true, false);
+      upper.node.getWorldPosition(shoulderPos);
+      lower.node.getWorldPosition(elbowPos);
+      restDir.copy(elbowPos).sub(shoulderPos).normalize();
+
+      const axes = [
+        { label: "+X", x: 0.4, y: 0, z: 0 },
+        { label: "-X", x: -0.4, y: 0, z: 0 },
+        { label: "+Y", x: 0, y: 0.4, z: 0 },
+        { label: "-Y", x: 0, y: -0.4, z: 0 },
+        { label: "+Z", x: 0, y: 0, z: 0.4 },
+        { label: "-Z", x: 0, y: 0, z: -0.4 }
+      ];
+
+      const boneResults = { restDir: `(${restDir.x.toFixed(3)},${restDir.y.toFixed(3)},${restDir.z.toFixed(3)})` };
+
+      axes.forEach((axis) => {
+        this._tempEuler.set(axis.x, axis.y, axis.z, "XYZ");
+        this._tempQuatA.setFromEuler(this._tempEuler);
+        upper.node.quaternion.copy(initialQuat).multiply(this._tempQuatA);
+        upper.node.updateWorldMatrix(true, true);
+        lower.node.updateWorldMatrix(true, false);
+
+        const newElbow = new THREE.Vector3();
+        lower.node.getWorldPosition(newElbow);
+        const newDir = new THREE.Vector3().copy(newElbow).sub(shoulderPos).normalize();
+        const delta = new THREE.Vector3().copy(newDir).sub(restDir);
+
+        boneResults[axis.label] = `dir=(${newDir.x.toFixed(3)},${newDir.y.toFixed(3)},${newDir.z.toFixed(3)}) delta=(${delta.x.toFixed(3)},${delta.y.toFixed(3)},${delta.z.toFixed(3)})`;
+      });
+
+      upper.node.quaternion.copy(initialQuat);
+      upper.node.updateWorldMatrix(true, true);
+      results[boneName] = boneResults;
+    });
+
+    console.log("[VRM][arm-diag] Axis test results:", JSON.stringify(results, null, 2));
   }
 
   _setupArmTargets() {
@@ -751,12 +810,14 @@ export class VrmAvatarController {
 
       if (boneName === VRMHumanBoneName.LeftUpperArm) {
         const sway = Math.sin(this.elapsed * 0.4 * Math.PI * 2) * 0.015 * swayScale;
-        this._tempEuler.set(0, 0, sway, "XYZ");
+        // Y-axis = forward/backward: -Y pushes left arm forward (confirmed by axis diag)
+        this._tempEuler.set(0, -0.06, sway, "XYZ");
         this._tempQuatB.setFromEuler(this._tempEuler);
         this._tempQuatA.multiply(this._tempQuatB);
       } else if (boneName === VRMHumanBoneName.RightUpperArm) {
         const sway = Math.sin(this.elapsed * 0.35 * Math.PI * 2) * 0.012 * swayScale;
-        this._tempEuler.set(0, 0, sway, "XYZ");
+        // Y-axis = forward/backward: +Y pushes right arm forward (confirmed by axis diag)
+        this._tempEuler.set(0, 0.06, sway, "XYZ");
         this._tempQuatB.setFromEuler(this._tempEuler);
         this._tempQuatA.multiply(this._tempQuatB);
 
