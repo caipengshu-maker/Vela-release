@@ -57,35 +57,36 @@ const ARM_BONES = [
 ];
 
 // Finger bones confirmed present in Eku VRM0 model (53/54 bones, only jaw missing)
+// VRM normalized space: finger curl axis is Z (confirmed by testing X/Y/Z)
 const FINGER_CURL_BONES = [
-  { name: VRMHumanBoneName.LeftIndexProximal, x: 0.25 },
-  { name: VRMHumanBoneName.LeftIndexIntermediate, x: 0.15 },
-  { name: VRMHumanBoneName.LeftIndexDistal, x: 0.10 },
-  { name: VRMHumanBoneName.LeftMiddleProximal, x: 0.28 },
-  { name: VRMHumanBoneName.LeftMiddleIntermediate, x: 0.18 },
-  { name: VRMHumanBoneName.LeftMiddleDistal, x: 0.12 },
-  { name: VRMHumanBoneName.LeftRingProximal, x: 0.30 },
-  { name: VRMHumanBoneName.LeftRingIntermediate, x: 0.20 },
-  { name: VRMHumanBoneName.LeftRingDistal, x: 0.12 },
-  { name: VRMHumanBoneName.LeftLittleProximal, x: 0.32 },
-  { name: VRMHumanBoneName.LeftLittleIntermediate, x: 0.22 },
-  { name: VRMHumanBoneName.LeftLittleDistal, x: 0.14 },
-  { name: VRMHumanBoneName.LeftThumbProximal, z: 0.20 },
-  { name: VRMHumanBoneName.LeftThumbIntermediate, x: 0.15 },
-  { name: VRMHumanBoneName.RightIndexProximal, x: 0.25 },
-  { name: VRMHumanBoneName.RightIndexIntermediate, x: 0.15 },
-  { name: VRMHumanBoneName.RightIndexDistal, x: 0.10 },
-  { name: VRMHumanBoneName.RightMiddleProximal, x: 0.28 },
-  { name: VRMHumanBoneName.RightMiddleIntermediate, x: 0.18 },
-  { name: VRMHumanBoneName.RightMiddleDistal, x: 0.12 },
-  { name: VRMHumanBoneName.RightRingProximal, x: 0.30 },
-  { name: VRMHumanBoneName.RightRingIntermediate, x: 0.20 },
-  { name: VRMHumanBoneName.RightRingDistal, x: 0.12 },
-  { name: VRMHumanBoneName.RightLittleProximal, x: 0.32 },
-  { name: VRMHumanBoneName.RightLittleIntermediate, x: 0.22 },
-  { name: VRMHumanBoneName.RightLittleDistal, x: 0.14 },
-  { name: VRMHumanBoneName.RightThumbProximal, z: -0.20 },
-  { name: VRMHumanBoneName.RightThumbIntermediate, x: 0.15 }
+  { name: VRMHumanBoneName.LeftIndexProximal, z: 0.5 },
+  { name: VRMHumanBoneName.LeftIndexIntermediate, z: 0.4 },
+  { name: VRMHumanBoneName.LeftIndexDistal, z: 0.3 },
+  { name: VRMHumanBoneName.LeftMiddleProximal, z: 0.55 },
+  { name: VRMHumanBoneName.LeftMiddleIntermediate, z: 0.45 },
+  { name: VRMHumanBoneName.LeftMiddleDistal, z: 0.3 },
+  { name: VRMHumanBoneName.LeftRingProximal, z: 0.55 },
+  { name: VRMHumanBoneName.LeftRingIntermediate, z: 0.45 },
+  { name: VRMHumanBoneName.LeftRingDistal, z: 0.3 },
+  { name: VRMHumanBoneName.LeftLittleProximal, z: 0.6 },
+  { name: VRMHumanBoneName.LeftLittleIntermediate, z: 0.5 },
+  { name: VRMHumanBoneName.LeftLittleDistal, z: 0.35 },
+  { name: VRMHumanBoneName.LeftThumbMetacarpal, z: 0.35 },
+  { name: VRMHumanBoneName.LeftThumbProximal, z: 0.3 },
+  { name: VRMHumanBoneName.RightIndexProximal, z: -0.5 },
+  { name: VRMHumanBoneName.RightIndexIntermediate, z: -0.4 },
+  { name: VRMHumanBoneName.RightIndexDistal, z: -0.3 },
+  { name: VRMHumanBoneName.RightMiddleProximal, z: -0.55 },
+  { name: VRMHumanBoneName.RightMiddleIntermediate, z: -0.45 },
+  { name: VRMHumanBoneName.RightMiddleDistal, z: -0.3 },
+  { name: VRMHumanBoneName.RightRingProximal, z: -0.55 },
+  { name: VRMHumanBoneName.RightRingIntermediate, z: -0.45 },
+  { name: VRMHumanBoneName.RightRingDistal, z: -0.3 },
+  { name: VRMHumanBoneName.RightLittleProximal, z: -0.6 },
+  { name: VRMHumanBoneName.RightLittleIntermediate, z: -0.5 },
+  { name: VRMHumanBoneName.RightLittleDistal, z: -0.35 },
+  { name: VRMHumanBoneName.RightThumbMetacarpal, z: -0.35 },
+  { name: VRMHumanBoneName.RightThumbProximal, z: -0.3 }
 ];
 
 function clampDelta(delta) {
@@ -464,11 +465,11 @@ export class VrmAvatarController {
       this._updateExpressions(presentation, mouthOpen, blinkWeight, delta);
       this._updatePose(presentation, mouthOpen, delta);
       this._updateLookAt(presentation, delta);
+      this._applyRelaxedHands(delta);
       this.vrm.update(delta);
 
       // Apply arms-down after vrm.update() so raw-bone fallback is not overwritten this frame.
       this._applyArmsDownFrame(delta);
-      this._applyRelaxedHands(delta);
       this._debugPresentation(presentation, mouthOpen, blinkWeight);
     }
 
@@ -564,9 +565,9 @@ export class VrmAvatarController {
   _cacheFingerBones(vrm) {
     this.fingerBones.clear();
     FINGER_CURL_BONES.forEach((entry) => {
-      const node = vrm.humanoid?.getNormalizedBoneNode(entry.name)
-        || vrm.humanoid?.getRawBoneNode(entry.name)
-        || null;
+      if (!entry.name) return;
+      // Use NORMALIZED bones — vrm.update() copies normalized → raw each frame
+      const node = vrm.humanoid?.getNormalizedBoneNode(entry.name) || null;
       if (node) {
         this.fingerBones.set(entry.name, {
           node,
@@ -575,7 +576,7 @@ export class VrmAvatarController {
         });
       }
     });
-    console.log(`[VRM][fingers] cached ${this.fingerBones.size}/${FINGER_CURL_BONES.length} finger bones`);
+    console.log(`[VRM][fingers] cached ${this.fingerBones.size}/${FINGER_CURL_BONES.length} normalized finger bones`);
   }
 
   _applyArmsDown() {
@@ -786,6 +787,7 @@ export class VrmAvatarController {
   }
 
   _applyRelaxedHands(delta) {
+    if (this.fingerBones.size === 0) return;
     this.fingerBones.forEach((info) => {
       this._tempEuler.set(info.curl.x, info.curl.y, info.curl.z, "XYZ");
       this._tempQuatA.setFromEuler(this._tempEuler);
