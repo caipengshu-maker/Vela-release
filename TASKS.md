@@ -272,15 +272,19 @@ M4：让她像个人，不只是在场。记忆快速收窄，主力打体验层
 ### Tier 2：体验层打磨
 
 #### M4-T6 idle 微动 + 手臂自然度
-- 状态：TODO
+- 状态：DONE
+- 关闭日期：2026-03-22
 - 优先级：P1
-- Owner：Codex
+- Owner：小新
+- 产物：commit `6265162`
 - DoD：
-  - [ ] 预设微动作循环（摸头发、换重心、视线游走、伸懒腰），15-30s 随机间隔
-  - [ ] 用户输入时中断微动，回到 attentive 姿态
-  - [ ] 肘部弯曲加大 + 左右不对称 + idle 时轻微摆动
-  - [ ] 不再"站军姿"
-  - [ ] `npm run build` 通过
+  - [x] 预设微动作循环（weight-shift / gaze-wander / head-tilt / subtle-stretch / blink-burst），15-30s 随机间隔
+  - [x] 用户输入时中断微动，回到 attentive 姿态
+  - [x] 左肘弯曲 0.35→0.42 rad，右肘 0.35→-0.30 rad（不对称）
+  - [x] 左上臂加 X+0.08 前倾（手微前）
+  - [x] idle 时上臂 sinusoidal sway（左 0.4Hz，右 0.35Hz），speaking 时衰减到 30%
+  - [x] `npm run build` 通过
+  - [x] `verify:core` 通过
 
 #### M4-T7 UX 打磨（M3 遗留清理）
 - 状态：TODO
