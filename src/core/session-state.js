@@ -32,6 +32,34 @@ function mergeProviderRouting(providerRouting = {}) {
   };
 }
 
+function formatDateKey(date = new Date()) {
+  const current = date instanceof Date ? date : new Date(date);
+  const year = current.getFullYear();
+  const month = String(current.getMonth() + 1).padStart(2, "0");
+  const day = String(current.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeCachedLocation(location) {
+  if (!location || typeof location !== "object") {
+    return null;
+  }
+
+  const lat = Number(location.lat ?? location.latitude);
+  const lon = Number(location.lon ?? location.longitude);
+  const cachedAt = String(location.cachedAt || "").trim();
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !cachedAt) {
+    return null;
+  }
+
+  return {
+    lat,
+    lon,
+    cachedAt
+  };
+}
+
 function defaultPersistedState() {
   return {
     lastSessionId: null,
@@ -48,8 +76,43 @@ function defaultPersistedState() {
       ttsEmotionMode: "auto"
     },
     lastTopic: null,
+    proactiveCountToday: 0,
+    lastProactiveAt: null,
+    lastProactiveDate: null,
+    lastWeatherCondition: null,
+    cachedLocation: null,
     providerRouting: defaultProviderRouting()
   };
+}
+
+function normalizePersistedState(persistedState = {}) {
+  const base = defaultPersistedState();
+  const merged = {
+    ...base,
+    ...persistedState,
+    lastAvatar: {
+      ...base.lastAvatar,
+      ...(persistedState?.lastAvatar || {})
+    },
+    providerRouting: mergeProviderRouting(persistedState.providerRouting),
+    cachedLocation: normalizeCachedLocation(persistedState.cachedLocation)
+  };
+  const today = formatDateKey();
+
+  merged.proactiveCountToday = Number.isFinite(Number(merged.proactiveCountToday))
+    ? Number(merged.proactiveCountToday)
+    : 0;
+
+  if (merged.lastProactiveDate && merged.lastProactiveDate !== today) {
+    merged.proactiveCountToday = 0;
+  }
+
+  merged.lastProactiveAt = merged.lastProactiveAt || null;
+  merged.lastProactiveDate = merged.lastProactiveDate || null;
+  merged.lastWeatherCondition =
+    String(merged.lastWeatherCondition || "").trim() || null;
+
+  return merged;
 }
 
 export class SessionStateStore {
@@ -61,7 +124,9 @@ export class SessionStateStore {
     await this.store.ensureDir("state");
     await this.store.writeJson(
       SESSION_STATE_FILE,
-      await this.store.readJson(SESSION_STATE_FILE, defaultPersistedState())
+      normalizePersistedState(
+        await this.store.readJson(SESSION_STATE_FILE, defaultPersistedState())
+      )
     );
   }
 
@@ -71,11 +136,23 @@ export class SessionStateStore {
       defaultPersistedState()
     );
 
-    return {
-      ...defaultPersistedState(),
+    return normalizePersistedState(persistedState);
+  }
+
+  async updatePersistedState(updater) {
+    const persistedState = await this.loadPersistedState();
+    const nextState =
+      typeof updater === "function"
+        ? updater(structuredClone(persistedState))
+        : { ...persistedState, ...(updater || {}) };
+
+    const normalized = normalizePersistedState({
       ...persistedState,
-      providerRouting: mergeProviderRouting(persistedState.providerRouting)
-    };
+      ...nextState
+    });
+
+    await this.store.writeJson(SESSION_STATE_FILE, normalized);
+    return normalized;
   }
 
   createRuntimeSession(persistedState) {
@@ -95,7 +172,7 @@ export class SessionStateStore {
     };
   }
 
-  async save(runtimeSession, avatar, summary, providerMeta = null) {
+  async save(runtimeSession, avatar, summary, providerMeta = null, persistedStatePatch = {}) {
     const persistedState = await this.loadPersistedState();
     const providerRouting = mergeProviderRouting(runtimeSession.providerRouting);
 
@@ -106,8 +183,9 @@ export class SessionStateStore {
       };
     }
 
-    await this.store.writeJson(SESSION_STATE_FILE, {
+    const nextState = normalizePersistedState({
       ...persistedState,
+      ...persistedStatePatch,
       lastSessionId: runtimeSession.sessionId,
       lifetimeTurnCount: runtimeSession.lifetimeTurnCount,
       lastSummaryId: summary.id,
@@ -118,27 +196,36 @@ export class SessionStateStore {
       lastTopic: summary.topicLabel,
       providerRouting
     });
+
+    await this.store.writeJson(SESSION_STATE_FILE, nextState);
+    return nextState;
   }
 
   async savePreferences(runtimeSession) {
     const persistedState = await this.loadPersistedState();
 
-    await this.store.writeJson(SESSION_STATE_FILE, {
-      ...persistedState,
-      voiceModeEnabled: Boolean(runtimeSession.voiceModeEnabled),
-      thinkingMode: runtimeSession.thinkingMode || "balanced",
-      providerRouting: mergeProviderRouting(runtimeSession.providerRouting)
-    });
+    await this.store.writeJson(
+      SESSION_STATE_FILE,
+      normalizePersistedState({
+        ...persistedState,
+        voiceModeEnabled: Boolean(runtimeSession.voiceModeEnabled),
+        thinkingMode: runtimeSession.thinkingMode || "balanced",
+        providerRouting: mergeProviderRouting(runtimeSession.providerRouting)
+      })
+    );
   }
 
   async saveProviderRouting(runtimeSession) {
     const persistedState = await this.loadPersistedState();
 
-    await this.store.writeJson(SESSION_STATE_FILE, {
-      ...persistedState,
-      voiceModeEnabled: Boolean(runtimeSession.voiceModeEnabled),
-      thinkingMode: runtimeSession.thinkingMode || "balanced",
-      providerRouting: mergeProviderRouting(runtimeSession.providerRouting)
-    });
+    await this.store.writeJson(
+      SESSION_STATE_FILE,
+      normalizePersistedState({
+        ...persistedState,
+        voiceModeEnabled: Boolean(runtimeSession.voiceModeEnabled),
+        thinkingMode: runtimeSession.thinkingMode || "balanced",
+        providerRouting: mergeProviderRouting(runtimeSession.providerRouting)
+      })
+    );
   }
 }

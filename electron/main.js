@@ -97,6 +97,30 @@ ipcMain.handle("vela:send-message", async (_event, message) => {
   });
 });
 
+ipcMain.handle("vela:cache-location", async (_event, location) => {
+  return core.cacheBrowserLocation(location);
+});
+
+ipcMain.handle("vela:proactive-open", async (_event) => {
+  const sendEvent = (payload) => {
+    _event.sender.send("vela:event", payload);
+  };
+
+  return core.maybeProactiveOpen({
+    onEvent: sendEvent
+  });
+});
+
+ipcMain.handle("vela:proactive-trigger", async (_event) => {
+  const sendEvent = (payload) => {
+    _event.sender.send("vela:event", payload);
+  };
+
+  return core.maybeProactiveTrigger({
+    onEvent: sendEvent
+  });
+});
+
 ipcMain.handle("vela:complete-onboarding", async (_event, payload) => {
   return core.completeOnboarding(payload);
 });

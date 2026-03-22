@@ -20,6 +20,11 @@ import { buildContextFusion } from "./context-fusion.js";
 import { getTimeAwareness } from "./context-providers/time-provider.js";
 import { getWeatherAwareness } from "./context-providers/weather-provider.js";
 import {
+  checkInConversationTrigger,
+  getProactiveWeatherCondition,
+  shouldGreetOnOpen
+} from "./proactive.js";
+import {
   mapAvatarState,
   settleAvatarState
 } from "./avatar-state.js";
@@ -72,18 +77,23 @@ function createTurnSummary({
   userMessage,
   assistantReply,
   avatar,
-  triggerReasons = []
+  triggerReasons = [],
+  summaryLabel = null
 }) {
   const createdAt = new Date().toISOString();
-  const topicLabel = extractTopicLabel(userMessage);
-  const shouldBridge = Array.isArray(triggerReasons) && triggerReasons.length > 0;
+  const topicLabel = summaryLabel || extractTopicLabel(userMessage);
+  const shouldBridge =
+    Array.isArray(triggerReasons) &&
+    triggerReasons.some((reason) => reason && reason !== "proactive");
 
   return {
     id: randomUUID(),
     sessionId,
     createdAt,
     topicLabel,
-    summary: `聊到“${topicLabel}”，Vela 以${avatar.emotionLabel}、克制的方式把这轮对话接住了。`,
+    summary: summaryLabel
+      ? `Vela ${summaryLabel}，以${avatar.emotionLabel}、克制的方式把这轮对话接住了。`
+      : `聊到“${topicLabel}”，Vela 以${avatar.emotionLabel}、克制的方式把这轮对话接住了。`,
     bridgeSummary: shouldBridge
       ? `聊到“${topicLabel}”，这轮话题已经接住。`
       : "",
@@ -178,6 +188,18 @@ function buildSummaryTriggers({ turnIndex, lastActiveAt, userMessage, assistantR
   }
 
   return reasons;
+}
+
+function getDateKey(date = new Date()) {
+  const current = date instanceof Date ? date : new Date(date);
+  const year = current.getFullYear();
+  const month = String(current.getMonth() + 1).padStart(2, "0");
+  const day = String(current.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeWeatherConditionForState(weather) {
+  return getProactiveWeatherCondition(weather);
 }
 
 function buildAvatarAssetState(config) {
@@ -775,6 +797,41 @@ export class VelaCore {
     this.persistedState = await this.sessionStore.loadPersistedState();
   }
 
+  async cacheBrowserLocation(location) {
+    const lat = Number(location?.lat ?? location?.latitude);
+    const lon = Number(location?.lon ?? location?.longitude);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return null;
+    }
+
+    this.persistedState = await this.sessionStore.updatePersistedState((state) => ({
+      ...state,
+      cachedLocation: {
+        lat,
+        lon,
+        cachedAt: String(location?.cachedAt || new Date().toISOString())
+      }
+    }));
+
+    return this.buildAppState({
+      avatar: this.currentAvatar
+    });
+  }
+
+  async updateWeatherState(weather) {
+    const weatherCondition = normalizeWeatherConditionForState(weather);
+
+    if (!weatherCondition) {
+      return;
+    }
+
+    this.persistedState = await this.sessionStore.updatePersistedState((state) => ({
+      ...state,
+      lastWeatherCondition: weatherCondition
+    }));
+  }
+
   async buildAwarenessPacket(memory, relevantMemories, options = {}) {
     const behaviorPatterns = await loadBehaviorPatterns(this.localStore).catch(
       () => null
@@ -785,8 +842,10 @@ export class VelaCore {
     });
     const weather = await getWeatherAwareness({
       config: this.config,
+      persistedState: this.persistedState,
       fetchImpl: options.fetchImpl
     }).catch(() => null);
+    await this.updateWeatherState(weather);
     const relationshipUnlockHints = buildRelationshipUnlockHints(memory.relationship);
     const awarenessPacket = buildContextFusion({
       timeAwareness,
@@ -806,6 +865,259 @@ export class VelaCore {
       awarenessPacket,
       relationshipUnlockHints
     };
+  }
+
+  async maybeProactiveOpen(options = {}) {
+    if (!this.memorySnapshot) {
+      await this.loadMemorySnapshot();
+    }
+
+    if (!this.memorySnapshot?.profile?.onboarding?.completed) {
+      return null;
+    }
+
+    if (this.currentSpeech || this.currentAvatar?.presence === "speaking") {
+      return null;
+    }
+
+    const decision = shouldGreetOnOpen(this.persistedState);
+
+    if (!decision.shouldGreet) {
+      return null;
+    }
+
+    return this.generateProactiveMessage(decision.greetingContext, options);
+  }
+
+  async maybeProactiveTrigger(options = {}) {
+    if (!this.memorySnapshot) {
+      await this.loadMemorySnapshot();
+    }
+
+    if (!this.memorySnapshot?.profile?.onboarding?.completed) {
+      return null;
+    }
+
+    if (this.currentSpeech || this.currentAvatar?.presence === "speaking") {
+      return null;
+    }
+
+    const memory = this.memorySnapshot || (await this.loadMemorySnapshot());
+    const timeAwareness = {
+      ...getTimeAwareness({
+        runtimeSession: this.runtimeSession,
+        lastActiveAt: this.persistedState?.lastActiveAt || null
+      }),
+      sessionMinutesActive: Number.isFinite(Date.parse(this.runtimeSession?.launchedAt))
+        ? Math.max(0, (Date.now() - Date.parse(this.runtimeSession.launchedAt)) / 60000)
+        : 0
+    };
+    const weather = await getWeatherAwareness({
+      config: this.config,
+      persistedState: this.persistedState,
+      fetchImpl: options.fetchImpl
+    }).catch(() => null);
+    const previousPersistedState = this.persistedState;
+    const decision = checkInConversationTrigger(
+      timeAwareness,
+      weather,
+      previousPersistedState
+    );
+    await this.updateWeatherState(weather);
+
+    if (!decision.shouldTrigger) {
+      return null;
+    }
+
+    return this.generateProactiveMessage(decision.triggerContext, options, {
+      memory
+    });
+  }
+
+  async generateProactiveMessage(greetingContext, options = {}, overrides = {}) {
+    const trimmedContext = String(greetingContext || "").trim();
+
+    if (!trimmedContext) {
+      return this.buildAppState({
+        avatar: this.currentAvatar
+      });
+    }
+
+    if (this.currentSpeech) {
+      await this.cancelCurrentSpeech(options.onEvent);
+    }
+
+    if (this.currentAvatar?.presence === "speaking") {
+      return this.buildAppState({
+        avatar: this.currentAvatar
+      });
+    }
+
+    const memory =
+      overrides.memory || this.memorySnapshot || (await this.loadMemorySnapshot());
+    const relevantMemories = overrides.relevantMemories || [];
+    const { awarenessPacket, relationshipUnlockHints } =
+      overrides.awarenessPacket && overrides.relationshipUnlockHints
+        ? {
+            awarenessPacket: overrides.awarenessPacket,
+            relationshipUnlockHints: overrides.relationshipUnlockHints
+          }
+        : await this.buildAwarenessPacket(memory, relevantMemories, options);
+    const context = buildContext({
+      persona: this.persona,
+      profile: memory.profile,
+      relationship: memory.relationship,
+      bridgeSummary: memory.bridgeSummary,
+      openFollowUps: memory.openFollowUps || [],
+      recentSummaries: memory.recentSummaries,
+      relevantMemories,
+      userFacts: memory.userFacts || [],
+      runtimeSession: this.runtimeSession,
+      recentTranscriptBudget: this.config.runtime.recentTranscriptBudget || 3600,
+      awarenessPacket,
+      relationshipUnlockHints
+    });
+    const proactiveSystemPrompt = [
+      context.systemPrompt,
+      `主动开场提示：${trimmedContext}`,
+      "这是一次主动开口，不要表现成被动回答。",
+      "请自然生成一段简短、贴近当前氛围的问候。"
+    ].join("\n\n");
+    const proactiveContext = {
+      ...context,
+      systemPrompt: proactiveSystemPrompt
+    };
+    const assistantMessageId = randomUUID();
+    let assistantResponse = null;
+    let speech = null;
+
+    const providerOptions = {
+      thinkingMode: this.runtimeSession.thinkingMode,
+      fetchImpl: options.fetchImpl,
+      modelSelection: this.runtimeSession.selectedModel,
+      providerState: this.runtimeSession.providerRouting,
+      persistProviderState: async (providerRouting) => {
+        await this.persistProviderRouting(providerRouting);
+      }
+    };
+
+    this.currentAvatar = this.buildPresenceAvatar("thinking");
+    await this.emitAvatarState(options.onEvent, this.currentAvatar);
+
+    if (options.onEvent) {
+      options.onEvent({
+        type: "assistant-stream-start",
+        messageId: assistantMessageId
+      });
+
+      if (this.runtimeSession.voiceModeEnabled) {
+        speech = this.createSpeechOrchestrator(options.onEvent);
+      }
+    }
+
+    assistantResponse = await generateReply(
+      proactiveContext,
+      this.config,
+      providerOptions
+    );
+
+    const parsedPerformance = parsePerformancePrefix(assistantResponse.text);
+    assistantResponse.text = parsedPerformance.text;
+    assistantResponse.blocks = replaceTextBlocks(
+      assistantResponse.blocks,
+      assistantResponse.text
+    );
+
+    const assistantReply = assistantResponse.text;
+    this.lastReplyText = assistantReply;
+
+    const { avatar: speakingAvatar, plan } = this.buildSpeakingAvatar({
+      replyText: assistantReply,
+      userMessage: "",
+      llmIntent: parsedPerformance.intent || null
+    });
+    this.policyHistory = {
+      ...this.policyHistory,
+      ...plan.historyPatch
+    };
+    this.currentAvatar = speakingAvatar;
+
+    const assistantTurn = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: assistantReply,
+      createdAt: new Date().toISOString(),
+      blocks: assistantResponse.blocks,
+      llm: {
+        text: assistantResponse.text,
+        thinking: assistantResponse.thinking,
+        usage: assistantResponse.usage,
+        finishReason: assistantResponse.finishReason,
+        providerMeta: assistantResponse.providerMeta
+      }
+    };
+
+    this.runtimeSession.messages.push(assistantTurn);
+    this.runtimeSession.messages = this.runtimeSession.messages.slice(
+      -this.config.runtime.sessionMessageLimit
+    );
+
+    const nowIso = new Date().toISOString();
+    const summary = createTurnSummary({
+      sessionId: this.runtimeSession.sessionId,
+      userMessage: trimmedContext,
+      assistantReply,
+      avatar: speakingAvatar,
+      triggerReasons: ["proactive"],
+      summaryLabel: "主动问候"
+    });
+    const proactiveCountToday = Number(this.persistedState?.proactiveCountToday || 0) + 1;
+
+    await this.memoryStore.appendTurnSummary(summary);
+    this.persistedState = await this.sessionStore.save(
+      this.runtimeSession,
+      speakingAvatar,
+      summary,
+      assistantResponse.providerMeta,
+      {
+        proactiveCountToday,
+        lastProactiveAt: nowIso,
+        lastProactiveDate: getDateKey(nowIso)
+      }
+    );
+
+    const nextMemory = await this.loadMemorySnapshot();
+
+    if (speech) {
+      void speech
+        .pushDelta(assistantReply, plan)
+        .then(() => speech.finish())
+        .catch((error) => {
+          options.onEvent?.({
+            type: "speech-error",
+            message: error.message || "speech delta failed"
+          });
+        });
+    }
+
+    options.onEvent?.({
+      type: "assistant-stream-complete",
+      messageId: assistantMessageId,
+      content: assistantReply,
+      providerMeta: assistantResponse.providerMeta
+    });
+    await this.emitAvatarState(options.onEvent, speakingAvatar);
+
+    return this.buildAppState({
+      memorySnapshot: nextMemory,
+      avatar: speakingAvatar,
+      messages: this.runtimeSession.messages,
+      welcomeNote: "",
+      onboarding: {
+        required: false,
+        completed: true
+      }
+    });
   }
 
   async handleUserMessage(message, options = {}) {

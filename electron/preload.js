@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld("vela", {
   readBinaryFile: (filePath) =>
     ipcRenderer.invoke("vela:read-binary-file", filePath),
   sendMessage: (message) => ipcRenderer.invoke("vela:send-message", message),
+  cacheLocation: (location) => ipcRenderer.invoke("vela:cache-location", location),
+  proactiveOpen: () => ipcRenderer.invoke("vela:proactive-open"),
+  proactiveTrigger: () => ipcRenderer.invoke("vela:proactive-trigger"),
   completeOnboarding: (payload) =>
     ipcRenderer.invoke("vela:complete-onboarding", payload),
   setVoiceMode: (enabled) => ipcRenderer.invoke("vela:set-voice-mode", enabled),

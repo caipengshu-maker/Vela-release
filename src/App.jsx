@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { AudioPlayerService } from "./audio-player.js";
+import { useEffectEvent } from "react";
 import {
   releaseCloseCamera,
   settleAvatarState
@@ -188,6 +189,38 @@ function getLatestAssistantProviderMeta(messages) {
   }
 
   return null;
+}
+
+async function getBrowserLocation() {
+  if (!navigator?.geolocation?.getCurrentPosition) {
+    return null;
+  }
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = Number(position?.coords?.latitude);
+        const lon = Number(position?.coords?.longitude);
+
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+          resolve(null);
+          return;
+        }
+
+        resolve({
+          lat,
+          lon,
+          cachedAt: new Date().toISOString()
+        });
+      },
+      () => resolve(null),
+      {
+        enableHighAccuracy: false,
+        timeout: 8000,
+        maximumAge: 60 * 60 * 1000
+      }
+    );
+  });
 }
 
 function buildAvatarPresenceCopy(avatar) {
@@ -606,6 +639,7 @@ export default function App() {
   const [isSwitchingVoice, setIsSwitchingVoice] = useState(false);
   const [error, setError] = useState("");
   const audioPlayerRef = useRef(null);
+  const proactiveBusyRef = useRef(false);
 
   useEffect(() => {
     const player = new AudioPlayerService();
@@ -641,6 +675,30 @@ export default function App() {
 
     return () => {
       isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function syncLocationAndMaybeGreet() {
+      try {
+        const location = await getBrowserLocation();
+
+        if (cancelled || !location) {
+          return;
+        }
+
+        await window.vela.cacheLocation(location);
+      } catch {
+        // Ignore geolocation/cache failures and keep city fallback working.
+      }
+    }
+
+    void syncLocationAndMaybeGreet();
+
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -681,6 +739,54 @@ export default function App() {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (isLoading || state.onboarding?.required) {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void maybeRunProactive("open");
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [isLoading, state.onboarding?.required]);
+
+  useEffect(() => {
+    if (isLoading || state.onboarding?.required) {
+      return undefined;
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void maybeRunProactive("open");
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isLoading, state.onboarding?.required]);
+
+  useEffect(() => {
+    if (isLoading || state.onboarding?.required) {
+      return undefined;
+    }
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void maybeRunProactive("trigger");
+      }
+    }, 5 * 60 * 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [isLoading, state.onboarding?.required]);
 
   useEffect(() => {
     if (state.voiceMode.enabled || state.avatar?.presence !== "speaking") {
@@ -779,6 +885,36 @@ export default function App() {
     state.voiceMode.available,
     state.voiceMode.enabled
   ]);
+
+  const maybeRunProactive = useEffectEvent(async (kind) => {
+    if (
+      proactiveBusyRef.current ||
+      isLoading ||
+      isSending ||
+      state.onboarding?.required ||
+      state.status?.phase === "thinking" ||
+      state.status?.phase === "speaking"
+    ) {
+      return;
+    }
+
+    proactiveBusyRef.current = true;
+
+    try {
+      const nextState =
+        kind === "open"
+          ? await window.vela.proactiveOpen()
+          : await window.vela.proactiveTrigger();
+
+      if (nextState?.messages) {
+        setState(nextState);
+      }
+    } catch {
+      // Keep proactive checks silent in the UI.
+    } finally {
+      proactiveBusyRef.current = false;
+    }
+  });
 
   async function handleOnboarding(payload) {
     setIsOnboarding(true);
