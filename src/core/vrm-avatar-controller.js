@@ -923,6 +923,9 @@ export class VrmAvatarController {
           try {
             const clip = retargetAnimation(fbx, vrm, { logWarnings: false });
             if (clip) {
+              // Remove hips position track — Mixamo skeleton height differs from VRM,
+              // keeping it causes the model to float. Only rotation tracks matter.
+              clip.tracks = clip.tracks.filter(t => !t.name.endsWith(".position"));
               clip.name = path.split("/").pop().replace(".fbx", "");
               this.idleClips.push(clip);
               console.log(`[VRM][anim] loaded: ${clip.name} (${clip.duration.toFixed(1)}s)`);
