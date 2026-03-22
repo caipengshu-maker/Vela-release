@@ -161,7 +161,7 @@ function buildSummaryTriggers({ turnIndex, lastActiveAt, userMessage, assistantR
     reasons.push("session-start");
   }
 
-  if (turnIndex > 0 && turnIndex % 5 === 0) {
+  if (turnIndex > 0 && turnIndex % 8 === 0) {
     reasons.push("cadence");
   }
 

@@ -20,8 +20,8 @@ const defaultConfig = {
     assetRoot: "./assets",
     recentSummaryLimit: 2,
     summaryIndexLimit: 8,
-    sessionMessageLimit: 24,
-    recentTranscriptBudget: 3600,
+    sessionMessageLimit: 40,
+    recentTranscriptBudget: 6000,
     relevantMemoryLimit: 3,
     behaviorPatternRefreshTurns: 24
   },
