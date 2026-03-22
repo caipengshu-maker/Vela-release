@@ -418,8 +418,7 @@ function MessageList({ messages, welcomeNote, isBusy, assistantName, onReplay })
 
       {messages.length === 0 ? (
         <div className="empty-card">
-          <span>Tonight</span>
-          <p>不用把话组织得太漂亮。先说一句，剩下的再慢慢补。</p>
+          <p>想说什么就说什么，她在听。</p>
         </div>
       ) : null}
 
@@ -918,14 +917,6 @@ export default function App() {
             />
           ) : (
             <section className={`chat-shell ${isMainEntering ? "is-main-enter" : ""}`}>
-              <header className="chat-header">
-                <div className="chat-header-copy">
-                  <span className="eyebrow">Conversation</span>
-                  <h2>慢慢说，她会接住</h2>
-                  <p>Take your time. She will meet you where you are.</p>
-                </div>
-
-              </header>
 
               <MessageList
                 messages={state.messages}

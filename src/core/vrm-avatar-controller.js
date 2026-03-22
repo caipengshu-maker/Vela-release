@@ -57,36 +57,39 @@ const ARM_BONES = [
 ];
 
 // Finger bones confirmed present in Eku VRM0 model (53/54 bones, only jaw missing)
-// VRM normalized space: finger curl axis is Z (confirmed by testing X/Y/Z)
+// VRM normalized space: finger curl axis is Z (confirmed 2026-03-22)
+// Left hand: +Z curls inward; Right hand: -Z curls inward
 const FINGER_CURL_BONES = [
-  { name: VRMHumanBoneName.LeftIndexProximal, z: 0.5 },
-  { name: VRMHumanBoneName.LeftIndexIntermediate, z: 0.4 },
-  { name: VRMHumanBoneName.LeftIndexDistal, z: 0.3 },
-  { name: VRMHumanBoneName.LeftMiddleProximal, z: 0.55 },
-  { name: VRMHumanBoneName.LeftMiddleIntermediate, z: 0.45 },
-  { name: VRMHumanBoneName.LeftMiddleDistal, z: 0.3 },
-  { name: VRMHumanBoneName.LeftRingProximal, z: 0.55 },
-  { name: VRMHumanBoneName.LeftRingIntermediate, z: 0.45 },
-  { name: VRMHumanBoneName.LeftRingDistal, z: 0.3 },
-  { name: VRMHumanBoneName.LeftLittleProximal, z: 0.6 },
-  { name: VRMHumanBoneName.LeftLittleIntermediate, z: 0.5 },
-  { name: VRMHumanBoneName.LeftLittleDistal, z: 0.35 },
-  { name: VRMHumanBoneName.LeftThumbMetacarpal, z: 0.35 },
-  { name: VRMHumanBoneName.LeftThumbProximal, z: 0.3 },
-  { name: VRMHumanBoneName.RightIndexProximal, z: -0.5 },
-  { name: VRMHumanBoneName.RightIndexIntermediate, z: -0.4 },
-  { name: VRMHumanBoneName.RightIndexDistal, z: -0.3 },
-  { name: VRMHumanBoneName.RightMiddleProximal, z: -0.55 },
-  { name: VRMHumanBoneName.RightMiddleIntermediate, z: -0.45 },
-  { name: VRMHumanBoneName.RightMiddleDistal, z: -0.3 },
-  { name: VRMHumanBoneName.RightRingProximal, z: -0.55 },
-  { name: VRMHumanBoneName.RightRingIntermediate, z: -0.45 },
-  { name: VRMHumanBoneName.RightRingDistal, z: -0.3 },
-  { name: VRMHumanBoneName.RightLittleProximal, z: -0.6 },
-  { name: VRMHumanBoneName.RightLittleIntermediate, z: -0.5 },
-  { name: VRMHumanBoneName.RightLittleDistal, z: -0.35 },
-  { name: VRMHumanBoneName.RightThumbMetacarpal, z: -0.35 },
-  { name: VRMHumanBoneName.RightThumbProximal, z: -0.3 }
+  // Left hand — natural relaxed curl
+  { name: VRMHumanBoneName.LeftIndexProximal, z: 0.22 },
+  { name: VRMHumanBoneName.LeftIndexIntermediate, z: 0.28 },
+  { name: VRMHumanBoneName.LeftIndexDistal, z: 0.15 },
+  { name: VRMHumanBoneName.LeftMiddleProximal, z: 0.25 },
+  { name: VRMHumanBoneName.LeftMiddleIntermediate, z: 0.30 },
+  { name: VRMHumanBoneName.LeftMiddleDistal, z: 0.16 },
+  { name: VRMHumanBoneName.LeftRingProximal, z: 0.28 },
+  { name: VRMHumanBoneName.LeftRingIntermediate, z: 0.32 },
+  { name: VRMHumanBoneName.LeftRingDistal, z: 0.18 },
+  { name: VRMHumanBoneName.LeftLittleProximal, z: 0.32 },
+  { name: VRMHumanBoneName.LeftLittleIntermediate, z: 0.35 },
+  { name: VRMHumanBoneName.LeftLittleDistal, z: 0.20 },
+  { name: VRMHumanBoneName.LeftThumbMetacarpal, z: 0.18 },
+  { name: VRMHumanBoneName.LeftThumbProximal, z: 0.15 },
+  // Right hand — mirror (negative Z)
+  { name: VRMHumanBoneName.RightIndexProximal, z: -0.22 },
+  { name: VRMHumanBoneName.RightIndexIntermediate, z: -0.28 },
+  { name: VRMHumanBoneName.RightIndexDistal, z: -0.15 },
+  { name: VRMHumanBoneName.RightMiddleProximal, z: -0.25 },
+  { name: VRMHumanBoneName.RightMiddleIntermediate, z: -0.30 },
+  { name: VRMHumanBoneName.RightMiddleDistal, z: -0.16 },
+  { name: VRMHumanBoneName.RightRingProximal, z: -0.28 },
+  { name: VRMHumanBoneName.RightRingIntermediate, z: -0.32 },
+  { name: VRMHumanBoneName.RightRingDistal, z: -0.18 },
+  { name: VRMHumanBoneName.RightLittleProximal, z: -0.32 },
+  { name: VRMHumanBoneName.RightLittleIntermediate, z: -0.35 },
+  { name: VRMHumanBoneName.RightLittleDistal, z: -0.20 },
+  { name: VRMHumanBoneName.RightThumbMetacarpal, z: -0.18 },
+  { name: VRMHumanBoneName.RightThumbProximal, z: -0.15 }
 ];
 
 function clampDelta(delta) {
