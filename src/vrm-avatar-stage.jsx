@@ -6,6 +6,7 @@ export function VrmAvatarStage({ avatar, avatarAsset }) {
   const canvasRef = useRef(null);
   const controllerRef = useRef(null);
   const [controllerReady, setControllerReady] = useState(false);
+  const [demoLabel, setDemoLabel] = useState(null);
   const [loadState, setLoadState] = useState({
     status: "idle",
     message: ""
@@ -17,7 +18,10 @@ export function VrmAvatarStage({ avatar, avatarAsset }) {
     }
 
     const controller = new VrmAvatarController({
-      canvas: canvasRef.current
+      canvas: canvasRef.current,
+      onPresetDemoStateChange: (state) => {
+        setDemoLabel(state.enabled ? state.emotion : null);
+      }
     });
     controllerRef.current = controller;
     setControllerReady(true);
@@ -51,9 +55,27 @@ export function VrmAvatarStage({ avatar, avatarAsset }) {
 
     animationFrameId = window.requestAnimationFrame(tick);
 
+    // Press 'P' to toggle preset demo mode
+    const onKeyDown = (e) => {
+      if (e.key === "p" || e.key === "P") {
+        const ctrl = controllerRef.current;
+        if (!ctrl) return;
+        const isOn = ctrl.presetDemoState?.enabled;
+        ctrl.setPresetDemo({
+          enabled: !isOn,
+          index: 0,
+          emotion: "calm",
+          label: "calm"
+        });
+        console.log(`[VRM] Preset demo ${!isOn ? "ON" : "OFF"} (press P to toggle)`);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+
     return () => {
       window.cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
+      window.removeEventListener("keydown", onKeyDown);
       controller.dispose();
       controllerRef.current = null;
     };
@@ -106,6 +128,17 @@ export function VrmAvatarStage({ avatar, avatarAsset }) {
           status: "ready",
           message: ""
         });
+
+        // Auto-start preset demo if URL has ?preset-demo=true
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("preset-demo") === "true" && controller) {
+          controller.setPresetDemo({
+            enabled: true,
+            index: 0,
+            emotion: "calm",
+            label: "calm"
+          });
+        }
       })
       .catch((error) => {
         if (cancelled) {
@@ -137,6 +170,26 @@ export function VrmAvatarStage({ avatar, avatarAsset }) {
           }`}
         >
           {loadState.message}
+        </div>
+      ) : null}
+      {demoLabel ? (
+        <div style={{
+          position: "absolute",
+          top: 16,
+          left: "50%",
+          transform: "translateX(-50%)",
+          padding: "6px 18px",
+          borderRadius: 8,
+          background: "rgba(0,0,0,0.65)",
+          color: "#fff",
+          fontSize: 18,
+          fontWeight: 600,
+          letterSpacing: 1,
+          zIndex: 100,
+          pointerEvents: "none",
+          fontFamily: "system-ui, sans-serif"
+        }}>
+          {demoLabel}
         </div>
       ) : null}
     </div>

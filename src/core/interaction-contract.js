@@ -1,3 +1,11 @@
+import {
+  EMOTION_PRESET_ORDER,
+  EMOTION_PRESETS,
+  EMOTION_PRESETS_V2,
+  buildEmotionLegacyExpressionMap,
+  resolveEmotionPreset
+} from "./emotion-presets.js";
+
 export const CANONICAL_STATES = ["idle", "listening", "thinking", "speaking"];
 export const EMOTION_FAMILIES = [
   "calm",
@@ -90,20 +98,10 @@ export const TTS_PRESET_MAP = {
   }
 };
 
-export const EMOTION_TO_VRM_EXPRESSION = {
-  calm: "neutral",
-  happy: "happy",
-  playful: "happy",
-  surprised: "happy",
-  affectionate: "relaxed",
-  shy: "relaxed",
-  whisper: "relaxed",
-  concerned: "sad",
-  sad: "sad",
-  angry: "angry",
-  determined: "angry",
-  curious: "neutral"
-};
+export const EMOTION_TO_VRM_EXPRESSION = buildEmotionLegacyExpressionMap();
+export { EMOTION_PRESETS_V2, EMOTION_PRESET_ORDER, EMOTION_PRESETS, resolveEmotionPreset };
+
+export const EMOTION_TO_VRM_PRESETS = EMOTION_PRESETS;
 
 export const EMOTION_TO_TTS_PROVIDER = {
   calm: "calm",

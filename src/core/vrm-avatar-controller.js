@@ -7,7 +7,12 @@ import {
   VRMUtils
 } from "@pixiv/three-vrm";
 import { retargetAnimation } from "vrm-mixamo-retarget";
-import { EMOTION_TO_VRM_EXPRESSION } from "./interaction-contract.js";
+import {
+  EMOTION_PRESET_ORDER,
+  EMOTION_PRESETS_V2,
+  EMOTION_TO_VRM_EXPRESSION
+} from "./interaction-contract.js";
+import { getEmotionPreset, resolveEmotionPreset } from "./emotion-presets.js";
 
 const CAMERA_PRESETS = {
   wide: {
@@ -21,10 +26,23 @@ const CAMERA_PRESETS = {
 };
 
 const EMOTION_EXPRESSION_WEIGHTS = {
+  neutral: 0.12,
+  aa: 0.72,
+  ee: 0.58,
+  ih: 0.68,
+  oh: 0.62,
+  ou: 0.58,
+  blink: 0.95,
+  blinkLeft: 0.95,
+  blinkRight: 0.95,
   happy: 0.64,
   relaxed: 0.58,
   sad: 0.66,
-  angry: 0.62
+  angry: 0.62,
+  lookUp: 0.34,
+  lookDown: 0.34,
+  lookLeft: 0.26,
+  lookRight: 0.26
 };
 
 const EMOTION_TO_SAFE_MOTION = {
@@ -42,7 +60,27 @@ const EMOTION_TO_SAFE_MOTION = {
   determined: "tiny-nod"
 };
 
-const EXPRESSION_KEYS = ["happy", "relaxed", "sad", "angry", "blink", "aa", "ih", "oh"];
+const EXPRESSION_KEYS = [
+  "neutral",
+  "aa",
+  "ee",
+  "ih",
+  "oh",
+  "ou",
+  "blink",
+  "blinkLeft",
+  "blinkRight",
+  "happy",
+  "relaxed",
+  "sad",
+  "angry",
+  "lookUp",
+  "lookDown",
+  "lookLeft",
+  "lookRight"
+];
+const PRESET_DEMO_STEP_MS = 5000;
+const RAW_MORPH_DAMP_STRENGTH = 14;
 const CORE_POSE_BONES = [
   VRMHumanBoneName.Hips,
   VRMHumanBoneName.Spine,
@@ -285,13 +323,28 @@ const IDLE_ANIMATION_PATHS = [
 const IDLE_CROSSFADE_INTERVAL_MIN = 15;
 const IDLE_CROSSFADE_INTERVAL_MAX = 30;
 const IDLE_CROSSFADE_DURATION = 1.5;
+const PRESET_CROSSFADE_MIN = 0.45;
+const PRESET_CROSSFADE_MAX = 1.8;
 
 function randomRange(min, max) {
   return min + Math.random() * (max - min);
 }
 
+function degToRad(value) {
+  return THREE.MathUtils.degToRad(Number(value || 0));
+}
+
+function transitionMsToStrength(transitionMs, fallback = 10) {
+  const safeMs = Math.max(180, Number(transitionMs) || 0);
+  return THREE.MathUtils.clamp(6500 / safeMs, 4, fallback);
+}
+
+function sortByWeightDescending(entries) {
+  return [...entries].sort((left, right) => (right.weight || 0) - (left.weight || 0));
+}
+
 export class VrmAvatarController {
-  constructor({ canvas }) {
+  constructor({ canvas, onPresetDemoStateChange = null }) {
     this.canvas = canvas;
     this.scene = new THREE.Scene();
     this.clock = new THREE.Clock();
@@ -330,6 +383,9 @@ export class VrmAvatarController {
     this.expressionWeights = Object.fromEntries(
       EXPRESSION_KEYS.map((key) => [key, 0])
     );
+    this.rawMorphTargetWeights = new Map();
+    this.rawMorphTargetDictionary = new Map();
+    this.rawMorphTargetMesh = null;
     this.restQuaternions = new Map();
     this.bones = new Map();
     this.armBones = new Map();
@@ -344,17 +400,32 @@ export class VrmAvatarController {
       interval: 2.6 + Math.random() * 1.8
     };
     this.idleClips = [];
+    this.idleClipMap = new Map();
     this.mixer = null;
     this.currentIdleAction = null;
+    this.currentIdleClipName = "";
     this.lastIdleClipIndex = -1;
     this.nextCrossfadeIn = randomRange(IDLE_CROSSFADE_INTERVAL_MIN, IDLE_CROSSFADE_INTERVAL_MAX);
     this.mixerActive = false;
+    this.presetDemoState = {
+      enabled: false,
+      emotion: "calm",
+      label: "calm",
+      clipName: "",
+      index: 0
+    };
+    this.presetDemoStepSeconds = PRESET_DEMO_STEP_MS / 1000;
+    this._presetDemoElapsed = 0;
+    this._presetDemoChanged = false;
+    this.onPresetDemoStateChange =
+      typeof onPresetDemoStateChange === "function" ? onPresetDemoStateChange : null;
     this.debugState = {
       cameraFrameCount: 0,
       lastCameraMode: "",
       lastCameraLogAt: -Infinity,
       lastAvatarSignature: "",
-      lastPresentationLogAt: -Infinity
+      lastPresentationLogAt: -Infinity,
+      lastPresetEmotion: ""
     };
 
     const hemisphereLight = new THREE.HemisphereLight(0xfff2ea, 0x8d6b73, 1.45);
@@ -421,6 +492,49 @@ export class VrmAvatarController {
     this.avatarState = nextState;
   }
 
+  setPresetDemo(demoState) {
+    const enabled = Boolean(
+      typeof demoState === "boolean" ? demoState : demoState?.enabled
+    );
+    const emotion = enabled
+      ? String(demoState?.emotion || EMOTION_PRESET_ORDER[0] || "calm")
+          .trim()
+          .toLowerCase()
+      : "calm";
+    const preset = resolveEmotionPreset(emotion);
+
+    this.presetDemoState = {
+      enabled,
+      emotion,
+      label: enabled ? String(demoState?.label || emotion).trim() || emotion : "calm",
+      clipName: enabled ? preset.animationClip || "" : "",
+      index: enabled
+        ? Math.max(0, EMOTION_PRESET_ORDER.indexOf(emotion))
+        : 0
+    };
+    this._presetDemoElapsed = 0;
+    this._presetDemoChanged = true;
+
+    if (enabled) {
+      this.avatarState = {
+        presence: "speaking",
+        emotion,
+        camera: preset.camera || "wide",
+        expression: preset.legacyExpression || "neutral",
+        motion: EMOTION_TO_SAFE_MOTION[emotion] || "still"
+      };
+    }
+
+    if (enabled && emotion !== this.debugState.lastPresetEmotion) {
+      console.log(
+        `[VRM][demo] emotion=${emotion} clip=${preset.animationClip || "n/a"}`
+      );
+      this.debugState.lastPresetEmotion = emotion;
+    }
+
+    this._emitPresetDemoState();
+  }
+
   resize(width, height) {
     const safeWidth = Math.max(1, Math.round(width || 1));
     const safeHeight = Math.max(1, Math.round(height || 1));
@@ -442,26 +556,42 @@ export class VrmAvatarController {
     const delta = clampDelta(deltaSeconds);
 
     this.elapsed += delta;
-    this._updateCamera(delta);
-    this._tickMixerCrossfade(delta);
+    this._stepPresetDemo(delta);
+    const presentation = this._getPresentation();
+    const preset = this._isPresetModeEnabled()
+      ? resolveEmotionPreset(presentation.emotion)
+      : null;
 
     if (this.vrm) {
       // Mixer drives skeleton BEFORE vrm.update so spring bones react
-      if (this.mixer) this.mixer.update(delta);
+      if (this.mixer) {
+        if (this._isPresetModeEnabled()) {
+          this._syncPresetAnimation(presentation, preset);
+        } else {
+          this._tickMixerCrossfade(delta);
+        }
+        this.mixer.update(delta);
+      }
 
-      const presentation = this.avatarState;
       const mouthOpen = this._computeMouthOpen(presentation);
       const blinkWeight = this._computeBlink(delta);
 
-      this._updateExpressions(presentation, mouthOpen, blinkWeight, delta);
-      this._updatePose(presentation, mouthOpen, delta);
-      this._updateLookAt(presentation, delta);
+      this._updateCamera(delta, presentation, preset);
+      this._updateExpressions(presentation, mouthOpen, blinkWeight, delta, preset);
+      this._updatePose(presentation, mouthOpen, delta, preset);
+      this._updateLookAt(presentation, delta, preset);
       this._applyRelaxedHands(delta);
       this.vrm.update(delta);
 
+      if (this._isPresetModeEnabled()) {
+        this._applyPresetMorphTargets(preset, blinkWeight, delta);
+      } else {
+        this._clearPresetMorphTargets(delta);
+      }
+
       // Only apply arm-down overrides when mixer is not active
       if (!this.mixerActive) this._applyArmsDownFrame(delta);
-      this._debugPresentation(presentation, mouthOpen, blinkWeight);
+      this._debugPresentation(presentation, mouthOpen, blinkWeight, preset);
     }
 
     this.camera.lookAt(this.cameraTarget);
@@ -484,6 +614,7 @@ export class VrmAvatarController {
 
     this._fitAvatar(vrm.scene);
     this._cacheBones(vrm);
+    this._cacheMorphTargets(vrm);
     this._applyArmsDownFrame(1 / 30);
     this._applyRelaxedHands(1 / 30);
     this._resetExpressions();
@@ -571,6 +702,42 @@ export class VrmAvatarController {
       }
     });
     console.log(`[VRM][fingers] cached ${this.fingerBones.size}/${FINGER_CURL_BONES.length} normalized finger bones`);
+  }
+
+  _cacheMorphTargets(vrm) {
+    this.rawMorphTargetDictionary.clear();
+    this.rawMorphTargetWeights.clear();
+    this.rawMorphTargetMesh = null;
+
+    let bestMesh = null;
+    let bestCount = 0;
+
+    vrm.scene.traverse((node) => {
+      if (!node?.isMesh || !node.morphTargetDictionary) {
+        return;
+      }
+
+      const morphNames = Object.keys(node.morphTargetDictionary);
+      if (morphNames.length > bestCount) {
+        bestMesh = node;
+        bestCount = morphNames.length;
+      }
+    });
+
+    if (!bestMesh) {
+      console.warn("[VRM][morph] no morph target mesh found");
+      return;
+    }
+
+    this.rawMorphTargetMesh = bestMesh;
+    Object.entries(bestMesh.morphTargetDictionary || {}).forEach(([name, index]) => {
+      this.rawMorphTargetDictionary.set(name, index);
+      this.rawMorphTargetWeights.set(name, 0);
+    });
+
+    console.log(
+      `[VRM][morph] cached mesh=${bestMesh.name || "(unnamed)"} morphTargets=${this.rawMorphTargetDictionary.size}`
+    );
   }
 
   _applyArmsDown() {
@@ -779,7 +946,13 @@ export class VrmAvatarController {
     this.armBones.clear();
     this.armTargetOffsets.clear();
     this.fingerBones.clear();
+    this.rawMorphTargetDictionary.clear();
+    this.rawMorphTargetWeights.clear();
+    this.rawMorphTargetMesh = null;
     this.restQuaternions.clear();
+    this.idleClipMap.clear();
+    this.currentIdleClipName = "";
+    this.mixerActive = false;
     this._resetExpressions();
   }
 
@@ -787,10 +960,208 @@ export class VrmAvatarController {
     EXPRESSION_KEYS.forEach((key) => {
       this.expressionWeights[key] = 0;
     });
+
+    this.rawMorphTargetWeights.forEach((_, key) => {
+      this.rawMorphTargetWeights.set(key, 0);
+    });
+  }
+
+  _emitPresetDemoState() {
+    if (this.onPresetDemoStateChange) {
+      this.onPresetDemoStateChange({
+        ...this.presetDemoState
+      });
+    }
+  }
+
+  _stepPresetDemo(delta) {
+    if (!this.presetDemoState.enabled) {
+      return;
+    }
+
+    this._presetDemoElapsed += delta;
+    if (this._presetDemoElapsed < this.presetDemoStepSeconds) {
+      return;
+    }
+
+    this._presetDemoElapsed = 0;
+    this.presetDemoState.index =
+      (this.presetDemoState.index + 1) % EMOTION_PRESET_ORDER.length;
+    this.presetDemoState.emotion =
+      EMOTION_PRESET_ORDER[this.presetDemoState.index] || "calm";
+    const preset = resolveEmotionPreset(this.presetDemoState.emotion);
+    this.presetDemoState.clipName = preset.animationClip || "";
+    this.presetDemoState.label = this.presetDemoState.emotion;
+    this.avatarState = {
+      presence: "speaking",
+      emotion: this.presetDemoState.emotion,
+      camera: preset.camera || "wide",
+      expression: preset.legacyExpression || "neutral",
+      motion: EMOTION_TO_SAFE_MOTION[this.presetDemoState.emotion] || "still"
+    };
+    this._presetDemoChanged = true;
+    this._emitPresetDemoState();
+  }
+
+  _isPresetModeEnabled() {
+    return Boolean(EMOTION_PRESETS_V2 || this.presetDemoState.enabled);
+  }
+
+  _getPresentation() {
+    if (!this.presetDemoState.enabled) {
+      return this.avatarState;
+    }
+
+    return this.avatarState;
+  }
+
+  _isPresetModeEnabled() {
+    return EMOTION_PRESETS_V2 || this.presetDemoState.enabled;
+  }
+
+  _getActiveEmotion() {
+    if (this.presetDemoState.enabled) {
+      return this.presetDemoState.emotion || "calm";
+    }
+
+    return this.avatarState?.emotion || "calm";
+  }
+
+  _getActiveEmotionPreset() {
+    return getEmotionPreset(this._getActiveEmotion());
+  }
+
+  _resolveCameraMode(presentation) {
+    if (this._isPresetModeEnabled()) {
+      return this._getActiveEmotionPreset().camera || "wide";
+    }
+
+    return presentation?.camera === "close" ? "close" : "wide";
+  }
+
+  _resolvePresetAnimationClipName(preset) {
+    if (!preset?.preferredAnimations?.length) {
+      return "";
+    }
+
+    const sorted = sortByWeightDescending(preset.preferredAnimations);
+    for (const entry of sorted) {
+      const clipName = String(entry?.clip || "").trim();
+      if (clipName && this.idleClipMap.has(clipName)) {
+        return clipName;
+      }
+    }
+
+    return String(sorted[0]?.clip || "").trim();
+  }
+
+  _playIdleClipByName(clipName, crossfadeDuration = IDLE_CROSSFADE_DURATION) {
+    if (!this.mixer || !clipName) {
+      return;
+    }
+
+    const clip = this.idleClipMap.get(clipName);
+    if (!clip) {
+      return;
+    }
+
+    if (this.currentIdleClipName === clipName && this.currentIdleAction) {
+      return;
+    }
+
+    const action = this.mixer.clipAction(clip);
+    action.reset().setLoop(THREE.LoopRepeat).play();
+
+    if (this.currentIdleAction && this.currentIdleAction !== action) {
+      this.currentIdleAction.crossFadeTo(action, crossfadeDuration, true);
+    }
+
+    this.currentIdleAction = action;
+    this.currentIdleClipName = clipName;
+    this.mixerActive = true;
+    this.nextCrossfadeIn = randomRange(IDLE_CROSSFADE_INTERVAL_MIN, IDLE_CROSSFADE_INTERVAL_MAX);
+  }
+
+  _syncPresetAnimation() {
+    if (!this.mixer || this.idleClips.length === 0) {
+      return;
+    }
+
+    const preset = this._getActiveEmotionPreset();
+    const clipName = this._resolvePresetAnimationClipName(preset);
+
+    if (!clipName) {
+      return;
+    }
+
+    this._playIdleClipByName(
+      clipName,
+      THREE.MathUtils.clamp(
+        (Number(preset.transitionMs) || 900) / 1000,
+        PRESET_CROSSFADE_MIN,
+        PRESET_CROSSFADE_MAX
+      )
+    );
+  }
+
+  _clearPresetMorphTargets(delta) {
+    if (!this.rawMorphTargetMesh || this.rawMorphTargetDictionary.size === 0) {
+      return;
+    }
+
+    const influences = this.rawMorphTargetMesh.morphTargetInfluences;
+
+    this.rawMorphTargetDictionary.forEach((index, name) => {
+      const current = Number(this.rawMorphTargetWeights.get(name) || 0);
+      if (current < 0.001) {
+        this.rawMorphTargetWeights.set(name, 0);
+        if (Array.isArray(influences) || ArrayBuffer.isView(influences)) {
+          influences[index] = 0;
+        }
+        return;
+      }
+      const next = current * Math.max(0, 1 - RAW_MORPH_DAMP_STRENGTH * delta);
+      this.rawMorphTargetWeights.set(name, next);
+      if (Array.isArray(influences) || ArrayBuffer.isView(influences)) {
+        influences[index] = next;
+      }
+    });
+  }
+
+  _applyPresetMorphTargets(preset, blinkWeight, delta) {
+    if (!this.rawMorphTargetMesh || this.rawMorphTargetDictionary.size === 0) {
+      return;
+    }
+
+    const targetWeights = new Map(Object.entries(preset?.expressions || {}));
+    const blinkName = this.rawMorphTargetDictionary.has("まばたき")
+      ? "まばたき"
+      : this.rawMorphTargetDictionary.has("blink")
+        ? "blink"
+        : null;
+
+    if (blinkName) {
+      const baseBlink = Number(targetWeights.get(blinkName) || 0);
+      targetWeights.set(blinkName, Math.max(baseBlink, blinkWeight));
+    }
+
+    const strength = transitionMsToStrength(preset?.transitionMs, 10);
+    const influences = this.rawMorphTargetMesh.morphTargetInfluences;
+
+    this.rawMorphTargetDictionary.forEach((index, name) => {
+      const target = Number(targetWeights.get(name) || 0);
+      const current = Number(this.rawMorphTargetWeights.get(name) || 0);
+      const next = dampNumber(current, target, strength, delta);
+      this.rawMorphTargetWeights.set(name, next);
+
+      if (Array.isArray(influences) || ArrayBuffer.isView(influences)) {
+        influences[index] = next;
+      }
+    });
   }
 
   _updateCamera(delta) {
-    const cameraMode = this.avatarState?.camera === "close" ? "close" : "wide";
+    const cameraMode = this._resolveCameraMode(this.avatarState);
     const preset = CAMERA_PRESETS[cameraMode];
     this.debugState.cameraFrameCount += 1;
 
@@ -845,6 +1216,10 @@ export class VrmAvatarController {
   }
 
   _computeMouthOpen(presentation) {
+    if (this._isPresetModeEnabled()) {
+      return 0;
+    }
+
     if (presentation.presence !== "speaking") {
       return 0;
     }
@@ -865,18 +1240,27 @@ export class VrmAvatarController {
 
     const targets = Object.fromEntries(EXPRESSION_KEYS.map((key) => [key, 0]));
 
-    if (presentation.expression !== "neutral") {
-      targets[presentation.expression] =
-        EMOTION_EXPRESSION_WEIGHTS[presentation.expression] || 0;
-    }
+    if (this._isPresetModeEnabled()) {
+      if (presentation.presence === "speaking") {
+        const mouthScale = presentation.emotion === "whisper" ? 0.72 : 1;
+        targets.aa = mouthOpen * 1.02 * mouthScale;
+        targets.oh = mouthOpen * 0.44 * mouthScale;
+        targets.ih = mouthOpen * 0.3 * mouthScale;
+      }
+    } else {
+      if (presentation.expression !== "neutral") {
+        targets[presentation.expression] =
+          EMOTION_EXPRESSION_WEIGHTS[presentation.expression] || 0;
+      }
 
-    targets.blink = blinkWeight;
+      targets.blink = blinkWeight;
 
-    if (presentation.presence === "speaking") {
-      const mouthScale = presentation.emotion === "whisper" ? 0.72 : 1;
-      targets.aa = mouthOpen * 1.02 * mouthScale;
-      targets.oh = mouthOpen * 0.44 * mouthScale;
-      targets.ih = mouthOpen * 0.3 * mouthScale;
+      if (presentation.presence === "speaking") {
+        const mouthScale = presentation.emotion === "whisper" ? 0.72 : 1;
+        targets.aa = mouthOpen * 1.02 * mouthScale;
+        targets.oh = mouthOpen * 0.44 * mouthScale;
+        targets.ih = mouthOpen * 0.3 * mouthScale;
+      }
     }
 
     EXPRESSION_KEYS.forEach((key) => {
@@ -916,7 +1300,7 @@ export class VrmAvatarController {
     let loaded = 0;
     const total = IDLE_ANIMATION_PATHS.length;
 
-    IDLE_ANIMATION_PATHS.forEach((path, index) => {
+    IDLE_ANIMATION_PATHS.forEach((path) => {
       fbxLoader.load(
         path,
         (fbx) => {
@@ -928,6 +1312,7 @@ export class VrmAvatarController {
               clip.tracks = clip.tracks.filter(t => !t.name.endsWith(".position"));
               clip.name = path.split("/").pop().replace(".fbx", "");
               this.idleClips.push(clip);
+              this.idleClipMap.set(clip.name, clip);
               console.log(`[VRM][anim] loaded: ${clip.name} (${clip.duration.toFixed(1)}s)`);
             }
           } catch (err) {
@@ -935,7 +1320,11 @@ export class VrmAvatarController {
           }
           loaded++;
           if (loaded === total && this.idleClips.length > 0) {
-            this._startRandomIdle();
+            if (this._isPresetModeEnabled()) {
+              this._syncPresetAnimation();
+            } else {
+              this._startRandomIdle();
+            }
           }
         },
         undefined,
@@ -957,20 +1346,18 @@ export class VrmAvatarController {
     this.lastIdleClipIndex = idx;
 
     const clip = this.idleClips[idx];
-    const action = this.mixer.clipAction(clip);
-    action.reset().setLoop(THREE.LoopRepeat).play();
-
-    if (this.currentIdleAction && this.currentIdleAction !== action) {
-      this.currentIdleAction.crossFadeTo(action, IDLE_CROSSFADE_DURATION, true);
-    }
-    this.currentIdleAction = action;
-    this.mixerActive = true;
+    this._playIdleClipByName(clip.name, IDLE_CROSSFADE_DURATION);
     this.nextCrossfadeIn = randomRange(IDLE_CROSSFADE_INTERVAL_MIN, IDLE_CROSSFADE_INTERVAL_MAX);
     console.log(`[VRM][anim] playing: ${clip.name}, next crossfade in ${this.nextCrossfadeIn.toFixed(0)}s`);
   }
 
   _tickMixerCrossfade(delta) {
     const presence = this.avatarState?.presence || "idle";
+
+    if (this._isPresetModeEnabled()) {
+      this._syncPresetAnimation();
+      return;
+    }
 
     if (presence !== "idle" && presence !== "listening") {
       if (this.mixerActive && this.currentIdleAction) {
@@ -1064,6 +1451,26 @@ export class VrmAvatarController {
         break;
       default:
         break;
+    }
+
+    if (this._isPresetModeEnabled()) {
+      const overlay = this._getActiveEmotionPreset()?.overlay || {};
+      const applyOverlay = (rotation, source) => {
+        if (!rotation || !source) {
+          return;
+        }
+
+        rotation.x += degToRad(source.xDeg || 0);
+        rotation.y += degToRad(source.yDeg || 0);
+        rotation.z += degToRad(source.zDeg || 0);
+      };
+
+      applyOverlay(hips, overlay.hips);
+      applyOverlay(spine, overlay.spine);
+      applyOverlay(chest, overlay.chest);
+      applyOverlay(upperChest, overlay.upperChest);
+      applyOverlay(neck, overlay.neck);
+      applyOverlay(head, overlay.head);
     }
 
     this.avatarRoot.position.set(
