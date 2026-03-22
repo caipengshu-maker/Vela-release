@@ -67,15 +67,15 @@ const EMOTION_TO_SAFE_MOTION = {
 const EMOTION_TO_ANIMATION = {
   calm: "Breathing Idle",
   happy: "Happy Idle",
-  affectionate: "Breathing Idle",
+  affectionate: "Talking",
   playful: "Happy Idle",
-  concerned: "Breathing Idle",
-  sad: "Bored",
-  angry: "Standing Idle",
+  concerned: "Talking",
+  sad: "Sad Idle",
+  angry: "Angry",
   whisper: "Thinking",
-  surprised: "Happy Idle",
+  surprised: "Looking Around",
   curious: "Thinking",
-  shy: "Idle",
+  shy: "Bashful",
   determined: "Standing Idle"
 };
 
@@ -345,7 +345,12 @@ const IDLE_ANIMATION_PATHS = [
   "/assets/animations/Standing Idle.fbx",
   "/assets/animations/Idle.fbx",
   "/assets/animations/Bored.fbx",
-  "/assets/animations/Thinking.fbx"
+  "/assets/animations/Thinking.fbx",
+  "/assets/animations/Sad Idle.fbx",
+  "/assets/animations/Angry.fbx",
+  "/assets/animations/Bashful.fbx",
+  "/assets/animations/Looking Around.fbx",
+  "/assets/animations/Talking.fbx"
 ];
 const IDLE_CROSSFADE_INTERVAL_MIN = 15;
 const IDLE_CROSSFADE_INTERVAL_MAX = 30;
