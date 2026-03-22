@@ -29,6 +29,7 @@ import {
   settleAvatarState
 } from "./avatar-state.js";
 import { RelationshipTracker } from "./relationship.js";
+import { RELATIONSHIP_STAGES } from "./interaction-contract.js";
 import {
   createStreamPrefixBuffer,
   parsePerformancePrefix
@@ -418,7 +419,7 @@ export class VelaCore {
     );
     const hasPersistedRelationship =
       persistedRelationship && typeof persistedRelationship === "object";
-    const validStages = ["reserved", "warm", "close"];
+    const validStages = RELATIONSHIP_STAGES;
     const persistedStage = String(persistedRelationship?.stage || "").trim().toLowerCase();
     const fallback = String(fallbackStage || "reserved").trim().toLowerCase();
     const stage = validStages.includes(persistedStage)

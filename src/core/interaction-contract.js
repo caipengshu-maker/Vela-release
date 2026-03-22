@@ -38,8 +38,7 @@ export const EMOTION_STRENGTHS = ["light", "normal"];
 export const RELATIONSHIP_STAGES = [
   "reserved",
   "warm",
-  "close",
-  "hurt_but_connected"
+  "close"
 ];
 
 export const CAMERA_SWITCH_COOLDOWN_MS = 8_000;
