@@ -811,13 +811,15 @@ export class VrmAvatarController {
       if (boneName === VRMHumanBoneName.LeftUpperArm) {
         const sway = Math.sin(this.elapsed * 0.4 * Math.PI * 2) * 0.015 * swayScale;
         // Y-axis = forward/backward: -Y pushes left arm forward (confirmed by axis diag)
-        this._tempEuler.set(0, -0.06, sway, "XYZ");
+        // Left arm needs more push than right — auto-resolver puts it further back
+        this._tempEuler.set(0, -0.14, sway, "XYZ");
         this._tempQuatB.setFromEuler(this._tempEuler);
         this._tempQuatA.multiply(this._tempQuatB);
       } else if (boneName === VRMHumanBoneName.RightUpperArm) {
         const sway = Math.sin(this.elapsed * 0.35 * Math.PI * 2) * 0.012 * swayScale;
         // Y-axis = forward/backward: +Y pushes right arm forward (confirmed by axis diag)
-        this._tempEuler.set(0, 0.06, sway, "XYZ");
+        // Right arm already natural — no forward push needed
+        this._tempEuler.set(0, 0, sway, "XYZ");
         this._tempQuatB.setFromEuler(this._tempEuler);
         this._tempQuatA.multiply(this._tempQuatB);
 
@@ -1100,11 +1102,11 @@ export class VrmAvatarController {
         return { burstCount: 3, interval: randomRange(1.2, 1.8), elapsed: 0, done: 0 };
       case "hair-touch":
         return {
-          side: Math.random() > 0.5 ? "right" : "right",
-          upperArmZ: randomMagnitude(-0.55),
-          upperArmX: randomMagnitude(-0.25),
-          lowerArmZ: randomMagnitude(0.95),
-          headTiltZ: randomMagnitude(0.04)
+          side: "right",
+          upperArmZ: randomMagnitude(-0.25),
+          upperArmX: randomMagnitude(-0.10),
+          lowerArmZ: randomMagnitude(0.40),
+          headTiltZ: randomMagnitude(0.03)
         };
       case "shoulder-shrug":
         return { magnitude: randomMagnitude(0.04) };
