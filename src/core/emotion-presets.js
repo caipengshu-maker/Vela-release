@@ -30,6 +30,25 @@ function camera(preferred, overrides = []) {
   };
 }
 
+export function resolveEmotionCameraHint(cameraHint, avatarState = {}) {
+  const preferred = String(cameraHint?.preferred || "wide").trim().toLowerCase();
+  const overrides = Array.isArray(cameraHint?.overrides) ? cameraHint.overrides : [];
+  const matchedOverride = overrides.find((entry) => {
+    const when = entry?.when && typeof entry.when === "object" ? entry.when : null;
+
+    if (!when) {
+      return false;
+    }
+
+    return Object.entries(when).every(([key, expectedValue]) => {
+      const actualValue = String(avatarState?.[key] || "").trim().toLowerCase();
+      return actualValue === String(expectedValue || "").trim().toLowerCase();
+    });
+  });
+
+  return String(matchedOverride?.use || preferred || "wide").trim().toLowerCase() || "wide";
+}
+
 function overlay(bones, fingerCurl = { left: 0, right: 0 }) {
   return {
     bones,

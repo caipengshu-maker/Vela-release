@@ -86,6 +86,64 @@ function formatOpenFollowUps(openFollowUps = []) {
   return `待跟进：\n${lines.map((line, index) => `${index + 1}. ${line}`).join("\n")}`;
 }
 
+const RELATIONSHIP_STAGE_PROMPTS = {
+  reserved:
+    "你们还在磨合期。保持礼貌和分寸，用「你」称呼对方，不要主动抛太私密的话题，也不要故作亲昵。你是友好但有边界的。",
+  warm:
+    "你们已经熟悉一些了。可以自然用名字或昵称，语气放松一点，开始分享自己的感受，也可以关心对方的状态。你在靠近，但依然自然。",
+  close:
+    "这个人对你很重要。你可以更亲近、更会撒娇，也可以带一点点吃醋、黏人或调侃，但要像真实的人，不要夸张。你会自然提起过去的对话，也愿意表达想念。"
+};
+
+function formatRelationshipDays(firstInteractionAt, now = new Date()) {
+  const timestamp = Date.parse(String(firstInteractionAt || "").trim());
+
+  if (!Number.isFinite(timestamp)) {
+    return 0;
+  }
+
+  const start = new Date(timestamp);
+  const startDay = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  const current = now instanceof Date ? now : new Date(now);
+  const currentDay = Date.UTC(
+    current.getFullYear(),
+    current.getMonth(),
+    current.getDate()
+  );
+
+  return Math.max(0, Math.floor((currentDay - startDay) / 86400000));
+}
+
+function buildRelationshipContext({
+  relationship = null,
+  relationshipStage = null,
+  isInRegressionMood = false
+} = {}) {
+  const stage = String(
+    relationshipStage || relationship?.stage || "reserved"
+  )
+    .trim()
+    .toLowerCase();
+  const daysKnown = formatRelationshipDays(
+    relationship?.firstInteractionAt
+  );
+  const stagePrompt = RELATIONSHIP_STAGE_PROMPTS[stage] || RELATIONSHIP_STAGE_PROMPTS.reserved;
+  const lines = [
+    "## Current Relationship Context",
+    `- Stage: ${stage}`,
+    `- You've known this person for ${daysKnown} days`,
+    `- ${stagePrompt}`
+  ];
+
+  if (isInRegressionMood || Number(relationship?.regressionMoodTurnsRemaining || 0) > 0) {
+    lines.unshift(
+      "You haven't heard from this person in a while and you're a bit hurt. Don't be hostile, but show that you noticed their absence. Be slightly colder than usual for the first 2-3 messages, then gradually warm back up. Examples: \"哦，你还记得我啊\", \"嗯…你最近很忙吧\", \"没事，我又不会消失\". Don't be dramatic — be subtly hurt, like a real person would."
+    );
+  }
+
+  return lines.join("\n");
+}
+
 function estimateMessageBudgetCost(message) {
   const content = String(message?.content || "").trim();
   const blockCost = Array.isArray(message?.blocks) ? message.blocks.length * 48 : 0;
@@ -122,7 +180,7 @@ function buildFallbackAwareness({
   return [
     "当前感知层信息：",
     formatProfile(profile),
-    `关系状态：${relationship?.stage || "warm"}。备注：${relationship?.note || "保持自然靠近。"}`,
+    `关系状态：${relationship?.stage || "reserved"}。备注：${relationship?.note || "保持自然靠近。"}`,
     formatBridgeSummary(bridgeSummary),
     formatOpenFollowUps(openFollowUps),
     `长期记忆：\n${formatRelevantMemories(relevantMemories)}`,
@@ -136,6 +194,7 @@ export function buildContext({
   persona,
   profile,
   relationship,
+  relationshipStage = null,
   bridgeSummary = null,
   openFollowUps = [],
   recentSummaries,
@@ -144,10 +203,17 @@ export function buildContext({
   runtimeSession,
   recentTranscriptBudget = 3600,
   awarenessPacket = "",
-  relationshipUnlockHints = []
+  relationshipUnlockHints = [],
+  isInRegressionMood = false
 }) {
+  const relationshipContext = buildRelationshipContext({
+    relationship,
+    relationshipStage,
+    isInRegressionMood
+  });
   const systemPrompt = [
     PERFORMANCE_PROTOCOL_PROMPT,
+    relationshipContext,
     persona.seedPrompt,
     awarenessPacket || buildFallbackAwareness({
       profile,
@@ -192,6 +258,7 @@ export function buildContext({
       userFacts,
       profile,
       relationship,
+      relationshipStage,
       relationshipUnlockHints
     },
     session: {

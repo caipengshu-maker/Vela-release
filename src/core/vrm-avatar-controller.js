@@ -12,7 +12,11 @@ import {
   EMOTION_PRESETS_V2,
   EMOTION_TO_VRM_EXPRESSION
 } from "./interaction-contract.js";
-import { getEmotionPreset, resolveEmotionPreset } from "./emotion-presets.js";
+import {
+  getEmotionPreset,
+  resolveEmotionCameraHint,
+  resolveEmotionPreset
+} from "./emotion-presets.js";
 
 const CAMERA_PRESETS = {
   wide: {
@@ -203,10 +207,16 @@ function toFileDirectoryUrl(filePath) {
 function normalizeAvatarState(avatar) {
   const presence = String(avatar?.presence || "idle").trim().toLowerCase();
   const emotion = String(avatar?.emotion || "calm").trim().toLowerCase();
+  const relationshipStage = String(
+    avatar?.relationshipStage || "reserved"
+  )
+    .trim()
+    .toLowerCase();
 
   return {
     presence,
     emotion,
+    relationshipStage,
     camera:
       presence === "speaking"
         ? String(avatar?.camera || "wide").trim().toLowerCase()
@@ -479,12 +489,13 @@ export class VrmAvatarController {
   setAvatarState(avatar) {
     const requestedCamera = String(avatar?.camera || "wide").trim().toLowerCase();
     const nextState = resolveSafePresentation(avatar);
-    const signature = `${nextState.presence}|${nextState.camera}|${nextState.expression}|${nextState.motion}|${nextState.emotion}`;
+    const signature = `${nextState.presence}|${nextState.camera}|${nextState.expression}|${nextState.motion}|${nextState.emotion}|${nextState.relationshipStage}`;
 
     if (signature !== this.debugState.lastAvatarSignature) {
       console.log(
         `[VRM][state] requestedCamera=${requestedCamera} resolvedCamera=${nextState.camera} ` +
-        `presence=${nextState.presence} expression=${nextState.expression} motion=${nextState.motion} emotion=${nextState.emotion}`
+        `presence=${nextState.presence} expression=${nextState.expression} motion=${nextState.motion} emotion=${nextState.emotion} ` +
+        `relationshipStage=${nextState.relationshipStage || "reserved"}`
       );
       this.debugState.lastAvatarSignature = signature;
     }
@@ -519,6 +530,7 @@ export class VrmAvatarController {
       this.avatarState = {
         presence: "speaking",
         emotion,
+        relationshipStage: this.avatarState?.relationshipStage || "reserved",
         camera: preset.camera || "wide",
         expression: preset.legacyExpression || "neutral",
         motion: EMOTION_TO_SAFE_MOTION[emotion] || "still"
@@ -995,6 +1007,7 @@ export class VrmAvatarController {
     this.avatarState = {
       presence: "speaking",
       emotion: this.presetDemoState.emotion,
+      relationshipStage: this.avatarState?.relationshipStage || "reserved",
       camera: preset.camera || "wide",
       expression: preset.legacyExpression || "neutral",
       motion: EMOTION_TO_SAFE_MOTION[this.presetDemoState.emotion] || "still"
@@ -1033,7 +1046,13 @@ export class VrmAvatarController {
 
   _resolveCameraMode(presentation) {
     if (this._isPresetModeEnabled()) {
-      return this._getActiveEmotionPreset().camera || "wide";
+      return resolveEmotionCameraHint(
+        this._getActiveEmotionPreset()?.cameraHint || this._getActiveEmotionPreset()?.camera || {
+          preferred: "wide",
+          overrides: []
+        },
+        presentation || this.avatarState
+      );
     }
 
     return presentation?.camera === "close" ? "close" : "wide";

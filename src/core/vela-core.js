@@ -28,6 +28,7 @@ import {
   mapAvatarState,
   settleAvatarState
 } from "./avatar-state.js";
+import { RelationshipTracker } from "./relationship.js";
 import {
   createStreamPrefixBuffer,
   parsePerformancePrefix
@@ -222,21 +223,32 @@ function replaceTextBlocks(blocks, text) {
 }
 
 function buildRelationshipUnlockHints(relationship) {
-  const stage = String(relationship?.stage || "warm").trim().toLowerCase();
+  const stage = String(relationship?.stage || "reserved").trim().toLowerCase();
+  const hints = [];
+
+  if (relationship?.regressionMoodTurnsRemaining > 0 || relationship?.isInRegressionMood) {
+    hints.push("先别急着靠得太近，语气稍微带一点在意对方缺席的痕迹。");
+  }
 
   switch (stage) {
     case "reserved":
-      return ["先保持礼貌和分寸，重点是接住情绪，不要抢着靠近。"];
+      hints.push("先保持礼貌和分寸，重点是接住情绪，不要抢着靠近。");
+      break;
     case "warm":
-      return ["可以有一点朦胧和靠近感，但不要突然使用强亲密称呼。"];
+      hints.push("可以自然叫名字，语气放松一点，但不要突然越级亲密。");
+      break;
     case "close":
-      return ["亲密感可以更自然一点，但仍然以真实和克制为先。"];
-    case "intimate":
-      return ["已经足够熟悉，也要避免用力过猛，保持自然流动。"];
+      hints.push("可以更亲近一点，偶尔调侃或表达想念，但要像真实的人。");
+      break;
     default:
-      return ["先保持自然和分寸，不要突然越级表达。"];
+      hints.push("先保持自然和分寸，不要突然越级表达。");
+      break;
   }
+
+  return hints;
 }
+
+const RELATIONSHIP_STATE_FILE = "state/relationship.json";
 
 function parseModelCommand(message) {
   const match = String(message || "")
@@ -329,6 +341,7 @@ export class VelaCore {
     this.sessionStore = null;
     this.runtimeSession = null;
     this.persistedState = null;
+    this.relationshipTracker = null;
     this.memorySnapshot = null;
     this.currentAvatar = null;
     this.currentSpeech = null;
@@ -371,7 +384,15 @@ export class VelaCore {
     this.runtimeSession.selectedModel =
       this.runtimeSession.providerRouting?.selectedModel || "auto";
 
-    this.memorySnapshot = await this.memoryStore.loadMemorySnapshot();
+    const initialMemorySnapshot = await this.memoryStore.loadMemorySnapshot();
+    this.relationshipTracker = await this.loadRelationshipTracker(
+      initialMemorySnapshot.relationship?.stage
+    );
+    this.relationshipTracker.checkRegression();
+    await this.saveRelationshipTracker();
+    this.memorySnapshot = this.mergeRelationshipIntoMemorySnapshot(
+      initialMemorySnapshot
+    );
     this.persona = buildPersona(this.memorySnapshot.profile);
     this.currentAvatar = this.buildPresenceAvatar(
       this.runtimeSession.voiceModeEnabled ? "listening" : "idle"
@@ -390,8 +411,91 @@ export class VelaCore {
     return this.config;
   }
 
+  async loadRelationshipTracker(fallbackStage = null) {
+    const persistedRelationship = await this.localStore.readJson(
+      RELATIONSHIP_STATE_FILE,
+      null
+    );
+    const hasPersistedRelationship =
+      persistedRelationship && typeof persistedRelationship === "object";
+    const validStages = ["reserved", "warm", "close"];
+    const persistedStage = String(persistedRelationship?.stage || "").trim().toLowerCase();
+    const fallback = String(fallbackStage || "reserved").trim().toLowerCase();
+    const stage = validStages.includes(persistedStage)
+      ? persistedStage
+      : validStages.includes(fallback)
+        ? fallback
+        : "reserved";
+    const tracker = new RelationshipTracker(
+      validStages.includes(persistedStage)
+        ? persistedRelationship
+        : {
+            stage
+          }
+    );
+
+    if (!hasPersistedRelationship && stage) {
+      await this.localStore.writeJson(RELATIONSHIP_STATE_FILE, tracker.toJSON());
+    }
+
+    return tracker;
+  }
+
+  async saveRelationshipTracker() {
+    if (!this.relationshipTracker) {
+      return;
+    }
+
+    await this.localStore.writeJson(
+      RELATIONSHIP_STATE_FILE,
+      this.relationshipTracker.toJSON()
+    );
+  }
+
+  mergeRelationshipIntoMemorySnapshot(snapshot = null) {
+    if (!snapshot) {
+      return snapshot;
+    }
+
+    return {
+      ...snapshot,
+      relationship: this.getRelationshipState(snapshot.relationship)
+    };
+  }
+
+  getRelationshipState(baseRelationship = null) {
+    const trackerState = this.relationshipTracker?.toJSON?.() || {};
+    const base = baseRelationship && typeof baseRelationship === "object"
+      ? baseRelationship
+      : {};
+    const stage = String(
+      trackerState.stage || base.stage || "reserved"
+    )
+      .trim()
+      .toLowerCase();
+
+    return {
+      ...base,
+      ...trackerState,
+      stage,
+      isInRegressionMood: Boolean(
+        trackerState.regressionMoodTurnsRemaining > 0
+      )
+    };
+  }
+
+  async recordRelationshipTurn(emotionFromLLM) {
+    if (!this.relationshipTracker) {
+      return;
+    }
+
+    this.relationshipTracker.recordTurn(emotionFromLLM);
+    await this.saveRelationshipTracker();
+  }
+
   async loadMemorySnapshot() {
-    this.memorySnapshot = await this.memoryStore.loadMemorySnapshot();
+    const memorySnapshot = await this.memoryStore.loadMemorySnapshot();
+    this.memorySnapshot = this.mergeRelationshipIntoMemorySnapshot(memorySnapshot);
     this.persona = buildPersona(this.memorySnapshot.profile);
     return this.memorySnapshot;
   }
@@ -518,6 +622,9 @@ export class VelaCore {
   }
 
   buildPresenceAvatar(presence) {
+    const relationshipStage = this.getRelationshipState(
+      this.memorySnapshot?.relationship
+    ).stage;
     const plan = resolveInteractionPlan({
       intent: {
         replyText: this.lastReplyText,
@@ -527,22 +634,28 @@ export class VelaCore {
       voiceModeEnabled: Boolean(this.runtimeSession?.voiceModeEnabled),
       ttsCapabilities: getTtsCapabilities(this.config),
       ttsModel: this.config.tts.model,
-      relationshipStage: this.memorySnapshot?.relationship.stage || "warm",
+      relationshipStage,
       lastActiveAt: this.persistedState?.lastActiveAt || null,
       history: this.policyHistory
     });
 
-    return mapAvatarState(plan);
+    return {
+      ...mapAvatarState(plan),
+      relationshipStage
+    };
   }
 
   buildSpeakingAvatar({ replyText, userMessage, llmIntent = null }) {
+    const relationshipStage = this.getRelationshipState(
+      this.memorySnapshot?.relationship
+    ).stage;
     const intent = buildInteractionIntent({
       assistantResponse: {
         text: replyText
       },
       thinkingMode: this.runtimeSession.thinkingMode,
       userMessage,
-      relationshipStage: this.memorySnapshot?.relationship.stage || "warm",
+      relationshipStage,
       llmIntent
     });
 
@@ -552,14 +665,17 @@ export class VelaCore {
       voiceModeEnabled: Boolean(this.runtimeSession.voiceModeEnabled),
       ttsCapabilities: getTtsCapabilities(this.config),
       ttsModel: this.config.tts.model,
-      relationshipStage: this.memorySnapshot?.relationship.stage || "warm",
+      relationshipStage,
       lastActiveAt: this.persistedState?.lastActiveAt || null,
       history: this.policyHistory
     });
 
     return {
       intent,
-      avatar: mapAvatarState(plan),
+      avatar: {
+        ...mapAvatarState(plan),
+        relationshipStage
+      },
       plan
     };
   }
@@ -691,6 +807,18 @@ export class VelaCore {
       note: relationship.note,
       sharedMoments: []
     });
+
+    if (this.relationshipTracker) {
+      const nowIso = new Date().toISOString();
+      this.relationshipTracker.stage = relationship.stage;
+      this.relationshipTracker.stageEnteredAt = nowIso;
+      this.relationshipTracker.firstInteractionAt =
+        this.relationshipTracker.firstInteractionAt || nowIso;
+      this.relationshipTracker.lastInteractionAt = nowIso;
+      this.relationshipTracker.emotionalTurnCount = 0;
+      this.relationshipTracker.regressionMoodTurnsRemaining = 0;
+      await this.saveRelationshipTracker();
+    }
 
     const memory = await this.loadMemorySnapshot();
     const replyText = `${this.persona.name}，我醒来了。接下来我会用现在的语气陪你，也会慢慢记住关于你的事。`;
@@ -836,6 +964,7 @@ export class VelaCore {
     const behaviorPatterns = await loadBehaviorPatterns(this.localStore).catch(
       () => null
     );
+    const relationship = this.getRelationshipState(memory.relationship);
     const timeAwareness = getTimeAwareness({
       runtimeSession: this.runtimeSession,
       lastActiveAt: this.persistedState?.lastActiveAt || null
@@ -846,12 +975,12 @@ export class VelaCore {
       fetchImpl: options.fetchImpl
     }).catch(() => null);
     await this.updateWeatherState(weather);
-    const relationshipUnlockHints = buildRelationshipUnlockHints(memory.relationship);
+    const relationshipUnlockHints = buildRelationshipUnlockHints(relationship);
     const awarenessPacket = buildContextFusion({
       timeAwareness,
       weather,
       profile: memory.profile,
-      relationship: memory.relationship,
+      relationship,
       bridgeSummary: memory.bridgeSummary,
       openFollowUps: memory.openFollowUps || [],
       recentSummaries: memory.recentSummaries,
@@ -880,7 +1009,10 @@ export class VelaCore {
       return null;
     }
 
-    const decision = shouldGreetOnOpen(this.persistedState);
+    const relationshipStage = this.getRelationshipState(
+      this.memorySnapshot?.relationship
+    ).stage;
+    const decision = shouldGreetOnOpen(this.persistedState, relationshipStage);
 
     if (!decision.shouldGreet) {
       return null;
@@ -918,10 +1050,14 @@ export class VelaCore {
       fetchImpl: options.fetchImpl
     }).catch(() => null);
     const previousPersistedState = this.persistedState;
+    const relationshipStage = this.getRelationshipState(
+      this.memorySnapshot?.relationship
+    ).stage;
     const decision = checkInConversationTrigger(
       timeAwareness,
       weather,
-      previousPersistedState
+      previousPersistedState,
+      relationshipStage
     );
     await this.updateWeatherState(weather);
 
@@ -956,6 +1092,7 @@ export class VelaCore {
     const memory =
       overrides.memory || this.memorySnapshot || (await this.loadMemorySnapshot());
     const relevantMemories = overrides.relevantMemories || [];
+    const relationship = this.getRelationshipState(memory.relationship);
     const { awarenessPacket, relationshipUnlockHints } =
       overrides.awarenessPacket && overrides.relationshipUnlockHints
         ? {
@@ -966,7 +1103,8 @@ export class VelaCore {
     const context = buildContext({
       persona: this.persona,
       profile: memory.profile,
-      relationship: memory.relationship,
+      relationship,
+      relationshipStage: relationship.stage,
       bridgeSummary: memory.bridgeSummary,
       openFollowUps: memory.openFollowUps || [],
       recentSummaries: memory.recentSummaries,
@@ -975,7 +1113,8 @@ export class VelaCore {
       runtimeSession: this.runtimeSession,
       recentTranscriptBudget: this.config.runtime.recentTranscriptBudget || 3600,
       awarenessPacket,
-      relationshipUnlockHints
+      relationshipUnlockHints,
+      isInRegressionMood: relationship.isInRegressionMood
     });
     const proactiveSystemPrompt = [
       context.systemPrompt,
@@ -1074,9 +1213,15 @@ export class VelaCore {
     const proactiveCountToday = Number(this.persistedState?.proactiveCountToday || 0) + 1;
 
     await this.memoryStore.appendTurnSummary(summary);
+    await this.recordRelationshipTurn(parsedPerformance.intent?.emotion || "calm");
+    const relationshipStage = this.relationshipTracker?.stage || speakingAvatar.relationshipStage;
+    const avatarForPersistence = {
+      ...speakingAvatar,
+      relationshipStage
+    };
     this.persistedState = await this.sessionStore.save(
       this.runtimeSession,
-      speakingAvatar,
+      avatarForPersistence,
       summary,
       assistantResponse.providerMeta,
       {
@@ -1106,11 +1251,12 @@ export class VelaCore {
       content: assistantReply,
       providerMeta: assistantResponse.providerMeta
     });
-    await this.emitAvatarState(options.onEvent, speakingAvatar);
+    this.currentAvatar = avatarForPersistence;
+    await this.emitAvatarState(options.onEvent, avatarForPersistence);
 
     return this.buildAppState({
       memorySnapshot: nextMemory,
-      avatar: speakingAvatar,
+      avatar: avatarForPersistence,
       messages: this.runtimeSession.messages,
       welcomeNote: "",
       onboarding: {
@@ -1176,10 +1322,12 @@ export class VelaCore {
     });
     const { awarenessPacket, relationshipUnlockHints } =
       await this.buildAwarenessPacket(memory, relevantMemories, options);
+    const relationship = this.getRelationshipState(memory.relationship);
     const context = buildContext({
       persona: this.persona,
       profile: memory.profile,
-      relationship: memory.relationship,
+      relationship,
+      relationshipStage: relationship.stage,
       bridgeSummary: memory.bridgeSummary,
       openFollowUps: memory.openFollowUps || [],
       recentSummaries: memory.recentSummaries,
@@ -1188,7 +1336,8 @@ export class VelaCore {
       runtimeSession: this.runtimeSession,
       recentTranscriptBudget: this.config.runtime.recentTranscriptBudget || 3600,
       awarenessPacket,
-      relationshipUnlockHints
+      relationshipUnlockHints,
+      isInRegressionMood: relationship.isInRegressionMood
     });
 
     const assistantMessageId = randomUUID();
@@ -1352,16 +1501,27 @@ export class VelaCore {
     });
 
     await this.memoryStore.appendTurnSummary(summary);
+    await this.recordRelationshipTurn(
+      parsedPerformance.intent?.emotion ||
+        streamingIntent ||
+        prefixBuffer?.getIntent() ||
+        "calm"
+    );
+    const relationshipStage = this.relationshipTracker?.stage || speakingAvatar.relationshipStage;
+    const avatarForPersistence = {
+      ...speakingAvatar,
+      relationshipStage
+    };
     await this.sessionStore.save(
       this.runtimeSession,
-      speakingAvatar,
+      avatarForPersistence,
       summary,
       assistantResponse.providerMeta
     );
     this.persistedState = await this.sessionStore.loadPersistedState();
 
     const nextMemory = await this.loadMemorySnapshot();
-    this.currentAvatar = speakingAvatar;
+    this.currentAvatar = avatarForPersistence;
 
     if (speech) {
       void speech
@@ -1380,7 +1540,7 @@ export class VelaCore {
 
     const nextState = await this.buildAppState({
       memorySnapshot: nextMemory,
-      avatar: speakingAvatar,
+      avatar: avatarForPersistence,
       messages: this.runtimeSession.messages,
       welcomeNote: "",
       onboarding: {
@@ -1395,12 +1555,12 @@ export class VelaCore {
       content: assistantReply,
       providerMeta: assistantResponse.providerMeta
     });
-    await this.emitAvatarState(options.onEvent, speakingAvatar);
+    await this.emitAvatarState(options.onEvent, avatarForPersistence);
 
     void this.runBackgroundMemoryTasks({
       userMessage: trimmedMessage,
       assistantReply,
-      avatar: speakingAvatar,
+      avatar: avatarForPersistence,
       turnIndex: this.runtimeSession.lifetimeTurnCount
     });
 
