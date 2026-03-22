@@ -751,7 +751,7 @@ export class VrmAvatarController {
 
       if (boneName === VRMHumanBoneName.LeftUpperArm) {
         const sway = Math.sin(this.elapsed * 0.4 * Math.PI * 2) * 0.015 * swayScale;
-        this._tempEuler.set(0.08, 0, sway, "XYZ");
+        this._tempEuler.set(0, 0, sway, "XYZ");
         this._tempQuatB.setFromEuler(this._tempEuler);
         this._tempQuatA.multiply(this._tempQuatB);
       } else if (boneName === VRMHumanBoneName.RightUpperArm) {
