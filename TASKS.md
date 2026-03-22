@@ -15,12 +15,12 @@
 - DONE
 
 ## 当前总体目标
-完成 M4 Round 1 收口：把感知融合、provider 优雅降级、模型切换、UI 重做和语音重播整理到可体验、可审计、可继续推进的状态。
+M4：让她像个人，不只是在场。记忆快速收窄，主力打体验层。
 
-## 当前阶段范围冻结（2026-03-21）
-- **Round 1 聚焦三件事**：感知融合、provider 优雅降级、UI 重做
-- **Round 1 已通过技术验证**：`build` / `smoke` / `verify:core` / `verify:providers` / `verify:m2` 全通过
-- **当前待办**：进入 Phase B（context-first continuity + lightweight memory）
+## 当前阶段范围（2026-03-22 Opus 审核后修正）
+- Phase A 已关门（记忆地基 + 感知融合 + provider 降级 + UI 重做）
+- GPT-5.4 定的 Phase B（context-first 大重构）经 Opus 审核降级为 Tier 1 小任务
+- **当前优先级**：Tier 1 记忆收窄 → Tier 2 体验层打磨 → Tier 3 轻主动
 
 ## 当前额外施工约束
 - 长任务默认派 **CLI 施工位**
@@ -258,54 +258,91 @@
 
 ---
 
-## M4 - 关系深化与轻主动
+## M4 - 让她像个人
 
-### M4-T1 启动续接旧话题
-- 状态：IN-REVIEW
+### Tier 1：记忆收窄（小任务合并）
+
+#### M4-T5 记忆收窄三件套
+- 状态：TODO
+- 优先级：P0
+- Owner：Codex
+- DoD：
+  - [ ] `sessionMessageLimit` 12→40，prompt slice 改 budget-aware（不再硬编码 slice(-6)）
+  - [ ] per-turn 摘要改 trigger-based（session 结束 / 长间隔 / 高情感轮次）
+  - [ ] bridge summary：新会话开始时注入上次会话的紧凑摘要
+  - [ ] `npm run build` / `smoke` / `verify:core` 通过
+  - [ ] 零新 npm 依赖
+
+### Tier 2：体验层打磨
+
+#### M4-T6 idle 微动 + 手臂自然度
+- 状态：TODO
 - 优先级：P1
 - Owner：Codex
-- 备注：Round 0 记忆系统已落地；Round 1 感知融合已把旧话题续接所需 awareness packet 主链打通，待用户体验验收后正式关门
+- DoD：
+  - [ ] 预设微动作循环（摸头发、换重心、视线游走、伸懒腰），15-30s 随机间隔
+  - [ ] 用户输入时中断微动，回到 attentive 姿态
+  - [ ] 肘部弯曲加大 + 左右不对称 + idle 时轻微摆动
+  - [ ] 不再"站军姿"
+  - [ ] `npm run build` 通过
 
-### M4-T2 会话内自然提旧事
-- 状态：IN-REVIEW
+#### M4-T7 UX 打磨（M3 遗留清理）
+- 状态：TODO
 - 优先级：P1
 - Owner：Codex
-- 备注：相关旧记忆已进入 context fusion，待体验验收确认“自然而不硬提”
+- DoD：
+  - [ ] 语音模式按钮缩小
+  - [ ] 消息气泡收窄 + 新消息发送动画（fade-in + slide-up）
+  - [ ] "Vela兜底回应""在。"标签清理
+  - [ ] 节奏按钮降级到次要位置
+  - [ ] 发送按钮改纸飞机/箭头图标
+  - [ ] 输入框拉宽、圆角更大、背景更浅
+  - [ ] 聊天消息区滑动窗口（DOM 保留最近 50 条）
+  - [ ] `npm run build` 通过
 
-### M4-T3 轻主动节奏
+#### M4-T8 全屏交互模式
 - 状态：TODO
 - 优先级：P2
 - Owner：Codex
 - DoD：
-  - [ ] 主动不骚扰
-  - [ ] 节奏可控
+  - [ ] 支持全屏沉浸式聊天
+  - [ ] avatar 占据更大画面
+  - [ ] `npm run build` 通过
 
-### M4-T4 provider 稳定性收尾
-- 状态：IN-REVIEW
-- 优先级：P1
+### Tier 3：轻主动
+
+#### M4-T9 proactive engine
+- 状态：TODO
+- 优先级：P2
 - Owner：Codex
 - DoD：
-  - [x] OpenAI-compatible / Anthropic / MiniMax 三类长期稳定适配仍可通过验证
-  - [x] provider cooldown / fallback routing / 手动模型切换已接入
-  - [x] 关键异常不把系统打死（`build` / `smoke` / `verify:*` 已过）
-  - [ ] 用户体验确认 fallback 提示不过分打扰
+  - [ ] 四种触发器（时间间隔 / 事件回忆 / 环境变化 / 模式偏离）
+  - [ ] 频率限制（4h/条，2条/天，关系阶段系数）
+  - [ ] 主动消息作为 Vela 发起的消息出现在聊天区
+  - [ ] `npm run build` 通过
 
-### M4-R1 感知融合 + Provider 优雅降级 + UI 重做
-- 状态：IN-REVIEW
+### 已完成
+
+#### M4-T1 启动续接旧话题
+- 状态：DONE
+- 优先级：P1
+- Owner：Codex
+
+#### M4-T2 会话内自然提旧事
+- 状态：DONE
+- 优先级：P1
+- Owner：Codex
+
+#### M4-T4 provider 稳定性收尾
+- 状态：DONE
+- 优先级：P1
+- Owner：Codex
+
+#### M4-R1 感知融合 + Provider 优雅降级 + UI 重做
+- 状态：DONE
+- 关闭日期：2026-03-22
 - 优先级：P0
-- Owner：Codex / 小新 / 舒彩鹏
-- 产物：`docs/M4-R1-REPORT.md`
-- DoD：
-  - [x] `time-provider` / `weather-provider` / `behavior-patterns` / `context-fusion` 已接入主链
-  - [x] `/model minimax|k2p5|auto` 已接入
-  - [x] provider 连续失败 2 次后进入 5 小时 cooldown，并支持自动走 fallback
-  - [x] UI 完成 SVG 化、输入区重做、fallback/model 轻提示、assistant replay 支持
-  - [x] `npm run build`
-  - [x] `npm run smoke`
-  - [x] `npm run verify:core`
-  - [x] `npm run verify:providers`
-  - [x] `npm run verify:m2`
-  - [ ] 用户人眼 / 体验验收
+- Owner：Codex / 小新
 
 ---
 
@@ -322,10 +359,10 @@
 ---
 
 ## 当前下一步
-1. 用户打开 Vela 做 M4 Round 1 人眼 / 体验验收
-2. 根据体验反馈补最后一轮 UI / 交互微调（如果需要）
-3. 完成 Round 1 最终 commit / push / closure
-4. 再切到 M4 Round 2：轻主动 / 自然提旧事深化 / idle 微动 / 手臂自然度 / 联网搜索
+1. Tier 1：派 Codex 做记忆收窄三件套（bridge summary + context window 扩展 + trigger-based 摘要）
+2. Tier 2：idle 微动 + 手臂自然度 + UX 打磨（M3 遗留清理）
+3. 用户体验验收（Tier 1 + Tier 2 合并验收）
+4. Tier 3：轻主动 proactive engine
 
 
 

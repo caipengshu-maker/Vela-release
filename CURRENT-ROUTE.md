@@ -1,138 +1,115 @@
 ﻿# CURRENT-ROUTE.md
 
-## Phase A State
-- Phase A is complete and serves as the current closure baseline.
-- Duplicate status surfaces were removed from the main chat surface.
-- Session turn counts are no longer shown in the primary conversation header.
-- Fallback status now stays quiet unless it is actually affecting the current reply path.
-- Phase B next: context-first continuity with lightweight memory.
 > Vela 当前主线钉板。只回答：现在先做什么，什么别碰。
 
 ---
 
 ## 当前主线
 
-### M4：关系深化 + 体验打磨
+### M4：让她像个人，不只是在场
 
-M3 已正式关门（2026-03-21）。当前主线切到 M4。
+M3 已关门（2026-03-21）。M4 Phase A 已关门（2026-03-22）。
 
-**当前所在轮次：M4 Round 1 已关闭。**
+**当前方向：体验优先，记忆收窄。**
 
-Round 1 已完成：
+GPT-5.4 定的 Phase B（context-first continuity 大重构）经 Opus 审核后降级——核心论点没错（长上下文优先、记忆不膨胀），但把配置调参包装成了一整个 Phase，优先级错位。记忆是地基，但用户看到的是房子。
+
+**修正后的 M4 优先级（从高到低）：**
+
+#### Tier 1：快速收尾（小任务，不值得叫 Phase）
+- bridge summary（跨会话续接摘要）
+- context window 扩展（`sessionMessageLimit` 12→40，prompt slice 6→budget-aware）
+- per-turn 摘要改 trigger-based（session 结束 / 长间隔 / 高情感轮次才触发）
+- 这三件事合在一起是一个 Codex 任务，不是一个 Phase
+
+#### Tier 2：体验层打磨（M4 主力应该打在这里）
+- idle 微动（偶尔摸头发、换重心、视线游走、伸懒腰，15-30s 间隔）
+- 手臂自然度（肘部弯曲加大 + 左右不对称 + idle 时轻微摆动）
+- UX 打磨（M3 遗留）：
+  - 语音模式按钮缩小
+  - 消息气泡收窄 + 发送动画
+  - "Vela兜底回应""在。"标签清理
+  - 节奏按钮降级到次要位置
+  - 发送按钮改纸飞机/箭头
+  - 输入框拉宽、圆角更大、背景更浅
+  - 聊天消息区滑动窗口
+  - 全屏交互模式
+
+#### Tier 3：轻主动（体验层站住之后）
+- proactive engine（时间间隔 / 事件回忆 / 环境变化 / 模式偏离）
+- 频率限制（4h/条，2条/天，关系阶段系数）
+- 自发回忆（>7天高情感情节偶尔浮现）
+
+#### Tier 4：联网搜索 + 深度记忆（M4 尾声或 M5）
+- 联网搜索接入
+- 更丰富的关系演化
+- 记忆编辑 UI
+
+---
+
+## 已完成里程碑
+
+### Phase A（已关门，2026-03-22）
 - 感知融合（时间 / 天气 / 行为模式 / 记忆 / 关系状态）
 - Provider 优雅降级（2 次失败熔断 + 5 小时 cooldown + fallback routing）
 - `/model minimax|k2p5|auto` 手动切模型
 - UI 重做（SVG 化、输入区重构、fallback/model 轻提示、assistant replay）
-- 技术验证通过（`build` / `smoke` / `verify:core` / `verify:providers` / `verify:m2`）
+- 重复状态面板清理（session turn count 移除、fallback 只在生效时显示）
+- 技术验证全通过（`build` / `smoke` / `verify:core` / `verify:providers` / `verify:m2`）
 
-**当前待办：进入 Phase B，做 context-first continuity + lightweight memory。**
-
-M4 后续仍要做：
-- UI 打磨（Phase B 后续）
-- idle 微动 / 手臂自然度
-- 长期记忆深化
-- 联网搜索
-- 动作编排（预设小动作轮播）
-- 声画同步精调
-- 轻主动节奏
-
-### M3 closure（已完成）
+### M3 closure（2026-03-21）
 - TTS 流式开口（MiniMax WebSocket MSE）
 - VRM 骨骼全链路激活 + 自动轴向探测
 - LLM 自主表演协议（结构化 JSON 前缀，12 种 emotion）
 - wide/close 镜头（close 对焦脸部中心）
-- 关键词匹配降为 fallback
-- 用户体验验收通过（2026-03-21）
+- 用户体验验收通过
+
+### M2 closure（2026-03-20）
+- 流式文本 + 状态机 + thinking + 基础 fallback
+- k2p5 第二视角真实验收通过
+
+### M1 closure（2026-03-20）
+- 连续人格 + 连续记忆 + 初始化流 + 真实 LLM 验证
 
 ---
 
-## 后续阶段
+## Git 状态（2026-03-22 对齐）
 
-### M3：在场感闭环（语音 + 表情 + 动作 + 镜头）
-这一阶段专门解决"她像不像在场"。
-
-M3 要做：
-- 语音模式按钮（开/关语音模式）
-- TTS 流式开口（MiniMax WebSocket 优先）
-- 表情 / 动作轻反馈（状态机驱动）
-- `wide / close` 远近景切换
-- TTS / 表情 / 动作 / 镜头与状态机完全联动
-
-M3 有独立的用户体验验收（人耳/人眼），不只是技术验收。
-
-### M3 的产品收口口径（补充钉板）
-- M3 不是“能动能交互就行”，而是要把**在场感**真正做出来
-- 允许做的 UI 整改，只能服务于：
-  1. avatar 成为主角
-  2. 状态更自然可感知
-  3. `wide / close`、表情、动作、语音模式与状态机形成统一表演语言
-- M3 的 UI/交互优化要吸收用户心理学结论：高粘性 companion UI 依赖 **social presence（她在场）**、**低 cognitive load（不用费脑理解系统）**、**稳定微反馈（听/想/说/靠近）**，不是堆更多功能块
-- 主界面优先表达：她、她此刻的状态、你们的对话；系统控件与技术状态必须后退，避免 AI 工具味 / 调试台味
-- M3 不负责收关系深化、旧话题续接、轻主动节奏；这些留到 M4
-- 如果某个 UI 改动不能直接增强“她像不像在场”，就不属于 M3
-
-### M4：关系深化与轻主动
-这一阶段专门解决"她是不是越来越像你熟悉的那个人"。
-
-M4 要做：
-- 启动续接旧话题
-- 会话内自然提旧事
-- 轻主动节奏
-- provider 稳定性收尾（能力标签、异常兜底）
+- 分支：`main`（唯一活跃分支）
+- 最新 commit：`fa0e9b4` — m4: phase-a closure
+- remote：`origin/main` 已同步
+- worktree：clean
+- 遗留分支：`feat/m2-pipeline`（历史残留，可清理）
+- 共 20 个 commit，从 M0 到 M4 Phase A 全程可追踪
 
 ---
 
-## 当前冻结口径
+## 产品边界（不变）
 
-### 产品边界
-- 一期 = **纯聊天 avatar 伴侣**
-- 不开放文件整理、系统操作、写代码、工具调用权限
-- 二期才讨论"伴侣 + 轻助手"
-
-### 技术边界
-- 推理路线：**hybrid / local-first**
-- 本地不可让渡资产：记忆文件、主动机制、关系/人格状态、avatar 控制层
-- 系统中枢：只做 **Vela Core**，不做 OpenClaw 级完整 gateway
-- 配置系统：**单一主配置文件** 做真源，不拆一地碎配置
-- 运行数据 / 缓存 / 资产目录支持独立配置，当前默认优先落到 **D 盘**
-- 长任务默认派 **CLI 施工位**，不走零碎聊天式施工
-- 若沉淀出对 OpenClaw 有通用价值的源码，优先考虑抽象回馈
-
-### 验收与调度规则
-- 凡是涉及真实 LLM / provider / thinking / 记忆回灌 / 权限边界的整改，必须走：
-  1. 施工位自测
-  2. 第二视角真实验收
-  3. 主控 closure
-- 完成标准必须同时包含：
-  - 代码整改
-  - 真实测试
-  - 整改报告
-
-### 审美边界
-- UI 不允许有强 AI 工具味 / 后台管理台味
-- 审美方向参考：**二次元乙游**
-- 即使先用占位资产，也要优先保证"干净、轻、像产品"，不是技术 demo 味
+- 一期 = 纯聊天 avatar 伴侣，不开放助手权限
+- 技术路线：hybrid / local-first
+- 本地不可让渡：记忆文件、主动机制、关系/人格状态、avatar 控制层
+- 配置系统：单一主配置文件
+- 审美方向：二次元乙游，不是 AI 工具
+- 零新 npm 依赖原则
+- 存储走 D 盘
 
 ---
 
 ## 当前不做（碰了就算跑偏）
-- 文件权限
-- 桌面整理
-- 系统权限
-- 编码助手能力
+
+- 文件权限 / 桌面整理 / 系统权限 / 编码助手
 - 重型主动推送系统
 - 复杂关系数值系统
 - Live2D / VRM 重资产路线
 - 多角色平台
 - 成人向主线
 - 完整 gateway / 插件平台
-- 策略层第二大模型（M2 不开这个坑）
+- 向量数据库 / embedding 模型
+- 重型记忆平台（per-turn 全量摘要、无限扩字段的 episode/facts/user-model）
 
 ---
 
 ## 一句话钉死
 
-**M3 已关门；M2 已关门；M1 已关门。当前进入 M4：让她像个人，不只是在场。**
-
-
-
+**M4 = 让她像个人。记忆快速收窄，主力打体验层。**

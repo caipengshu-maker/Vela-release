@@ -1,10 +1,16 @@
 import path from "node:path";
+import fs from "node:fs";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { VelaCore } from "../src/core/vela-core.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
+
+// Use an isolated temp directory for verify storage so test data
+// never pollutes the production memory files in D:/Vela/data.
+const verifyTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vela-verify-"));
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,7 +34,8 @@ async function waitForUpdatedMemoryPeek(core, initialSummary, timeoutMs = 5000) 
 async function run() {
   const core = new VelaCore({
     rootDir,
-    userDataDir: rootDir
+    userDataDir: rootDir,
+    storageRootOverride: verifyTmpDir
   });
 
   await core.initialize();
@@ -68,7 +75,8 @@ async function run() {
 
   const nextCore = new VelaCore({
     rootDir,
-    userDataDir: rootDir
+    userDataDir: rootDir,
+    storageRootOverride: verifyTmpDir
   });
   await nextCore.initialize();
   const afterReload = await waitForUpdatedMemoryPeek(nextCore, initialSummary);

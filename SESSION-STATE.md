@@ -1,15 +1,15 @@
 # SESSION-STATE.md
 
-- Current task: Vela M4 Round 1 cleanup / closure packaging
+- Current task: Vela M4 路线修正 + 项目对齐
 - Owner: 小新
 - Status: IN-PROGRESS
 - Latest decisions:
-  - Phase A remains the closure baseline
-  - Standalone CODEX one-shot prompt artifacts under `Vela/docs` have been removed
-  - No Phase B scope expansion until Round 1 closure docs and worktree are consistent
+  - GPT-5.4 的 Phase B（context-first 大重构）经 Opus 审核降级为 Tier 1 小任务
+  - M4 优先级修正：Tier 1 记忆收窄 → Tier 2 体验层打磨 → Tier 3 轻主动
+  - CURRENT-ROUTE.md 和 TASKS.md 已按修正后优先级重写
+  - Git 状态已对齐：main 分支 clean，`fa0e9b4` 是最新 commit，origin 已同步
 - Next actions:
-  - Align docs wording with current repo state
-  - Keep Phase B deferred until Phase A closure is formally packaged
-  - Prepare the final closure commit separately from Phase B work if needed
-- Waiting on: none
+  - 派 Codex 做 Tier 1 记忆收窄三件套
+  - 然后 Tier 2 体验层（idle 微动 + 手臂 + UX 打磨）
+- Waiting on: 用户确认修正后路线
 - Blockers: none

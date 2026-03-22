@@ -294,9 +294,10 @@ function buildInvalidModelMessage(config) {
 }
 
 export class VelaCore {
-  constructor({ rootDir, userDataDir }) {
+  constructor({ rootDir, userDataDir, storageRootOverride }) {
     this.rootDir = rootDir;
     this.userDataDir = userDataDir;
+    this.storageRootOverride = storageRootOverride || null;
     this.config = null;
     this.persona = null;
     this.localStore = null;
@@ -322,10 +323,9 @@ export class VelaCore {
   async initialize() {
     this.config = await loadConfig(this.rootDir);
 
-    const storageRoot = path.resolve(
-      this.rootDir,
-      this.config.runtime.storageRoot
-    );
+    const storageRoot = this.storageRootOverride
+      ? path.resolve(this.storageRootOverride)
+      : path.resolve(this.rootDir, this.config.runtime.storageRoot);
 
     this.localStore = new LocalStore(storageRoot);
     this.memoryStore = new MemoryStore(this.localStore, this.config);
