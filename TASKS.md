@@ -263,15 +263,11 @@ M4：让她像个人，不只是在场。记忆快速收窄，主力打体验层
 ### Tier 1：记忆收窄（小任务合并）
 
 #### M4-T5 记忆收窄三件套
-- 状态：TODO
+- 状态：DONE
+- 关闭日期：2026-03-22
 - 优先级：P0
-- Owner：Codex
-- DoD：
-  - [ ] `sessionMessageLimit` 12→40，prompt slice 改 budget-aware（不再硬编码 slice(-6)）
-  - [ ] per-turn 摘要改 trigger-based（session 结束 / 长间隔 / 高情感轮次）
-  - [ ] bridge summary：新会话开始时注入上次会话的紧凑摘要
-  - [ ] `npm run build` / `smoke` / `verify:core` 通过
-  - [ ] 零新 npm 依赖
+- Owner：小新（main-direct）
+- 结论：Phase A 已做好 budget-aware prompt slice 和 trigger-based 摘要，实际只需调三个数字：sessionMessageLimit 24→40，recentTranscriptBudget 3600→6000，cadence 5→8 轮。commit `f38e2fe`。
 
 ### Tier 2：体验层打磨
 

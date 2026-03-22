@@ -236,6 +236,35 @@ function resolveSafePresentation(avatar) {
   return safeState;
 }
 
+const IDLE_MOTION_TYPES = ["weight-shift", "gaze-wander", "head-tilt", "subtle-stretch", "blink-burst"];
+const IDLE_MOTION_INTERVAL_MIN = 15;
+const IDLE_MOTION_INTERVAL_MAX = 30;
+const IDLE_RAMP_IN = 0.5;
+const IDLE_HOLD_MIN = 2;
+const IDLE_HOLD_MAX = 4;
+const IDLE_RAMP_OUT = 0.5;
+
+function randomRange(min, max) {
+  return min + Math.random() * (max - min);
+}
+
+function randomMagnitude(base) {
+  return base * (0.8 + Math.random() * 0.4);
+}
+
+function createIdleMotionState() {
+  return {
+    active: false,
+    type: null,
+    phase: "idle",
+    elapsed: 0,
+    phaseDuration: 0,
+    nextTriggerIn: randomRange(3, 8),
+    params: {},
+    blendWeight: 0
+  };
+}
+
 export class VrmAvatarController {
   constructor({ canvas }) {
     this.canvas = canvas;
@@ -287,6 +316,14 @@ export class VrmAvatarController {
       elapsed: 0,
       closing: false,
       interval: 2.6 + Math.random() * 1.8
+    };
+    this.idleMotion = createIdleMotionState();
+    this.idlePoseDeltas = {
+      hips: createBonePose(),
+      spine: createBonePose(),
+      chest: createBonePose(),
+      head: createBonePose(),
+      neck: createBonePose()
     };
     this.debugState = {
       cameraFrameCount: 0,
@@ -382,6 +419,7 @@ export class VrmAvatarController {
 
     this.elapsed += delta;
     this._updateCamera(delta);
+    this._tickIdleMotion(delta);
 
     if (this.vrm) {
       const presentation = this.avatarState;
@@ -562,11 +600,11 @@ export class VrmAvatarController {
       this.armTargetOffsets.set(VRMHumanBoneName.RightUpperArm, rightUpperOffset);
     }
 
-    this._tempEuler.set(0, 0, 0.35, "XYZ");
+    this._tempEuler.set(0, 0, 0.42, "XYZ");
     this._tempQuatA.setFromEuler(this._tempEuler);
     this.armTargetOffsets.set(VRMHumanBoneName.LeftLowerArm, this._tempQuatA.clone());
 
-    this._tempEuler.set(0, 0, -0.35, "XYZ");
+    this._tempEuler.set(0, 0, -0.30, "XYZ");
     this._tempQuatA.setFromEuler(this._tempEuler);
     this.armTargetOffsets.set(VRMHumanBoneName.RightLowerArm, this._tempQuatA.clone());
   }
@@ -637,6 +675,11 @@ export class VrmAvatarController {
   }
 
   _applyArmsDownFrame(delta) {
+    const presence = this.avatarState?.presence || "idle";
+    const swayScale = presence === "speaking" ? 0.3
+      : presence === "thinking" ? 0.5
+      : 1.0;
+
     ARM_BONES.forEach((boneName) => {
       const armInfo = this.armBones.get(boneName);
       const armOffset = this.armTargetOffsets.get(boneName);
@@ -646,6 +689,19 @@ export class VrmAvatarController {
       }
 
       this._tempQuatA.copy(armInfo.restQuaternion).multiply(armOffset);
+
+      if (boneName === VRMHumanBoneName.LeftUpperArm) {
+        const sway = Math.sin(this.elapsed * 0.4 * Math.PI * 2) * 0.015 * swayScale;
+        this._tempEuler.set(0.08, 0, sway, "XYZ");
+        this._tempQuatB.setFromEuler(this._tempEuler);
+        this._tempQuatA.multiply(this._tempQuatB);
+      } else if (boneName === VRMHumanBoneName.RightUpperArm) {
+        const sway = Math.sin(this.elapsed * 0.35 * Math.PI * 2) * 0.012 * swayScale;
+        this._tempEuler.set(0, 0, sway, "XYZ");
+        this._tempQuatB.setFromEuler(this._tempEuler);
+        this._tempQuatA.multiply(this._tempQuatB);
+      }
+
       armInfo.node.quaternion.slerp(this._tempQuatA, dampFactor(18, delta));
     });
   }
@@ -703,13 +759,33 @@ export class VrmAvatarController {
   _computeBlink(delta) {
     this.blinkState.elapsed += delta;
 
-    if (!this.blinkState.closing && this.blinkState.elapsed >= this.blinkState.interval) {
-      this.blinkState.closing = true;
-      this.blinkState.elapsed = 0;
-    }
+    // Blink-burst: temporarily speed up blink during active blink-burst idle motion
+    const im = this.idleMotion;
+    let effectiveInterval = this.blinkState.interval;
+    if (im.active && im.type === "blink-burst" && !im.params.done) {
+      const p = im.params;
+      p.elapsed += delta;
+      if (p.elapsed >= p.interval && p.done < p.burstCount) {
+        this.blinkState.closing = true;
+        this.blinkState.elapsed = 0;
+        p.elapsed = 0;
+        p.done += 1;
+        if (p.done >= p.burstCount) {
+          p.done = true;
+        }
+      }
+      if (!this.blinkState.closing) {
+        return 0;
+      }
+    } else {
+      if (!this.blinkState.closing && this.blinkState.elapsed >= this.blinkState.interval) {
+        this.blinkState.closing = true;
+        this.blinkState.elapsed = 0;
+      }
 
-    if (!this.blinkState.closing) {
-      return 0;
+      if (!this.blinkState.closing) {
+        return 0;
+      }
     }
 
     const blinkDuration = 0.18;
@@ -790,11 +866,137 @@ export class VrmAvatarController {
     );
   }
 
+  _tickIdleMotion(delta) {
+    const presence = this.avatarState?.presence || "idle";
+
+    if (presence !== "idle" && presence !== "listening") {
+      if (this.idleMotion.active) {
+        this.idleMotion.active = false;
+        this.idleMotion.phase = "idle";
+        this._clearIdlePoseDeltas();
+      }
+      return;
+    }
+
+    const im = this.idleMotion;
+
+    if (!im.active) {
+      im.nextTriggerIn -= delta;
+      if (im.nextTriggerIn <= 0) {
+        im.active = true;
+        im.type = IDLE_MOTION_TYPES[Math.floor(Math.random() * IDLE_MOTION_TYPES.length)];
+        im.phase = "ramp-in";
+        im.elapsed = 0;
+        im.phaseDuration = IDLE_RAMP_IN;
+        im.blendWeight = 0;
+        im.params = this._buildIdleMotionParams(im.type);
+      }
+      return;
+    }
+
+    im.elapsed += delta;
+
+    if (im.phase === "ramp-in") {
+      im.blendWeight = Math.min(im.elapsed / IDLE_RAMP_IN, 1);
+      if (im.elapsed >= IDLE_RAMP_IN) {
+        im.phase = "hold";
+        im.elapsed = 0;
+        im.phaseDuration = randomRange(IDLE_HOLD_MIN, IDLE_HOLD_MAX);
+      }
+    } else if (im.phase === "hold") {
+      if (im.elapsed >= im.phaseDuration) {
+        im.phase = "ramp-out";
+        im.elapsed = 0;
+        im.phaseDuration = IDLE_RAMP_OUT;
+      }
+    } else if (im.phase === "ramp-out") {
+      im.blendWeight = 1 - Math.min(im.elapsed / IDLE_RAMP_OUT, 1);
+      if (im.elapsed >= IDLE_RAMP_OUT) {
+        im.active = false;
+        im.nextTriggerIn = randomRange(IDLE_MOTION_INTERVAL_MIN, IDLE_MOTION_INTERVAL_MAX);
+        this._clearIdlePoseDeltas();
+        return;
+      }
+    }
+
+    this._applyIdleMotionPose(im);
+  }
+
+  _buildIdleMotionParams(type) {
+    switch (type) {
+      case "weight-shift":
+        return { sign: Math.random() > 0.5 ? 1 : -1, magnitude: randomMagnitude(0.03) };
+      case "gaze-wander":
+        return {
+          offsetX: randomMagnitude(0.14) * (Math.random() > 0.5 ? 1 : -1),
+          offsetY: randomMagnitude(0.08) * (Math.random() > 0.5 ? 1 : -1),
+          wanderDuration: randomRange(2, 3)
+        };
+      case "head-tilt":
+        return { sign: Math.random() > 0.5 ? 1 : -1, magnitude: randomMagnitude(0.06) };
+      case "subtle-stretch":
+        return { magnitude: randomMagnitude(0.025) };
+      case "blink-burst":
+        return { burstCount: 3, interval: randomRange(1.2, 1.8), elapsed: 0, done: 0 };
+      default:
+        return {};
+    }
+  }
+
+  _applyIdleMotionPose(im) {
+    if (!im.active || im.blendWeight === 0) {
+      this._clearIdlePoseDeltas();
+      return;
+    }
+
+    const w = im.blendWeight;
+    const p = im.params;
+    const hips = this.idlePoseDeltas.hips;
+    const spine = this.idlePoseDeltas.spine;
+    const chest = this.idlePoseDeltas.chest;
+    const head = this.idlePoseDeltas.head;
+    const neck = this.idlePoseDeltas.neck;
+
+    switch (im.type) {
+      case "weight-shift":
+        hips.y = p.sign * p.magnitude * w;
+        break;
+      case "gaze-wander":
+        break;
+      case "head-tilt":
+        head.z = p.sign * p.magnitude * w;
+        neck.z = p.sign * p.magnitude * 0.4 * w;
+        break;
+      case "subtle-stretch":
+        spine.x = -p.magnitude * w;
+        chest.x = -p.magnitude * 0.8 * w;
+        break;
+      case "blink-burst":
+        break;
+      default:
+        break;
+    }
+  }
+
+  _clearIdlePoseDeltas() {
+    Object.values(this.idlePoseDeltas).forEach((pose) => {
+      pose.x = 0;
+      pose.y = 0;
+      pose.z = 0;
+    });
+  }
+
   _updatePose(presentation, mouthOpen, delta) {
     const breath = Math.sin(this.elapsed * 1.35);
     const sway = Math.sin(this.elapsed * 0.9);
     const pulse = Math.sin(this.elapsed * 2.15);
     const rootPosition = this._tempVecA.set(0, breath * 0.01, 0);
+    const idleHips = this.idlePoseDeltas.hips;
+    const idleSpine = this.idlePoseDeltas.spine;
+    const idleChest = this.idlePoseDeltas.chest;
+    const idleHead = this.idlePoseDeltas.head;
+    const idleNeck = this.idlePoseDeltas.neck;
+
     const hips = createBonePose();
     const spine = createBonePose();
     const chest = createBonePose();
@@ -805,6 +1007,22 @@ export class VrmAvatarController {
     spine.x += breath * 0.01;
     chest.x += breath * 0.008;
     upperChest.x += breath * 0.006;
+
+    hips.x += idleHips.x;
+    hips.y += idleHips.y;
+    hips.z += idleHips.z;
+    spine.x += idleSpine.x;
+    spine.y += idleSpine.y;
+    spine.z += idleSpine.z;
+    chest.x += idleChest.x;
+    chest.y += idleChest.y;
+    chest.z += idleChest.z;
+    neck.x += idleNeck.x;
+    neck.y += idleNeck.y;
+    neck.z += idleNeck.z;
+    head.x += idleHead.x;
+    head.y += idleHead.y;
+    head.z += idleHead.z;
 
     if (presentation.presence === "idle") {
       head.y += Math.sin(this.elapsed * 0.45) * 0.014;
@@ -936,6 +1154,14 @@ export class VrmAvatarController {
     if (presentation.emotion === "curious") {
       this._tempVecB.y += 0.08;
       this._tempVecB.z -= 0.02;
+    }
+
+    const im = this.idleMotion;
+    if (im.active && im.type === "gaze-wander" && im.phase !== "ramp-out") {
+      const t = Math.min(im.elapsed / Math.max(im.phaseDuration, 0.01), 1);
+      const fade = im.phase === "ramp-in" ? t : im.phase === "hold" ? 1 : 1 - t;
+      this._tempVecB.x += (im.params.offsetX || 0) * fade * im.blendWeight;
+      this._tempVecB.y += (im.params.offsetY || 0) * fade * im.blendWeight;
     }
 
     dampVector(this.lookAtTarget.position, this._tempVecB, 10, delta);
