@@ -64,6 +64,21 @@ const EMOTION_TO_SAFE_MOTION = {
   determined: "tiny-nod"
 };
 
+const EMOTION_TO_ANIMATION = {
+  calm: "Breathing Idle",
+  happy: "Happy Idle",
+  affectionate: "Breathing Idle",
+  playful: "Happy Idle",
+  concerned: "Breathing Idle",
+  sad: "Bored",
+  angry: "Standing Idle",
+  whisper: "Thinking",
+  surprised: "Happy Idle",
+  curious: "Thinking",
+  shy: "Idle",
+  determined: "Standing Idle"
+};
+
 const EXPRESSION_KEYS = [
   "neutral",
   "aa",
@@ -85,6 +100,8 @@ const EXPRESSION_KEYS = [
 ];
 const PRESET_DEMO_STEP_MS = 5000;
 const RAW_MORPH_DAMP_STRENGTH = 14;
+const EMOTION_BLEND_DAMP_STRENGTH = 10;
+const EMOTION_CROSSFADE_DURATION = 1.0;
 const CORE_POSE_BONES = [
   VRMHumanBoneName.Hips,
   VRMHumanBoneName.Spine,
@@ -414,6 +431,7 @@ export class VrmAvatarController {
     this.mixer = null;
     this.currentIdleAction = null;
     this.currentIdleClipName = "";
+    this.currentEmotionClipName = "";
     this.lastIdleClipIndex = -1;
     this.nextCrossfadeIn = randomRange(IDLE_CROSSFADE_INTERVAL_MIN, IDLE_CROSSFADE_INTERVAL_MAX);
     this.mixerActive = false;
@@ -488,6 +506,7 @@ export class VrmAvatarController {
 
   setAvatarState(avatar) {
     const requestedCamera = String(avatar?.camera || "wide").trim().toLowerCase();
+    const previousEmotion = String(this.avatarState?.emotion || "calm").trim().toLowerCase();
     const nextState = resolveSafePresentation(avatar);
     const signature = `${nextState.presence}|${nextState.camera}|${nextState.expression}|${nextState.motion}|${nextState.emotion}|${nextState.relationshipStage}`;
 
@@ -501,6 +520,16 @@ export class VrmAvatarController {
     }
 
     this.avatarState = nextState;
+
+    if (
+      !this._isPresetModeEnabled() &&
+      this.mixer &&
+      this.idleClips.length > 0 &&
+      nextState.emotion !== "calm" &&
+      nextState.emotion !== previousEmotion
+    ) {
+      this._applyEmotionDrivenAnimation();
+    }
   }
 
   setPresetDemo(demoState) {
@@ -518,7 +547,7 @@ export class VrmAvatarController {
       enabled,
       emotion,
       label: enabled ? String(demoState?.label || emotion).trim() || emotion : "calm",
-      clipName: enabled ? preset.animationClip || "" : "",
+      clipName: enabled ? this._resolveEmotionAnimationClipName(emotion) : "",
       index: enabled
         ? Math.max(0, EMOTION_PRESET_ORDER.indexOf(emotion))
         : 0
@@ -539,9 +568,13 @@ export class VrmAvatarController {
 
     if (enabled && emotion !== this.debugState.lastPresetEmotion) {
       console.log(
-        `[VRM][demo] emotion=${emotion} clip=${preset.animationClip || "n/a"}`
+        `[VRM][demo] emotion=${emotion} clip=${this._resolveEmotionAnimationClipName(emotion) || "n/a"}`
       );
       this.debugState.lastPresetEmotion = emotion;
+    }
+
+    if (enabled) {
+      this._applyEmotionDrivenAnimation();
     }
 
     this._emitPresetDemoState();
@@ -577,11 +610,7 @@ export class VrmAvatarController {
     if (this.vrm) {
       // Mixer drives skeleton BEFORE vrm.update so spring bones react
       if (this.mixer) {
-        if (this._isPresetModeEnabled()) {
-          this._syncPresetAnimation(presentation, preset);
-        } else {
-          this._tickMixerCrossfade(delta);
-        }
+        this._tickMixerCrossfade(delta);
         this.mixer.update(delta);
       }
 
@@ -963,7 +992,9 @@ export class VrmAvatarController {
     this.rawMorphTargetMesh = null;
     this.restQuaternions.clear();
     this.idleClipMap.clear();
+    this.currentIdleAction = null;
     this.currentIdleClipName = "";
+    this.currentEmotionClipName = "";
     this.mixerActive = false;
     this._resetExpressions();
   }
@@ -1013,6 +1044,7 @@ export class VrmAvatarController {
       motion: EMOTION_TO_SAFE_MOTION[this.presetDemoState.emotion] || "still"
     };
     this._presetDemoChanged = true;
+    this._applyEmotionDrivenAnimation();
     this._emitPresetDemoState();
   }
 
@@ -1074,6 +1106,53 @@ export class VrmAvatarController {
     return String(sorted[0]?.clip || "").trim();
   }
 
+  _resolveEmotionAnimationClipName(emotion) {
+    const normalizedEmotion = String(emotion || "calm").trim().toLowerCase();
+
+    if (!normalizedEmotion || normalizedEmotion === "calm") {
+      return "";
+    }
+
+    const preferredClip = String(EMOTION_TO_ANIMATION[normalizedEmotion] || "").trim();
+    if (preferredClip && this.idleClipMap.has(preferredClip)) {
+      return preferredClip;
+    }
+
+    const fallbackClip = String(resolveEmotionPreset(normalizedEmotion)?.animationClip || "").trim();
+    if (fallbackClip && this.idleClipMap.has(fallbackClip)) {
+      return fallbackClip;
+    }
+
+    return "";
+  }
+
+  _applyEmotionDrivenAnimation() {
+    if (!this.mixer || this.idleClips.length === 0) {
+      return false;
+    }
+
+    const emotion = this._getActiveEmotion();
+    const clipName = this._resolveEmotionAnimationClipName(emotion);
+
+    if (!clipName) {
+      return false;
+    }
+
+    if (clipName !== this.currentEmotionClipName) {
+      this._playIdleClipByName(clipName, EMOTION_CROSSFADE_DURATION);
+      this.currentEmotionClipName = clipName;
+      console.log(`[VRM][anim] emotion=${emotion} clip=${clipName}`);
+    } else if (!this.mixerActive && this.currentIdleAction) {
+      this.currentIdleAction.enabled = true;
+      this.currentIdleAction.paused = false;
+      this.currentIdleAction.play();
+      this.currentIdleAction.fadeIn(EMOTION_CROSSFADE_DURATION);
+      this.mixerActive = true;
+    }
+
+    return true;
+  }
+
   _playIdleClipByName(clipName, crossfadeDuration = IDLE_CROSSFADE_DURATION) {
     if (!this.mixer || !clipName) {
       return;
@@ -1102,25 +1181,7 @@ export class VrmAvatarController {
   }
 
   _syncPresetAnimation() {
-    if (!this.mixer || this.idleClips.length === 0) {
-      return;
-    }
-
-    const preset = this._getActiveEmotionPreset();
-    const clipName = this._resolvePresetAnimationClipName(preset);
-
-    if (!clipName) {
-      return;
-    }
-
-    this._playIdleClipByName(
-      clipName,
-      THREE.MathUtils.clamp(
-        (Number(preset.transitionMs) || 900) / 1000,
-        PRESET_CROSSFADE_MIN,
-        PRESET_CROSSFADE_MAX
-      )
-    );
+    this._applyEmotionDrivenAnimation();
   }
 
   _clearPresetMorphTargets(delta) {
@@ -1165,12 +1226,13 @@ export class VrmAvatarController {
     }
 
     const strength = transitionMsToStrength(preset?.transitionMs, 10);
+    const dampStrength = THREE.MathUtils.clamp(strength, 8, 12);
     const influences = this.rawMorphTargetMesh.morphTargetInfluences;
 
     this.rawMorphTargetDictionary.forEach((index, name) => {
       const target = Number(targetWeights.get(name) || 0);
       const current = Number(this.rawMorphTargetWeights.get(name) || 0);
-      const next = dampNumber(current, target, strength, delta);
+      const next = dampNumber(current, target, dampStrength, delta);
       this.rawMorphTargetWeights.set(name, next);
 
       if (Array.isArray(influences) || ArrayBuffer.isView(influences)) {
@@ -1286,7 +1348,7 @@ export class VrmAvatarController {
       this.expressionWeights[key] = dampNumber(
         this.expressionWeights[key] || 0,
         targets[key],
-        key === "blink" ? 30 : 14,
+        key === "blink" ? 30 : EMOTION_BLEND_DAMP_STRENGTH,
         delta
       );
       expressionManager.setValue(key, this.expressionWeights[key]);
@@ -1339,11 +1401,7 @@ export class VrmAvatarController {
           }
           loaded++;
           if (loaded === total && this.idleClips.length > 0) {
-            if (this._isPresetModeEnabled()) {
-              this._syncPresetAnimation();
-            } else {
-              this._startRandomIdle();
-            }
+            this._tickMixerCrossfade(1 / 60);
           }
         },
         undefined,
@@ -1365,6 +1423,7 @@ export class VrmAvatarController {
     this.lastIdleClipIndex = idx;
 
     const clip = this.idleClips[idx];
+    this.currentEmotionClipName = "";
     this._playIdleClipByName(clip.name, IDLE_CROSSFADE_DURATION);
     this.nextCrossfadeIn = randomRange(IDLE_CROSSFADE_INTERVAL_MIN, IDLE_CROSSFADE_INTERVAL_MAX);
     console.log(`[VRM][anim] playing: ${clip.name}, next crossfade in ${this.nextCrossfadeIn.toFixed(0)}s`);
@@ -1373,9 +1432,16 @@ export class VrmAvatarController {
   _tickMixerCrossfade(delta) {
     const presence = this.avatarState?.presence || "idle";
 
-    if (this._isPresetModeEnabled()) {
-      this._syncPresetAnimation();
+    if (this._applyEmotionDrivenAnimation()) {
       return;
+    }
+
+    if (this.currentEmotionClipName) {
+      this.currentEmotionClipName = "";
+      if (presence === "idle" || presence === "listening") {
+        this._startRandomIdle();
+        return;
+      }
     }
 
     if (presence !== "idle" && presence !== "listening") {
