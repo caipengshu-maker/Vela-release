@@ -1,10 +1,12 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import {
   VRMHumanBoneName,
   VRMLoaderPlugin,
   VRMUtils
 } from "@pixiv/three-vrm";
+import { retargetAnimation } from "vrm-mixamo-retarget";
 import { EMOTION_TO_VRM_EXPRESSION } from "./interaction-contract.js";
 
 const CAMERA_PRESETS = {
@@ -272,33 +274,20 @@ function resolveSafePresentation(avatar) {
   return safeState;
 }
 
-const IDLE_MOTION_TYPES = ["weight-shift", "gaze-wander", "head-tilt", "subtle-stretch", "blink-burst", "hair-touch", "shoulder-shrug"];
-const IDLE_MOTION_INTERVAL_MIN = 12;
-const IDLE_MOTION_INTERVAL_MAX = 25;
-const IDLE_RAMP_IN = 0.8;
-const IDLE_HOLD_MIN = 2;
-const IDLE_HOLD_MAX = 5;
-const IDLE_RAMP_OUT = 0.8;
+const IDLE_ANIMATION_PATHS = [
+  "/assets/animations/Breathing Idle.fbx",
+  "/assets/animations/Happy Idle.fbx",
+  "/assets/animations/Standing Idle.fbx",
+  "/assets/animations/Idle.fbx",
+  "/assets/animations/Bored.fbx",
+  "/assets/animations/Thinking.fbx"
+];
+const IDLE_CROSSFADE_INTERVAL_MIN = 15;
+const IDLE_CROSSFADE_INTERVAL_MAX = 30;
+const IDLE_CROSSFADE_DURATION = 1.5;
 
 function randomRange(min, max) {
   return min + Math.random() * (max - min);
-}
-
-function randomMagnitude(base) {
-  return base * (0.8 + Math.random() * 0.4);
-}
-
-function createIdleMotionState() {
-  return {
-    active: false,
-    type: null,
-    phase: "idle",
-    elapsed: 0,
-    phaseDuration: 0,
-    nextTriggerIn: randomRange(3, 8),
-    params: {},
-    blendWeight: 0
-  };
 }
 
 export class VrmAvatarController {
@@ -354,16 +343,12 @@ export class VrmAvatarController {
       closing: false,
       interval: 2.6 + Math.random() * 1.8
     };
-    this.idleMotion = createIdleMotionState();
-    this.idlePoseDeltas = {
-      hips: createBonePose(),
-      spine: createBonePose(),
-      chest: createBonePose(),
-      head: createBonePose(),
-      neck: createBonePose()
-    };
-    this.idleArmOverride = { active: false, blendWeight: 0, targets: {} };
-    this.lastIdleMotionType = null;
+    this.idleClips = [];
+    this.mixer = null;
+    this.currentIdleAction = null;
+    this.lastIdleClipIndex = -1;
+    this.nextCrossfadeIn = randomRange(IDLE_CROSSFADE_INTERVAL_MIN, IDLE_CROSSFADE_INTERVAL_MAX);
+    this.mixerActive = false;
     this.debugState = {
       cameraFrameCount: 0,
       lastCameraMode: "",
@@ -458,9 +443,12 @@ export class VrmAvatarController {
 
     this.elapsed += delta;
     this._updateCamera(delta);
-    this._tickIdleMotion(delta);
+    this._tickMixerCrossfade(delta);
 
     if (this.vrm) {
+      // Mixer drives skeleton BEFORE vrm.update so spring bones react
+      if (this.mixer) this.mixer.update(delta);
+
       const presentation = this.avatarState;
       const mouthOpen = this._computeMouthOpen(presentation);
       const blinkWeight = this._computeBlink(delta);
@@ -471,8 +459,8 @@ export class VrmAvatarController {
       this._applyRelaxedHands(delta);
       this.vrm.update(delta);
 
-      // Apply arms-down after vrm.update() so raw-bone fallback is not overwritten this frame.
-      this._applyArmsDownFrame(delta);
+      // Only apply arm-down overrides when mixer is not active
+      if (!this.mixerActive) this._applyArmsDownFrame(delta);
       this._debugPresentation(presentation, mouthOpen, blinkWeight);
     }
 
@@ -504,6 +492,9 @@ export class VrmAvatarController {
       vrm.lookAt.autoUpdate = true;
       vrm.lookAt.target = this.lookAtTarget;
     }
+
+    // Load Mixamo FBX idle animations and retarget to VRM
+    this._loadIdleAnimations(vrm);
   }
 
   _fitAvatar(scene) {
@@ -563,7 +554,6 @@ export class VrmAvatarController {
     this._setupArmTargets();
     this._logArmBoneSummary();
     this._cacheFingerBones(vrm);
-    this._diagArmAxes();
   }
 
   _cacheFingerBones(vrm) {
@@ -636,64 +626,6 @@ export class VrmAvatarController {
         `[VRM][arms] ${boneName} source=${armInfo?.source || "missing"} target=${this.armTargetOffsets.has(boneName)}`
       );
     });
-  }
-
-  _diagArmAxes() {
-    const testBones = [VRMHumanBoneName.LeftUpperArm, VRMHumanBoneName.RightUpperArm];
-    const lowerBones = {
-      [VRMHumanBoneName.LeftUpperArm]: VRMHumanBoneName.LeftLowerArm,
-      [VRMHumanBoneName.RightUpperArm]: VRMHumanBoneName.RightLowerArm
-    };
-    const results = {};
-
-    testBones.forEach((boneName) => {
-      const upper = this.armBones.get(boneName);
-      const lower = this.armBones.get(lowerBones[boneName]);
-      if (!upper || !lower) return;
-
-      const initialQuat = upper.node.quaternion.clone();
-      const shoulderPos = new THREE.Vector3();
-      const elbowPos = new THREE.Vector3();
-      const restDir = new THREE.Vector3();
-
-      upper.node.updateWorldMatrix(true, true);
-      lower.node.updateWorldMatrix(true, false);
-      upper.node.getWorldPosition(shoulderPos);
-      lower.node.getWorldPosition(elbowPos);
-      restDir.copy(elbowPos).sub(shoulderPos).normalize();
-
-      const axes = [
-        { label: "+X", x: 0.4, y: 0, z: 0 },
-        { label: "-X", x: -0.4, y: 0, z: 0 },
-        { label: "+Y", x: 0, y: 0.4, z: 0 },
-        { label: "-Y", x: 0, y: -0.4, z: 0 },
-        { label: "+Z", x: 0, y: 0, z: 0.4 },
-        { label: "-Z", x: 0, y: 0, z: -0.4 }
-      ];
-
-      const boneResults = { restDir: `(${restDir.x.toFixed(3)},${restDir.y.toFixed(3)},${restDir.z.toFixed(3)})` };
-
-      axes.forEach((axis) => {
-        this._tempEuler.set(axis.x, axis.y, axis.z, "XYZ");
-        this._tempQuatA.setFromEuler(this._tempEuler);
-        upper.node.quaternion.copy(initialQuat).multiply(this._tempQuatA);
-        upper.node.updateWorldMatrix(true, true);
-        lower.node.updateWorldMatrix(true, false);
-
-        const newElbow = new THREE.Vector3();
-        lower.node.getWorldPosition(newElbow);
-        const newDir = new THREE.Vector3().copy(newElbow).sub(shoulderPos).normalize();
-        const delta = new THREE.Vector3().copy(newDir).sub(restDir);
-
-        boneResults[axis.label] = `dir=(${newDir.x.toFixed(3)},${newDir.y.toFixed(3)},${newDir.z.toFixed(3)}) delta=(${delta.x.toFixed(3)},${delta.y.toFixed(3)},${delta.z.toFixed(3)})`;
-      });
-
-      upper.node.quaternion.copy(initialQuat);
-      upper.node.updateWorldMatrix(true, true);
-      results[boneName] = boneResults;
-    });
-
-    console.log("[VRM][arm-diag] Axis test results:", JSON.stringify(results, null, 2));
   }
 
   _setupArmTargets() {
@@ -810,46 +742,18 @@ export class VrmAvatarController {
 
       if (boneName === VRMHumanBoneName.LeftUpperArm) {
         const sway = Math.sin(this.elapsed * 0.4 * Math.PI * 2) * 0.015 * swayScale;
-        // Y-axis = forward/backward: -Y pushes left arm forward (confirmed by axis diag)
-        // Left arm needs more push than right — auto-resolver puts it further back
-        this._tempEuler.set(0, -0.14, sway, "XYZ");
+        this._tempEuler.set(0, 0, sway, "XYZ");
         this._tempQuatB.setFromEuler(this._tempEuler);
         this._tempQuatA.multiply(this._tempQuatB);
       } else if (boneName === VRMHumanBoneName.RightUpperArm) {
         const sway = Math.sin(this.elapsed * 0.35 * Math.PI * 2) * 0.012 * swayScale;
-        // Y-axis = forward/backward: +Y pushes right arm forward (confirmed by axis diag)
-        // Right arm already natural — no forward push needed
         this._tempEuler.set(0, 0, sway, "XYZ");
         this._tempQuatB.setFromEuler(this._tempEuler);
         this._tempQuatA.multiply(this._tempQuatB);
-
-        if (this.idleArmOverride.active && this.idleArmOverride.targets.rightUpperArm) {
-          const ov = this.idleArmOverride.targets.rightUpperArm;
-          const w = this.idleArmOverride.blendWeight;
-          this._tempEuler.set(ov.x * w, ov.y * w, ov.z * w, "XYZ");
-          this._tempQuatB.setFromEuler(this._tempEuler);
-          this._tempQuatA.multiply(this._tempQuatB);
-        }
       }
 
       armInfo.node.quaternion.slerp(this._tempQuatA, dampFactor(18, delta));
     });
-
-    if (this.idleArmOverride.active && this.idleArmOverride.targets.rightLowerArm) {
-      const lowerArm = this.armBones.get(VRMHumanBoneName.RightLowerArm);
-      if (lowerArm) {
-        const ov = this.idleArmOverride.targets.rightLowerArm;
-        const w = this.idleArmOverride.blendWeight;
-        const armOffset = this.armTargetOffsets.get(VRMHumanBoneName.RightLowerArm);
-        if (armOffset) {
-          this._tempQuatA.copy(lowerArm.restQuaternion).multiply(armOffset);
-          this._tempEuler.set(ov.x * w, ov.y * w, ov.z * w, "XYZ");
-          this._tempQuatB.setFromEuler(this._tempEuler);
-          this._tempQuatA.multiply(this._tempQuatB);
-          lowerArm.node.quaternion.slerp(this._tempQuatA, dampFactor(12, delta));
-        }
-      }
-    }
   }
 
   _applyRelaxedHands(delta) {
@@ -916,33 +820,13 @@ export class VrmAvatarController {
   _computeBlink(delta) {
     this.blinkState.elapsed += delta;
 
-    // Blink-burst: temporarily speed up blink during active blink-burst idle motion
-    const im = this.idleMotion;
-    let effectiveInterval = this.blinkState.interval;
-    if (im.active && im.type === "blink-burst" && !im.params.done) {
-      const p = im.params;
-      p.elapsed += delta;
-      if (p.elapsed >= p.interval && p.done < p.burstCount) {
-        this.blinkState.closing = true;
-        this.blinkState.elapsed = 0;
-        p.elapsed = 0;
-        p.done += 1;
-        if (p.done >= p.burstCount) {
-          p.done = true;
-        }
-      }
-      if (!this.blinkState.closing) {
-        return 0;
-      }
-    } else {
-      if (!this.blinkState.closing && this.blinkState.elapsed >= this.blinkState.interval) {
-        this.blinkState.closing = true;
-        this.blinkState.elapsed = 0;
-      }
+    if (!this.blinkState.closing && this.blinkState.elapsed >= this.blinkState.interval) {
+      this.blinkState.closing = true;
+      this.blinkState.elapsed = 0;
+    }
 
-      if (!this.blinkState.closing) {
-        return 0;
-      }
+    if (!this.blinkState.closing) {
+      return 0;
     }
 
     const blinkDuration = 0.18;
@@ -1023,154 +907,86 @@ export class VrmAvatarController {
     );
   }
 
-  _tickIdleMotion(delta) {
+  _loadIdleAnimations(vrm) {
+    this.mixer = new THREE.AnimationMixer(vrm.scene);
+    this.idleClips = [];
+    this.mixerActive = false;
+
+    const fbxLoader = new FBXLoader();
+    let loaded = 0;
+    const total = IDLE_ANIMATION_PATHS.length;
+
+    IDLE_ANIMATION_PATHS.forEach((path, index) => {
+      fbxLoader.load(
+        path,
+        (fbx) => {
+          try {
+            const clip = retargetAnimation(fbx, vrm, { logWarnings: false });
+            if (clip) {
+              clip.name = path.split("/").pop().replace(".fbx", "");
+              this.idleClips.push(clip);
+              console.log(`[VRM][anim] loaded: ${clip.name} (${clip.duration.toFixed(1)}s)`);
+            }
+          } catch (err) {
+            console.warn(`[VRM][anim] retarget failed for ${path}:`, err.message);
+          }
+          loaded++;
+          if (loaded === total && this.idleClips.length > 0) {
+            this._startRandomIdle();
+          }
+        },
+        undefined,
+        (err) => {
+          console.warn(`[VRM][anim] failed to load ${path}:`, err.message);
+          loaded++;
+        }
+      );
+    });
+  }
+
+  _startRandomIdle() {
+    if (!this.mixer || this.idleClips.length === 0) return;
+
+    let idx = Math.floor(Math.random() * this.idleClips.length);
+    if (idx === this.lastIdleClipIndex && this.idleClips.length > 1) {
+      idx = (idx + 1) % this.idleClips.length;
+    }
+    this.lastIdleClipIndex = idx;
+
+    const clip = this.idleClips[idx];
+    const action = this.mixer.clipAction(clip);
+    action.reset().setLoop(THREE.LoopRepeat).play();
+
+    if (this.currentIdleAction && this.currentIdleAction !== action) {
+      this.currentIdleAction.crossFadeTo(action, IDLE_CROSSFADE_DURATION, true);
+    }
+    this.currentIdleAction = action;
+    this.mixerActive = true;
+    this.nextCrossfadeIn = randomRange(IDLE_CROSSFADE_INTERVAL_MIN, IDLE_CROSSFADE_INTERVAL_MAX);
+    console.log(`[VRM][anim] playing: ${clip.name}, next crossfade in ${this.nextCrossfadeIn.toFixed(0)}s`);
+  }
+
+  _tickMixerCrossfade(delta) {
     const presence = this.avatarState?.presence || "idle";
 
     if (presence !== "idle" && presence !== "listening") {
-      if (this.idleMotion.active) {
-        this.idleMotion.active = false;
-        this.idleMotion.phase = "idle";
-        this._clearIdlePoseDeltas();
+      if (this.mixerActive && this.currentIdleAction) {
+        this.currentIdleAction.fadeOut(0.5);
+        this.mixerActive = false;
       }
       return;
     }
 
-    const im = this.idleMotion;
-
-    if (!im.active) {
-      im.nextTriggerIn -= delta;
-      if (im.nextTriggerIn <= 0) {
-        im.active = true;
-        let pick = IDLE_MOTION_TYPES[Math.floor(Math.random() * IDLE_MOTION_TYPES.length)];
-        if (pick === this.lastIdleMotionType && IDLE_MOTION_TYPES.length > 1) {
-          pick = IDLE_MOTION_TYPES[(IDLE_MOTION_TYPES.indexOf(pick) + 1) % IDLE_MOTION_TYPES.length];
-        }
-        this.lastIdleMotionType = pick;
-        im.type = pick;
-        im.phase = "ramp-in";
-        im.elapsed = 0;
-        im.phaseDuration = IDLE_RAMP_IN;
-        im.blendWeight = 0;
-        im.params = this._buildIdleMotionParams(im.type);
-      }
+    // Resume if returning to idle
+    if (!this.mixerActive && this.idleClips.length > 0) {
+      this._startRandomIdle();
       return;
     }
 
-    im.elapsed += delta;
-
-    if (im.phase === "ramp-in") {
-      im.blendWeight = Math.min(im.elapsed / IDLE_RAMP_IN, 1);
-      if (im.elapsed >= IDLE_RAMP_IN) {
-        im.phase = "hold";
-        im.elapsed = 0;
-        im.phaseDuration = randomRange(IDLE_HOLD_MIN, IDLE_HOLD_MAX);
-      }
-    } else if (im.phase === "hold") {
-      if (im.elapsed >= im.phaseDuration) {
-        im.phase = "ramp-out";
-        im.elapsed = 0;
-        im.phaseDuration = IDLE_RAMP_OUT;
-      }
-    } else if (im.phase === "ramp-out") {
-      im.blendWeight = 1 - Math.min(im.elapsed / IDLE_RAMP_OUT, 1);
-      if (im.elapsed >= IDLE_RAMP_OUT) {
-        im.active = false;
-        im.nextTriggerIn = randomRange(IDLE_MOTION_INTERVAL_MIN, IDLE_MOTION_INTERVAL_MAX);
-        this._clearIdlePoseDeltas();
-        return;
-      }
+    this.nextCrossfadeIn -= delta;
+    if (this.nextCrossfadeIn <= 0) {
+      this._startRandomIdle();
     }
-
-    this._applyIdleMotionPose(im);
-  }
-
-  _buildIdleMotionParams(type) {
-    switch (type) {
-      case "weight-shift":
-        return { sign: Math.random() > 0.5 ? 1 : -1, magnitude: randomMagnitude(0.03) };
-      case "gaze-wander":
-        return {
-          offsetX: randomMagnitude(0.14) * (Math.random() > 0.5 ? 1 : -1),
-          offsetY: randomMagnitude(0.08) * (Math.random() > 0.5 ? 1 : -1),
-          wanderDuration: randomRange(2, 3)
-        };
-      case "head-tilt":
-        return { sign: Math.random() > 0.5 ? 1 : -1, magnitude: randomMagnitude(0.06) };
-      case "subtle-stretch":
-        return { magnitude: randomMagnitude(0.025) };
-      case "blink-burst":
-        return { burstCount: 3, interval: randomRange(1.2, 1.8), elapsed: 0, done: 0 };
-      case "hair-touch":
-        return {
-          side: "right",
-          upperArmZ: randomMagnitude(-0.25),
-          upperArmX: randomMagnitude(-0.10),
-          lowerArmZ: randomMagnitude(0.40),
-          headTiltZ: randomMagnitude(0.03)
-        };
-      case "shoulder-shrug":
-        return { magnitude: randomMagnitude(0.04) };
-      default:
-        return {};
-    }
-  }
-
-  _applyIdleMotionPose(im) {
-    if (!im.active || im.blendWeight === 0) {
-      this._clearIdlePoseDeltas();
-      return;
-    }
-
-    const w = im.blendWeight;
-    const p = im.params;
-    const hips = this.idlePoseDeltas.hips;
-    const spine = this.idlePoseDeltas.spine;
-    const chest = this.idlePoseDeltas.chest;
-    const head = this.idlePoseDeltas.head;
-    const neck = this.idlePoseDeltas.neck;
-
-    switch (im.type) {
-      case "weight-shift":
-        hips.y = p.sign * p.magnitude * w;
-        break;
-      case "gaze-wander":
-        break;
-      case "head-tilt":
-        head.z = p.sign * p.magnitude * w;
-        neck.z = p.sign * p.magnitude * 0.4 * w;
-        break;
-      case "subtle-stretch":
-        spine.x = -p.magnitude * w;
-        chest.x = -p.magnitude * 0.8 * w;
-        break;
-      case "blink-burst":
-        break;
-      case "hair-touch":
-        head.z = p.headTiltZ * w;
-        this.idleArmOverride.active = true;
-        this.idleArmOverride.blendWeight = w;
-        this.idleArmOverride.targets = {
-          rightUpperArm: { x: p.upperArmX, y: 0, z: p.upperArmZ },
-          rightLowerArm: { x: 0, y: 0, z: p.lowerArmZ }
-        };
-        break;
-      case "shoulder-shrug":
-        neck.y = p.magnitude * 0.3 * w;
-        break;
-      default:
-        break;
-    }
-  }
-
-  _clearIdlePoseDeltas() {
-    Object.values(this.idlePoseDeltas).forEach((pose) => {
-      pose.x = 0;
-      pose.y = 0;
-      pose.z = 0;
-    });
-    this.idleArmOverride.active = false;
-    this.idleArmOverride.blendWeight = 0;
-    this.idleArmOverride.targets = {};
   }
 
   _updatePose(presentation, mouthOpen, delta) {
@@ -1178,11 +994,6 @@ export class VrmAvatarController {
     const sway = Math.sin(this.elapsed * 0.9);
     const pulse = Math.sin(this.elapsed * 2.15);
     const rootPosition = this._tempVecA.set(0, breath * 0.01, 0);
-    const idleHips = this.idlePoseDeltas.hips;
-    const idleSpine = this.idlePoseDeltas.spine;
-    const idleChest = this.idlePoseDeltas.chest;
-    const idleHead = this.idlePoseDeltas.head;
-    const idleNeck = this.idlePoseDeltas.neck;
 
     const hips = createBonePose();
     const spine = createBonePose();
@@ -1191,25 +1002,12 @@ export class VrmAvatarController {
     const neck = createBonePose();
     const head = createBonePose();
 
-    spine.x += breath * 0.01;
-    chest.x += breath * 0.008;
-    upperChest.x += breath * 0.006;
-
-    hips.x += idleHips.x;
-    hips.y += idleHips.y;
-    hips.z += idleHips.z;
-    spine.x += idleSpine.x;
-    spine.y += idleSpine.y;
-    spine.z += idleSpine.z;
-    chest.x += idleChest.x;
-    chest.y += idleChest.y;
-    chest.z += idleChest.z;
-    neck.x += idleNeck.x;
-    neck.y += idleNeck.y;
-    neck.z += idleNeck.z;
-    head.x += idleHead.x;
-    head.y += idleHead.y;
-    head.z += idleHead.z;
+    // Only apply procedural body motion when mixer is not active
+    if (!this.mixerActive) {
+      spine.x += breath * 0.01;
+      chest.x += breath * 0.008;
+      upperChest.x += breath * 0.006;
+    }
 
     if (presentation.presence === "idle") {
       head.y += Math.sin(this.elapsed * 0.45) * 0.014;
@@ -1341,14 +1139,6 @@ export class VrmAvatarController {
     if (presentation.emotion === "curious") {
       this._tempVecB.y += 0.08;
       this._tempVecB.z -= 0.02;
-    }
-
-    const im = this.idleMotion;
-    if (im.active && im.type === "gaze-wander" && im.phase !== "ramp-out") {
-      const t = Math.min(im.elapsed / Math.max(im.phaseDuration, 0.01), 1);
-      const fade = im.phase === "ramp-in" ? t : im.phase === "hold" ? 1 : 1 - t;
-      this._tempVecB.x += (im.params.offsetX || 0) * fade * im.blendWeight;
-      this._tempVecB.y += (im.params.offsetY || 0) * fade * im.blendWeight;
     }
 
     dampVector(this.lookAtTarget.position, this._tempVecB, 10, delta);
