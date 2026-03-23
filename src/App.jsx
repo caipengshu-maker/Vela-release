@@ -810,6 +810,7 @@ export default function App() {
   const [isChatMinimized, setIsChatMinimized] = useState(false);
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [isFarewelling, setIsFarewelling] = useState(false);
+  const isFullscreen = Boolean(state.window?.fullscreen);
   const audioPlayerRef = useRef(null);
   const asrProviderRef = useRef(null);
   const bgmControllerRef = useRef(null);
@@ -1703,7 +1704,6 @@ export default function App() {
     });
   }
 
-  const isFullscreen = Boolean(state.window?.fullscreen);
   const relationshipStage = String(state.avatar?.relationshipStage || "reserved").trim().toLowerCase();
   const relationshipClass = ["reserved", "warm", "close"].includes(relationshipStage)
     ? `relationship-${relationshipStage}`
