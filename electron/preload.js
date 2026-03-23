@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("vela", {
+  ipcRenderer: {
+    invoke: (channel, payload) => ipcRenderer.invoke(channel, payload)
+  },
   bootstrap: () => ipcRenderer.invoke("vela:bootstrap"),
   readBinaryFile: (filePath) =>
     ipcRenderer.invoke("vela:read-binary-file", filePath),

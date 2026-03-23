@@ -1,5 +1,7 @@
 ﻿import path from "node:path";
+import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { parse } from "jsonc-parser";
 import { loadConfig } from "./config.js";
 import {
   buildPersona,
@@ -328,6 +330,15 @@ function buildInvalidModelMessage(config) {
   };
 }
 
+function sanitizeVolumePercent(value, fallback = 100) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(numericValue)));
+}
+
 export class VelaCore {
   constructor({ rootDir, userDataDir, storageRootOverride }) {
     this.rootDir = rootDir;
@@ -575,7 +586,7 @@ export class VelaCore {
       );
     const nextOnboarding =
       onboarding ||
-      (memory.profile.onboarding?.completed
+      (this.config?.app?.onboarding?.completed || memory.profile.onboarding?.completed
         ? {
             required: false,
             completed: true
@@ -593,7 +604,8 @@ export class VelaCore {
       },
       persona: {
         name: this.persona.name,
-        shortBio: this.persona.shortBio
+        shortBio: this.persona.shortBio,
+        userName: memory.profile?.user?.name || ""
       },
       avatar: nextAvatar,
       avatarAsset: buildAvatarAssetState(this.config),
@@ -607,8 +619,24 @@ export class VelaCore {
       voiceMode: this.buildVoiceModeState(),
       thinkingMode: this.runtimeSession.thinkingMode,
       thinkingModes: listThinkingModes(),
-      tts,
-      asr,
+      llm: {
+        provider: this.config.llm.provider,
+        apiKey: this.config.llm.apiKey,
+        model: this.config.llm.model
+      },
+      tts: {
+        ...tts,
+        enabled: Boolean(this.config.tts.enabled),
+        volume: Number(this.config.tts?.voiceSettings?.volume ?? 1)
+      },
+      asr: {
+        ...asr,
+        enabled: Boolean(this.config.asr.enabled)
+      },
+      audio: {
+        bgmVolume: this.config.audio?.bgmVolume ?? 42,
+        ttsVolume: this.config.audio?.ttsVolume ?? 100
+      },
       status: this.buildStatusSnapshot(nextAvatar),
       modelStatus: buildModelStatus(
         this.config,
@@ -861,6 +889,122 @@ export class VelaCore {
         required: false,
         completed: true
       }
+    });
+  }
+
+  async persistConfigPatch(patch = {}) {
+    const configPath = path.join(this.rootDir, "vela.jsonc");
+    const raw = await fs.readFile(configPath, "utf8");
+    const normalizedRaw = raw.replace(/^\uFEFF/, "");
+    const parsed = parse(normalizedRaw) || {};
+
+    const mergeObjects = (base, override) => {
+      const result = { ...(base || {}) };
+
+      for (const [key, value] of Object.entries(override || {})) {
+        if (
+          value &&
+          typeof value === "object" &&
+          !Array.isArray(value) &&
+          result[key] &&
+          typeof result[key] === "object" &&
+          !Array.isArray(result[key])
+        ) {
+          result[key] = mergeObjects(result[key], value);
+        } else {
+          result[key] = value;
+        }
+      }
+
+      return result;
+    };
+
+    const nextConfig = mergeObjects(parsed, patch);
+    await fs.writeFile(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
+
+    this.config = await loadConfig(this.rootDir);
+    return nextConfig;
+  }
+
+  async updateSettings(payload = {}) {
+    const userName = String(payload?.userName || "").trim();
+    const bgmVolume = sanitizeVolumePercent(payload?.bgmVolume, this.config?.audio?.bgmVolume ?? 42);
+    const ttsVolume = sanitizeVolumePercent(payload?.ttsVolume, this.config?.audio?.ttsVolume ?? 100);
+
+    await this.persistConfigPatch({
+      user: {
+        name: userName
+      },
+      audio: {
+        bgmVolume,
+        ttsVolume
+      },
+      tts: {
+        voiceSettings: {
+          volume: Number((ttsVolume / 100).toFixed(2))
+        }
+      }
+    });
+
+    await this.memoryStore.completeOnboarding({ userName });
+    const memory = await this.loadMemorySnapshot();
+    this.persona = buildPersona(memory.profile);
+
+    return this.buildAppState({
+      memorySnapshot: memory,
+      avatar: this.currentAvatar
+    });
+  }
+
+  async completeOnboardingV2(payload = {}) {
+    const userName = String(payload?.userName || "").trim();
+    const llmApiKey = String(payload?.llmApiKey || "").trim();
+    const asrEnabled = Boolean(payload?.asrEnabled);
+    const ttsEnabled = Boolean(payload?.ttsEnabled);
+
+    await this.persistConfigPatch({
+      app: {
+        onboarding: {
+          completed: true
+        }
+      },
+      user: {
+        name: userName
+      },
+      llm: {
+        provider: "minimax",
+        mode: "minimax",
+        apiKey: llmApiKey
+      },
+      asr: {
+        enabled: asrEnabled,
+        provider: "minimax"
+      },
+      tts: {
+        enabled: ttsEnabled,
+        provider: "minimax-websocket",
+        apiKey: llmApiKey || this.config.llm.apiKey || ""
+      }
+    });
+
+    await this.memoryStore.completeOnboarding({
+      userName,
+      velaName: this.persona?.name || "Vela",
+      temperament: "gentle-cool",
+      distance: "warm"
+    });
+
+    const memory = await this.loadMemorySnapshot();
+    this.persona = buildPersona(memory.profile);
+
+    return this.buildAppState({
+      memorySnapshot: memory,
+      avatar: this.currentAvatar,
+      onboarding: {
+        required: false,
+        completed: true
+      },
+      welcomeNote: "初始化完成，设置可随时在 Settings 里调整。"
     });
   }
 

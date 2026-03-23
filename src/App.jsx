@@ -9,6 +9,8 @@ import {
 import { VrmAvatarStage } from "./vrm-avatar-stage.jsx";
 import { SplashScreen } from "./SplashScreen.jsx";
 import { BgmController } from "./core/bgm-controller.js";
+import { SettingsModal } from "./SettingsModal.jsx";
+import { OnboardingFlow } from "./OnboardingFlow.jsx";
 
 const initialState = {
   app: null,
@@ -37,6 +39,7 @@ const initialState = {
   },
   thinkingMode: "balanced",
   thinkingModes: [],
+  llm: null,
   tts: null,
   asr: null,
   onboarding: {
@@ -765,6 +768,12 @@ export default function App() {
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isMicEnabled, setIsMicEnabled] = useState(false);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsDraft, setSettingsDraft] = useState({
+    userAlias: "",
+    bgmVolume: 42,
+    ttsVolume: 100
+  });
   const [isAsrListening, setIsAsrListening] = useState(false);
   const [asrHint, setAsrHint] = useState("");
   const [ttsHint, setTtsHint] = useState("");
@@ -816,6 +825,18 @@ export default function App() {
       asrProviderRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!state) {
+      return;
+    }
+
+    setSettingsDraft({
+      userAlias: state.persona?.userName || "",
+      bgmVolume: Number(state.audio?.bgmVolume ?? 42),
+      ttsVolume: Number(state.audio?.ttsVolume ?? Math.round((state.tts?.volume ?? 1) * 100))
+    });
+  }, [state.audio?.bgmVolume, state.audio?.ttsVolume, state.persona?.userName, state.tts?.volume]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1255,7 +1276,8 @@ export default function App() {
     setError("");
 
     try {
-      return await window.vela.completeOnboarding(payload);
+      const nextState = await window.vela.ipcRenderer.invoke("vela:complete-onboarding-v2", payload);
+      return nextState;
     } catch (submitError) {
       const message = submitError.message || "初始化失败。";
       setError(message);
@@ -1507,6 +1529,16 @@ export default function App() {
     }
   }
 
+  async function handleSettingsSave(nextState, payload) {
+    if (payload && bgmControllerRef.current) {
+      bgmControllerRef.current.setVolume(Number(payload.bgmVolume) / 100);
+    }
+
+    if (nextState) {
+      setState(nextState);
+    }
+  }
+
   function handleReplay(replayAudio) {
     audioPlayerRef.current?.playReplay(replayAudio);
   }
@@ -1557,10 +1589,18 @@ export default function App() {
               />
 
               {state.onboarding?.required ? (
-                <OnboardingPanel
-                  onboarding={state.onboarding}
-                  onConfirm={handleOnboarding}
-                  onComplete={handleOnboardingComplete}
+                <OnboardingFlow
+                  initialValues={{
+                    userName: state.persona?.userName || "",
+                    llmApiKey: state.llm?.apiKey || "",
+                    asrEnabled: state.asr?.enabled,
+                    ttsEnabled: state.tts?.enabled
+                  }}
+                  onComplete={async (payload) => {
+                    const nextState = await handleOnboarding(payload);
+                    handleOnboardingComplete(nextState);
+                    return nextState;
+                  }}
                   isSubmitting={isOnboarding}
                 />
               ) : (
@@ -1666,6 +1706,13 @@ export default function App() {
 
                 <div className="composer-actions">
                   <div className="composer-meta">
+                    <button
+                      type="button"
+                      className="secondary-button settings-trigger"
+                      onClick={() => setIsSettingsOpen(true)}
+                    >
+                      Settings
+                    </button>
                     <div
                       className={`composer-model-switcher ${isModelMenuOpen ? "model-switcher-open" : ""}`}
                       ref={modelSwitcherRef}
@@ -1728,6 +1775,13 @@ export default function App() {
           )}
         </>
       )}
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        initialValues={settingsDraft}
+        onClose={() => setIsSettingsOpen(false)}
+        onSaved={handleSettingsSave}
+      />
     </main>
   );
 }

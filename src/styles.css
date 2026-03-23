@@ -1128,6 +1128,127 @@ textarea {
   font-weight: 600;
 }
 
+.settings-trigger {
+  flex-shrink: 0;
+}
+
+.settings-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(19, 32, 38, 0.24);
+  backdrop-filter: blur(8px);
+}
+
+.settings-modal {
+  width: min(460px, 100%);
+  border-radius: 24px;
+  border: 1px solid rgba(19, 32, 38, 0.08);
+  background: rgba(249, 243, 238, 0.96);
+  box-shadow: 0 24px 64px rgba(19, 32, 38, 0.18);
+  padding: 24px;
+  display: grid;
+  gap: 18px;
+}
+
+.settings-modal-header h3,
+.onboarding-step-card h3 {
+  margin: 0;
+  color: var(--ink-main);
+}
+
+.settings-modal-header p,
+.onboarding-step-card p,
+.onboarding-advanced p {
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+}
+
+.settings-modal-body,
+.onboarding-step-card {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-slider-block input[type="range"] {
+  width: 100%;
+  accent-color: #2d7d77;
+}
+
+.settings-modal-actions,
+.onboarding-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.onboarding-v2 {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.onboarding-header {
+  border-bottom: none;
+}
+
+.onboarding-steps-indicator {
+  padding: 0 26px;
+  color: var(--mint);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.onboarding-step-card {
+  padding: 22px 26px 26px;
+}
+
+.onboarding-warning {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(214, 147, 88, 0.24);
+  background: rgba(255, 239, 221, 0.9);
+  color: #9a5d27;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.onboarding-advanced {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line-soft);
+}
+
+.onboarding-advanced pre {
+  margin: 10px 0 0;
+  padding: 14px;
+  overflow-x: auto;
+  border-radius: 14px;
+  background: rgba(19, 32, 38, 0.04);
+  color: var(--ink-main);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.onboarding-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-main);
+}
+
+.onboarding-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: #2d7d77;
+}
+
 @keyframes breathe {
   0%,
   100% {

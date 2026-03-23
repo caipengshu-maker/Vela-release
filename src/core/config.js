@@ -7,6 +7,9 @@ const defaultConfig = {
   app: {
     name: "Vela",
     tagline: "克制而持续地在场",
+    onboarding: {
+      completed: false
+    },
     window: {
       width: 1320,
       height: 860,
@@ -54,6 +57,10 @@ const defaultConfig = {
     provider: "placeholder",
     apiKeyEnv: "",
     model: ""
+  },
+  audio: {
+    bgmVolume: 42,
+    ttsVolume: 100
   },
   tts: {
     enabled: false,
@@ -294,11 +301,26 @@ function normalizeAvatarConfig(avatarConfig = {}) {
 
 function normalizeUserConfig(userConfig = {}) {
   return {
+    name: String(userConfig?.name || "").trim(),
     location: {
       city: String(
         userConfig?.location?.city || defaultConfig.user.location.city
       ).trim() || defaultConfig.user.location.city
     }
+  };
+}
+
+function normalizeAudioConfig(audioConfig = {}) {
+  const bgmVolume = Number(audioConfig?.bgmVolume);
+  const ttsVolume = Number(audioConfig?.ttsVolume);
+
+  return {
+    bgmVolume: Number.isFinite(bgmVolume)
+      ? Math.max(0, Math.min(100, Math.round(bgmVolume)))
+      : defaultConfig.audio.bgmVolume,
+    ttsVolume: Number.isFinite(ttsVolume)
+      ? Math.max(0, Math.min(100, Math.round(ttsVolume)))
+      : defaultConfig.audio.ttsVolume
   };
 }
 
@@ -315,6 +337,7 @@ export async function loadConfig(rootDir) {
     llm: normalizedLlm,
     asr: normalizeAsrConfig(merged.asr),
     tts: normalizeTtsConfig(merged.tts, normalizedLlm),
+    audio: normalizeAudioConfig(merged.audio),
     avatar: normalizeAvatarConfig(merged.avatar)
   };
 }

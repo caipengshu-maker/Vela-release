@@ -164,6 +164,14 @@ ipcMain.handle("vela:complete-onboarding", async (_event, payload) => {
   return core.completeOnboarding(payload);
 });
 
+ipcMain.handle("vela:complete-onboarding-v2", async (_event, payload) => {
+  return core.completeOnboardingV2(payload);
+});
+
+ipcMain.handle("vela:update-settings", async (_event, payload) => {
+  return core.updateSettings(payload);
+});
+
 ipcMain.handle("vela:set-voice-mode", async (_event, enabled) => {
   console.log("[vela:main] setVoiceMode request", {
     enabled: Boolean(enabled)
