@@ -89,8 +89,8 @@ function MicIcon(props) {
 function SendIcon(props) {
   return (
     <Icon {...props}>
-      <path d="M4 12h14" />
-      <path d="m13 5 7 7-7 7" />
+      <path d="M3 11.5 21 3 13.5 21l-2.6-6.9L3 11.5Z" />
+      <path d="M10.9 14.1 21 3" />
     </Icon>
   );
 }
@@ -508,15 +508,13 @@ function AvatarPanel({ avatar, avatarAsset, app, persona }) {
 
 function MessageList({ messages, welcomeNote, isBusy, assistantName, onReplay }) {
   const listRef = useRef(null);
+  const endRef = useRef(null);
   const hasStreamingAssistant = messages.some(
     (message) => message.role === "assistant" && message.streaming
   );
 
   useEffect(() => {
-    const node = listRef.current;
-    if (node) {
-      node.scrollTop = node.scrollHeight;
-    }
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isBusy]);
 
   return (
@@ -568,6 +566,7 @@ function MessageList({ messages, welcomeNote, isBusy, assistantName, onReplay })
           </div>
         </article>
       ) : null}
+      <div ref={endRef} aria-hidden="true" />
     </div>
   );
 }
@@ -1334,7 +1333,7 @@ export default function App() {
           <div className="ambient ambient-b" />
 
           {isLoading ? (
-            <div className="loading-screen">Vela 正在把记忆和状态接回来…</div>
+            <div className="loading-screen" />
           ) : (
             <div className="surface">
               <AvatarPanel
@@ -1378,9 +1377,9 @@ export default function App() {
                       onClick={handleMicToggle}
                       disabled={isSending}
                       title={isMicEnabled ? "关闭麦克风" : "开启麦克风"}
+                      aria-label={isMicEnabled ? "关闭麦克风" : "开启麦克风"}
                     >
                       {isMicEnabled ? <MicIcon size={16} /> : <SpeakerMutedIcon size={16} />}
-                      <span>{isMicEnabled ? "麦克风" : "已关闭"}</span>
                     </button>
                     <button
                       type="button"
@@ -1388,9 +1387,9 @@ export default function App() {
                       onClick={handleVoiceToggle}
                       disabled={isSwitchingVoice}
                       title={state.voiceMode.enabled ? "关闭语音回复" : "开启语音回复"}
+                      aria-label={state.voiceMode.enabled ? "关闭语音回复" : "开启语音回复"}
                     >
                       {state.voiceMode.enabled ? <SpeakerIcon size={16} /> : <SpeakerMutedIcon size={16} />}
-                      <span>{state.voiceMode.enabled ? "扬声器" : "已静音"}</span>
                     </button>
                   </div>
 
@@ -1417,7 +1416,7 @@ export default function App() {
                         title="发送"
                         aria-label="发送"
                       >
-                        <SendIcon size={18} />
+                        <SendIcon size={20} />
                       </button>
                     ) : isVoiceMode ? (
                       <button
