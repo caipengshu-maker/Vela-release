@@ -8,6 +8,7 @@ import {
 } from "./core/avatar-state.js";
 import { VrmAvatarStage } from "./vrm-avatar-stage.jsx";
 import { SplashScreen } from "./SplashScreen.jsx";
+import { BgmController } from "./core/bgm-controller.js";
 
 const initialState = {
   app: null,
@@ -471,7 +472,7 @@ function StatusBadge({ label, subtle = false, icon = null }) {
   );
 }
 
-function AvatarPanel({ avatar, avatarAsset, app, persona }) {
+function AvatarPanel({ avatar, avatarAsset, app, persona, bgmEnabled, onToggleBgm }) {
   const presenceCopy = buildAvatarPresenceCopy(avatar);
 
   return (
@@ -495,10 +496,22 @@ function AvatarPanel({ avatar, avatarAsset, app, persona }) {
           ) : null}
         </div>
 
-        <div className="panel-copy">
-          <span className="eyebrow">{app?.tagline || "克制而持续地在场"}</span>
-          <h1>{persona?.name || "Vela"}</h1>
-          <p>{persona?.shortBio}</p>
+        <div className="panel-copy-row">
+          <div className="panel-copy">
+            <span className="eyebrow">{app?.tagline || "克制而持续地在场"}</span>
+            <h1>{persona?.name || "Vela"}</h1>
+            <p>{persona?.shortBio}</p>
+          </div>
+
+          <button
+            type="button"
+            className={`panel-audio-toggle ${bgmEnabled ? "is-active" : "is-muted"}`}
+            onClick={onToggleBgm}
+            title={bgmEnabled ? "关闭背景音乐" : "开启背景音乐"}
+            aria-label={bgmEnabled ? "关闭背景音乐" : "开启背景音乐"}
+          >
+            {bgmEnabled ? <SpeakerIcon size={16} /> : <SpeakerMutedIcon size={16} />}
+          </button>
         </div>
 
       </div>
@@ -717,11 +730,23 @@ export default function App() {
   const [isAsrListening, setIsAsrListening] = useState(false);
   const [asrHint, setAsrHint] = useState("");
   const [error, setError] = useState("");
+  const [bgmEnabled, setBgmEnabled] = useState(true);
   const audioPlayerRef = useRef(null);
   const asrProviderRef = useRef(null);
+  const bgmControllerRef = useRef(null);
   const asrHintTimerRef = useRef(null);
   const modelSwitcherRef = useRef(null);
   const proactiveBusyRef = useRef(false);
+
+  useEffect(() => {
+    const bgm = new BgmController();
+    bgmControllerRef.current = bgm;
+
+    return () => {
+      void bgm.dispose();
+      bgmControllerRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const player = new AudioPlayerService();
@@ -802,6 +827,7 @@ export default function App() {
     const unsubscribe = window.vela.onEvent((event) => {
       if (event.type === "speech-audio-chunk") {
         audioPlayerRef.current?.appendChunk(event.chunk);
+        bgmControllerRef.current?.duck();
       }
 
       const replay =
@@ -811,10 +837,16 @@ export default function App() {
 
       if (event.type === "speech-finished" && event.cancelled) {
         audioPlayerRef.current?.reset();
+        bgmControllerRef.current?.unduck();
+      }
+
+      if (event.type === "speech-finished" && !event.cancelled) {
+        bgmControllerRef.current?.unduck();
       }
 
       if (event.type === "speech-error") {
         audioPlayerRef.current?.reset();
+        bgmControllerRef.current?.unduck();
       }
 
       setState((current) => {
@@ -909,6 +941,48 @@ export default function App() {
       window.clearInterval(interval);
     };
   }, [isLoading, state.onboarding?.required]);
+
+  useEffect(() => {
+    const bgm = bgmControllerRef.current;
+    if (!bgm) {
+      return undefined;
+    }
+
+    bgm.setEnabled(bgmEnabled);
+
+    if (!bgmEnabled) {
+      bgm.pause();
+      return undefined;
+    }
+
+    const getSceneTrack = () => {
+      const hour = new Date().getHours();
+      const sceneType = hour >= 6 && hour < 18 ? "day" : "night";
+      return `/assets/bgm/${sceneType}.mp3`;
+    };
+
+    const syncTrack = () => {
+      const track = getSceneTrack();
+      if (!bgm.activeTrackUrl) {
+        void bgm.loadAndPlay(track);
+        return;
+      }
+
+      void bgm.switchTrack(track);
+    };
+
+    void bgm.resume().then(() => {
+      syncTrack();
+    });
+
+    const intervalId = window.setInterval(() => {
+      syncTrack();
+    }, 5 * 60 * 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [bgmEnabled, isLoading, state.onboarding?.required]);
 
   useEffect(() => {
     if (state.voiceMode.enabled || state.avatar?.presence !== "speaking") {
@@ -1323,6 +1397,22 @@ export default function App() {
     audioPlayerRef.current?.playReplay(replayAudio);
   }
 
+  function handleBgmToggle() {
+    setBgmEnabled((current) => {
+      const next = !current;
+      const bgm = bgmControllerRef.current;
+      if (bgm) {
+        bgm.setEnabled(next);
+        if (!next) {
+          bgm.pause();
+        } else {
+          void bgm.resume();
+        }
+      }
+      return next;
+    });
+  }
+
   return (
     <main className="app-shell">
       {!splashDone ? (
@@ -1341,6 +1431,8 @@ export default function App() {
                 avatarAsset={state.avatarAsset}
                 app={state.app}
                 persona={state.persona}
+                bgmEnabled={bgmEnabled}
+                onToggleBgm={handleBgmToggle}
               />
 
               {state.onboarding?.required ? (

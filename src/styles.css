@@ -377,6 +377,13 @@ textarea {
   text-transform: uppercase;
 }
 
+.panel-copy-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .panel-copy {
   display: grid;
   gap: 8px;
@@ -384,6 +391,34 @@ textarea {
 
 .panel-copy p {
   max-width: 42ch;
+}
+
+.panel-audio-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(19, 32, 38, 0.08);
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, color 140ms ease, border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.panel-audio-toggle.is-active {
+  background: rgba(45, 125, 119, 0.12);
+  border-color: rgba(45, 125, 119, 0.18);
+  color: var(--mint);
+}
+
+.panel-audio-toggle.is-muted {
+  background: rgba(19, 32, 38, 0.06);
+  color: var(--ink-soft);
+  opacity: 0.8;
 }
 
 .presence-brief {
@@ -756,7 +791,8 @@ textarea {
 .voice-control-button:hover:not(:disabled),
 .model-switcher-button:hover:not(:disabled),
 .secondary-button:hover:not(:disabled),
-.message-icon-button:hover {
+.message-icon-button:hover,
+.panel-audio-toggle:hover {
   transform: translateY(-1px);
 }
 
