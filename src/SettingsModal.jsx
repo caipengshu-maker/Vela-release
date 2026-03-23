@@ -9,7 +9,10 @@ export function SettingsModal({
   isOpen,
   initialValues,
   onClose,
-  onSaved
+  onSaved,
+  models,
+  selectedModel,
+  onModelSwitch
 }) {
   const [userAlias, setUserAlias] = useState("");
   const [bgmVolume, setBgmVolume] = useState(60);
@@ -105,14 +108,16 @@ export function SettingsModal({
             />
           </label>
 
-          <label className="field-block">
-            <span>模型选择</span>
-            <select value={selectedModel} onChange={(e) => onModelSwitch?.(e.target.value)}>
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-            </select>
-          </label>
+          {Array.isArray(models) && models.length > 0 ? (
+            <label className="field-block">
+              <span>模型选择</span>
+              <select value={selectedModel || "auto"} onChange={(e) => onModelSwitch?.(e.target.value)}>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
 
           {error ? <p className="error-text">{error}</p> : null}
         </div>
