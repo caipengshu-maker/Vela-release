@@ -1,8 +1,36 @@
 import path from "node:path";
 import fs from "node:fs";
+import https from "node:https";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, ipcMain } from "electron";
 import { VelaCore } from "../src/core/vela-core.js";
+
+function fetchIpLocation() {
+  return new Promise((resolve) => {
+    const req = https.get(
+      "https://ip-api.com/json/?fields=lat,lon,city,status",
+      { timeout: 5000 },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => { data += chunk; });
+        res.on("end", () => {
+          try {
+            const json = JSON.parse(data);
+            if (json.status === "success" && Number.isFinite(json.lat)) {
+              resolve({ lat: json.lat, lon: json.lon, city: json.city });
+            } else {
+              resolve(null);
+            }
+          } catch {
+            resolve(null);
+          }
+        });
+      }
+    );
+    req.on("error", () => resolve(null));
+    req.on("timeout", () => { req.destroy(); resolve(null); });
+  });
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +50,13 @@ app.setPath("sessionData", electronSessionDir);
 async function createMainWindow() {
   core = new VelaCore({ rootDir, userDataDir: app.getPath("userData") });
   await core.initialize();
+
+  // IP-based location: runs async, does not block startup
+  fetchIpLocation().then((loc) => {
+    if (loc) {
+      core.cacheBrowserLocation({ lat: loc.lat, lon: loc.lon }).catch(() => {});
+    }
+  });
 
   const config = core.getConfig();
   const { width, height, minWidth, minHeight } = config.app.window;
