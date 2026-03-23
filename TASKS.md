@@ -20,61 +20,63 @@
 - 状态：DONE — commit `0e1fc43`
 - 优先级：P0
 - Owner：Codex
-- 验收：语音按钮 → 识别 → 文字填入 → 发送
+- 验收：双模态 composer + Web Speech ASR + 模型切换
 
 ### Phase 2：首次体验质感
 
 #### M5.5-T10 开屏动画（K Studio Splash）
-- 状态：TODO
+- 状态：DONE — commit `1489bfe`
 - 优先级：P0
-- Owner：待定
-- 说明：K Studio logo（Gemini 生图）fade in → hold 2-3s → fade out → 主界面
-- 验收：Electron 启动有品牌感开屏
+- Owner：Codex
+- 验收：fade-in → hold 2.5s → fade-out，IPC 加载 D 盘 logo
 
 #### M5.5-T5 UI 打磨（M3/M4 遗留）
-- 状态：TODO
+- 状态：DONE — commit `ef4b980`
 - 优先级：P1
 - Owner：Codex
-- 子项：语音按钮缩小 / 气泡收窄+动画 / 标签清理 / 纸飞机按钮 / 输入框优化 / 消息滑动窗口
+- 完成项：语音按钮 32px / 气泡收窄+动画 / 标签清理 / 纸飞机发送按钮 / 输入框优化 / 消息自动吸底
 
 ### Phase 3：视觉氛围
 
 #### M5.5-T11 Avatar 场景背景
-- 状态：TODO
+- 状态：DONE — commit `b98f0bc`
 - 优先级：P1
-- Owner：待定
-- 说明：静态插画背景（日/夜切换）+ 轻粒子点缀，Gemini 生图
+- Owner：Codex
+- 完成项：日/夜背景自动切换（6:00-17:59 / 18:00-5:59），5 分钟刷新，1s crossfade
 
 #### M5.5-T12 环境 BGM
-- 状态：TODO
+- 状态：DONE — commit `cc25f2d`
 - 优先级：P1
-- Owner：待定
-- 说明：轻氛围 BGM + 音量控制 + TTS ducking + 日/夜切换
+- Owner：Codex
+- 完成项：bgm-controller.js（Web Audio API）/ 日夜切换 / TTS ducking / 音量按钮 / 占位 mp3
 
 ### Phase 4：安全网
 
 #### M5.5-T3 错误处理 UI
-- 状态：TODO
+- 状态：DONE — commit `bf45497`
 - 优先级：P0
-- Owner：Codex
+- Owner：Codex + 主控补刀
+- 完成项：LLM 失败 banner + 重试 / TTS 提示 / ASR 提示 / 启动失败全屏
 
 #### M5.5-T2 设置界面
-- 状态：TODO
+- 状态：DONE — commit `5969796`（与 T4 合并）
 - 优先级：P0
 - Owner：Codex
+- 完成项：模态弹窗 / BGM 音量滑块 / TTS 音量滑块 / 用户昵称输入
 
 #### M5.5-T4 首次体验引导
-- 状态：TODO
+- 状态：DONE — commit `5969796`（与 T2 合并）
 - 优先级：P0
 - Owner：Codex
-- 依赖：T2
+- 完成项：三步引导 / MiniMax API Key / 语音开关 / 资费警告 / 高级配置引导到 vela.jsonc
 
 ### Phase 5：持久化 + 沉浸
 
-#### M5.5-T7 聊天记录持久化
-- 状态：TODO
+#### M5.5-T7 启动桥接摘要（日记体）
+- 状态：IN-PROGRESS
 - 优先级：P1
 - Owner：Codex
+- 说明：启动时独立调 LLM 生成 Vela 视角的日记体回忆，不污染主对话上下文
 
 #### M5.5-T6 全屏沉浸模式
 - 状态：TODO
@@ -98,6 +100,33 @@
 #### M5.5-T9 Lip Sync
 - 状态：TODO
 - 优先级：P2
+
+### Phase 7：体验打磨（新增 2026-03-23）
+
+#### M5.5-P1 关窗告别微表情
+- 状态：TODO
+- 优先级：P2
+- 说明：关 app 时 Vela 挥手/微表情 0.5s，不直接黑屏
+
+#### M5.5-P2 思考状态动画联动
+- 状态：TODO
+- 优先级：P2
+- 说明：思考中切到 Mixamo Thinking 动画 + 表情微变
+
+#### M5.5-P3 消息时间戳
+- 状态：TODO
+- 优先级：P2
+- 说明：淡色相对时间（刚刚 / 3分钟前 / 昨天）
+
+#### M5.5-P4 关系阶段视觉暗示
+- 状态：TODO
+- 优先级：P2
+- 说明：reserved→warm→close 界面暖色调微变 + 背景粒子密度
+
+#### M5.5-P5 空聊天氛围文案
+- 状态：TODO
+- 优先级：P2
+- 说明：主动问候未触发时显示静态占位文案
 
 ---
 

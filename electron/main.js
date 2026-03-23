@@ -200,6 +200,13 @@ ipcMain.handle("vela:interrupt-output", async (_event) => {
   });
 });
 
+ipcMain.handle("vela:bridge-diary", async (_event) => {
+  const note = await core.generateBridgeDiaryNote();
+  return {
+    bridgeDiaryNote: note || ""
+  };
+});
+
 app.whenReady().then(async () => {
   await createMainWindow();
 

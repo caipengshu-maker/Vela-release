@@ -14,6 +14,7 @@ import { MemoryRetriever, inferEmotionFromText } from "./memory-retriever.js";
 import { MemorySummarizer } from "./memory-summarizer.js";
 import { SessionStateStore } from "./session-state.js";
 import { buildContext } from "./context-builder.js";
+import { generateBridgeDiary } from "./bridge-diary.js";
 import {
   loadBehaviorPatterns,
   updateBehaviorPatternsIfNeeded
@@ -355,6 +356,7 @@ export class VelaCore {
     this.persistedState = null;
     this.relationshipTracker = null;
     this.memorySnapshot = null;
+    this.bridgeDiaryNote = null;
     this.currentAvatar = null;
     this.currentSpeech = null;
     this.lastReplyText = "";
@@ -610,6 +612,7 @@ export class VelaCore {
       avatar: nextAvatar,
       avatarAsset: buildAvatarAssetState(this.config),
       messages: messages ?? this.runtimeSession.messages,
+      bridgeDiaryNote: this.bridgeDiaryNote || "",
       welcomeNote:
         welcomeNote ??
         (nextOnboarding.required
@@ -825,6 +828,8 @@ export class VelaCore {
       this.runtimeSession.voiceModeEnabled ? "listening" : "idle"
     );
 
+    void this.generateBridgeDiaryNote(memory).catch(() => {});
+
     return this.buildAppState({
       memorySnapshot: memory,
       avatar,
@@ -836,6 +841,20 @@ export class VelaCore {
           }
         : buildOnboardingState(memory.profile)
     });
+  }
+
+  async generateBridgeDiaryNote(memorySnapshot = null) {
+    const memory = memorySnapshot || this.memorySnapshot || (await this.loadMemorySnapshot());
+    const note = await generateBridgeDiary({
+      recentSummaries: memory?.recentSummaries || [],
+      bridgeSummary: memory?.bridgeSummary || null,
+      config: this.config,
+      userFacts: memory?.userFacts || [],
+      relationship: this.getRelationshipState(memory?.relationship)
+    });
+
+    this.bridgeDiaryNote = note || null;
+    return this.bridgeDiaryNote;
   }
 
   async completeOnboarding(payload) {

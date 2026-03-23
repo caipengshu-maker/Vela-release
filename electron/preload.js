@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("vela", {
   setVoiceMode: (enabled) => ipcRenderer.invoke("vela:set-voice-mode", enabled),
   setThinkingMode: (mode) => ipcRenderer.invoke("vela:set-thinking-mode", mode),
   interruptOutput: () => ipcRenderer.invoke("vela:interrupt-output"),
+  loadBridgeDiary: () => ipcRenderer.invoke("vela:bridge-diary"),
   onEvent: (listener) => {
     const wrappedListener = (_event, payload) => {
       listener(payload);

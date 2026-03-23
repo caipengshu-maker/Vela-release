@@ -18,6 +18,7 @@ const initialState = {
   avatar: null,
   avatarAsset: null,
   messages: [],
+  bridgeDiaryNote: "",
   welcomeNote: "",
   memoryPeek: null,
   voiceMode: {
@@ -549,7 +550,7 @@ function AvatarPanel({ avatar, avatarAsset, app, persona, bgmEnabled, onToggleBg
   );
 }
 
-function MessageList({ messages, welcomeNote, isBusy, assistantName, onReplay, sendError, onRetrySend }) {
+function MessageList({ messages, welcomeNote, bridgeDiaryNote, isBusy, assistantName, onReplay, sendError, onRetrySend }) {
   const listRef = useRef(null);
   const endRef = useRef(null);
   const hasStreamingAssistant = messages.some(
@@ -562,6 +563,15 @@ function MessageList({ messages, welcomeNote, isBusy, assistantName, onReplay, s
 
   return (
     <div className="conversation" ref={listRef}>
+      {bridgeDiaryNote ? (
+        <div className="bridge-diary-note" aria-label="Vela bridge diary note">
+          <div className="bridge-diary-note-inner">
+            <span className="bridge-diary-avatar">V</span>
+            <p>{bridgeDiaryNote}</p>
+          </div>
+        </div>
+      ) : null}
+
       {welcomeNote ? <div className="welcome-card">{welcomeNote}</div> : null}
 
       {messages.length === 0 ? (
@@ -847,6 +857,17 @@ export default function App() {
         if (isMounted) {
           setState(nextState);
           setIsMainEntering(false);
+
+          void window.vela.loadBridgeDiary().then((diaryState) => {
+            if (!isMounted || !diaryState?.bridgeDiaryNote) {
+              return;
+            }
+
+            setState((current) => ({
+              ...current,
+              bridgeDiaryNote: diaryState.bridgeDiaryNote
+            }));
+          }).catch(() => {});
         }
       } catch (bootstrapError) {
         if (isMounted) {
@@ -1608,6 +1629,7 @@ export default function App() {
 
               <MessageList
                 messages={state.messages}
+                bridgeDiaryNote={state.bridgeDiaryNote}
                 welcomeNote={state.welcomeNote}
                 isBusy={isSending}
                 assistantName={state.persona?.name || "Vela"}
