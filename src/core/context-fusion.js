@@ -51,11 +51,15 @@ function isWeatherWorthMentioning(weather) {
 }
 
 function formatWeatherLine(weather) {
-  if (!isWeatherWorthMentioning(weather)) {
+  if (!weather) {
     return "";
   }
 
   const parts = [];
+
+  if (weather.cityLabel) {
+    parts.push(`位置：${weather.cityLabel}`);
+  }
 
   if (weather.isRaining) {
     parts.push("当前有降雨");
@@ -67,11 +71,19 @@ function formatWeatherLine(weather) {
     parts.push(`约 ${weather.temperature}°C`);
   }
 
+  if (Number.isFinite(weather.humidity)) {
+    parts.push(`湿度 ${weather.humidity}%`);
+  }
+
   if (Number.isFinite(weather.windSpeed) && weather.windSpeed >= 35) {
     parts.push(`风速偏大（${weather.windSpeed} km/h）`);
   }
 
-  return `环境感知：${parts.join("，")}。只在和当前话题自然相关时再提起。`;
+  const proactiveHint = isWeatherWorthMentioning(weather)
+    ? "天气值得自然提起。"
+    : "如用户主动问天气可直接回答，否则无需主动提起。";
+
+  return `环境感知：${parts.join("，")}。${proactiveHint}`;
 }
 
 function formatFacts(userFacts = [], profile = null) {
