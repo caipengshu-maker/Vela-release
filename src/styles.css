@@ -1190,6 +1190,104 @@ textarea {
   }
 }
 
+/* Error handling UI */
+.error-hint {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #b85c4a;
+  background: rgba(220, 140, 120, 0.12);
+  animation: hintFadeIn 200ms ease;
+}
+
+.error-hint.is-soft {
+  color: #a0745e;
+  background: rgba(200, 160, 130, 0.1);
+}
+
+.message-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(220, 140, 120, 0.1);
+  color: #b85c4a;
+  font-size: 14px;
+  animation: hintFadeIn 200ms ease;
+}
+
+.message-error-banner button {
+  padding: 4px 14px;
+  border: 1px solid rgba(220, 140, 120, 0.3);
+  border-radius: 8px;
+  background: transparent;
+  color: #b85c4a;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 150ms;
+  white-space: nowrap;
+}
+
+.message-error-banner button:hover {
+  background: rgba(220, 140, 120, 0.12);
+}
+
+.startup-error-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4ebe6;
+  z-index: 9999;
+}
+
+.startup-error-card {
+  text-align: center;
+  padding: 40px;
+  max-width: 360px;
+}
+
+.startup-error-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.7;
+}
+
+.startup-error-card h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #4a3728;
+  margin: 0 0 8px;
+}
+
+.startup-error-card p {
+  font-size: 14px;
+  color: #8a7060;
+  margin: 0 0 24px;
+}
+
+.startup-error-card button {
+  padding: 10px 32px;
+  border: none;
+  border-radius: 10px;
+  background: #c49478;
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 150ms;
+}
+
+.startup-error-card button:hover {
+  background: #b0826a;
+}
+
+@keyframes hintFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes mainShellEnter {
   from {
     opacity: 0;
