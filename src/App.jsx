@@ -546,15 +546,51 @@ function StartupErrorScreen({ message, onRetry }) {
   );
 }
 
-function AvatarPanel({ avatar, avatarAsset, app, persona, bgmEnabled, onToggleBgm }) {
+function AvatarPanel({
+  avatar,
+  avatarAsset,
+  app,
+  persona,
+  bgmEnabled,
+  onToggleBgm,
+  isFullscreen,
+  onToggleFullscreen,
+  isFullscreenBusy,
+  isChatMinimized,
+  onToggleChatMinimized
+}) {
   const presenceCopy = buildAvatarPresenceCopy(avatar);
 
   return (
-    <section className="avatar-shell">
+    <section className={`avatar-shell ${isFullscreen ? "is-fullscreen" : ""}`}>
       <div className="avatar-panel">
         <div
-          className={`avatar-stage is-${avatar?.presence || "idle"} camera-${avatar?.camera || "wide"} emotion-${avatar?.emotion || "calm"} action-${avatar?.action || "none"}`}
+          className={`avatar-stage is-${avatar?.presence || "idle"} camera-${avatar?.camera || "wide"} emotion-${avatar?.emotion || "calm"} action-${avatar?.action || "none"} ${isFullscreen ? "is-fullscreen" : ""}`}
         >
+          {isFullscreen ? (
+            <div className="fullscreen-overlay-controls">
+              <button
+                type="button"
+                className="avatar-overlay-button"
+                onClick={onToggleChatMinimized}
+                title={isChatMinimized ? "展开聊天面板" : "收起聊天面板"}
+                aria-label={isChatMinimized ? "展开聊天面板" : "收起聊天面板"}
+              >
+                <span>{isChatMinimized ? "显示聊天" : "收起聊天"}</span>
+              </button>
+              <button
+                type="button"
+                className="avatar-overlay-button avatar-overlay-button-exit"
+                onClick={onToggleFullscreen}
+                disabled={isFullscreenBusy}
+                title="退出沉浸模式"
+                aria-label="退出沉浸模式"
+              >
+                <FullscreenExitIcon size={14} />
+                <span>退出全屏</span>
+              </button>
+            </div>
+          ) : null}
           <div className="scene-backdrop" />
           <div className="scene-glow" />
           <div className="avatar-halo" />
@@ -834,6 +870,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [bgmEnabled, setBgmEnabled] = useState(true);
   const [isFullscreenBusy, setIsFullscreenBusy] = useState(false);
+  const [isChatMinimized, setIsChatMinimized] = useState(false);
   const [lastUserMessage, setLastUserMessage] = useState("");
   const audioPlayerRef = useRef(null);
   const asrProviderRef = useRef(null);
@@ -897,16 +934,22 @@ export default function App() {
 
     async function bootstrap() {
       try {
-        const [nextState, windowState] = await Promise.all([
+        const [nextState, windowState, fullscreenValue] = await Promise.all([
           window.vela.bootstrap(),
-          window.vela.getWindowState().catch(() => ({ fullscreen: false }))
+          window.vela.getWindowState().catch(() => ({ fullscreen: false })),
+          window.vela.isFullscreen().catch(() => false)
         ]);
         if (isMounted) {
           setState({
             ...nextState,
             window: {
               ...(nextState.window || {}),
-              ...(windowState || {})
+              ...(windowState || {}),
+              fullscreen: Boolean(
+                typeof fullscreenValue === "boolean"
+                  ? fullscreenValue
+                  : windowState?.fullscreen
+              )
             }
           });
           setIsMainEntering(false);
@@ -1011,19 +1054,44 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isModelMenuOpen) {
-      return undefined;
-    }
-
     function handlePointerDown(event) {
-      if (modelSwitcherRef.current && !modelSwitcherRef.current.contains(event.target)) {
+      if (
+        isModelMenuOpen &&
+        modelSwitcherRef.current &&
+        !modelSwitcherRef.current.contains(event.target)
+      ) {
         setIsModelMenuOpen(false);
       }
     }
 
     function handleKeyDown(event) {
-      if (event.key === "Escape") {
-        setIsModelMenuOpen(false);
+      const key = String(event.key || "").toLowerCase();
+      const targetTag = String(event.target?.tagName || "").toLowerCase();
+      const isTypingTarget =
+        targetTag === "textarea" ||
+        targetTag === "input" ||
+        event.target?.isContentEditable;
+
+      if (key === "escape") {
+        if (isModelMenuOpen) {
+          setIsModelMenuOpen(false);
+        }
+
+        if (isFullscreen) {
+          event.preventDefault();
+          void handleFullscreenToggle(false);
+        }
+      }
+
+      if (key === "f11") {
+        event.preventDefault();
+        void handleFullscreenToggle();
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && key === "f" && !isTypingTarget) {
+        event.preventDefault();
+        void handleFullscreenToggle();
       }
     }
 
@@ -1034,7 +1102,7 @@ export default function App() {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isModelMenuOpen]);
+  }, [handleFullscreenToggle, isFullscreen, isModelMenuOpen]);
 
   useEffect(() => {
     if (isLoading || state.onboarding?.required) {
@@ -1613,7 +1681,7 @@ export default function App() {
     }
   }
 
-  async function handleFullscreenToggle() {
+  async function handleFullscreenToggle(nextValue) {
     if (isFullscreenBusy) {
       return;
     }
@@ -1622,7 +1690,11 @@ export default function App() {
     setError("");
 
     try {
-      const nextWindowState = await window.vela.setFullscreen(!state.window?.fullscreen);
+      const nextWindowState =
+        typeof nextValue === "boolean"
+          ? await window.vela.setFullscreen(nextValue)
+          : await window.vela.toggleFullscreen();
+
       setState((current) => ({
         ...current,
         window: {
@@ -1661,6 +1733,12 @@ export default function App() {
 
   const isFullscreen = Boolean(state.window?.fullscreen);
 
+  useEffect(() => {
+    if (!isFullscreen) {
+      setIsChatMinimized(false);
+    }
+  }, [isFullscreen]);
+
   return (
     <main className={`app-shell ${isFullscreen ? "is-fullscreen" : ""}`}>
       {!splashDone ? (
@@ -1680,7 +1758,7 @@ export default function App() {
               }}
             />
           ) : (
-            <div className={`surface ${isFullscreen ? "is-fullscreen" : ""}`}>
+            <div className={`surface ${isFullscreen ? "is-fullscreen" : ""} ${isChatMinimized ? "is-chat-minimized" : ""}`}>
               <AvatarPanel
                 avatar={state.avatar}
                 avatarAsset={state.avatarAsset}
@@ -1688,6 +1766,11 @@ export default function App() {
                 persona={state.persona}
                 bgmEnabled={bgmEnabled}
                 onToggleBgm={handleBgmToggle}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={() => void handleFullscreenToggle(false)}
+                isFullscreenBusy={isFullscreenBusy}
+                isChatMinimized={isChatMinimized}
+                onToggleChatMinimized={() => setIsChatMinimized((current) => !current)}
               />
 
               {state.onboarding?.required ? (
@@ -1706,7 +1789,7 @@ export default function App() {
                   isSubmitting={isOnboarding}
                 />
               ) : (
-                <section className={`chat-shell ${isMainEntering ? "is-main-enter" : ""} ${isFullscreen ? "is-fullscreen" : ""}`}>
+                <section className={`chat-shell ${isMainEntering ? "is-main-enter" : ""} ${isFullscreen ? "is-fullscreen" : ""} ${isChatMinimized ? "is-minimized" : ""}`}>
 
               <MessageList
                 messages={state.messages}
@@ -1866,7 +1949,7 @@ export default function App() {
                     <button
                       type="button"
                       className={`secondary-button fullscreen-toggle ${isFullscreen ? "is-active" : ""}`}
-                      onClick={handleFullscreenToggle}
+                      onClick={() => void handleFullscreenToggle()}
                       disabled={isFullscreenBusy}
                       title={isFullscreen ? "退出沉浸模式" : "进入沉浸模式"}
                       aria-label={isFullscreen ? "退出沉浸模式" : "进入沉浸模式"}

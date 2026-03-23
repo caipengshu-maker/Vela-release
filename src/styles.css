@@ -115,7 +115,8 @@ textarea {
 }
 
 .app-shell.is-fullscreen {
-  padding: 10px;
+  min-height: 100vh;
+  padding: 0;
   background:
     radial-gradient(circle at top left, rgba(250, 241, 225, 0.82), transparent 32%),
     radial-gradient(circle at 88% 12%, rgba(208, 234, 231, 0.46), transparent 24%),
@@ -157,7 +158,13 @@ textarea {
 
 .surface.is-fullscreen {
   max-width: none;
+  min-height: 100vh;
   gap: 12px;
+  padding: 0;
+}
+
+.surface.is-fullscreen.is-chat-minimized {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.01fr);
 }
 
 .loading-screen {
@@ -236,15 +243,20 @@ textarea {
 
 .app-shell.is-fullscreen .avatar-shell,
 .app-shell.is-fullscreen .chat-shell {
-  height: calc(100vh - 20px);
-  max-height: calc(100vh - 20px);
-  border-radius: 28px;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
 }
 
 .avatar-shell {
   padding: 22px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(249, 246, 240, 0.78));
   box-shadow: var(--shadow-panel);
+}
+
+.avatar-shell.is-fullscreen {
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(241, 247, 244, 0.76));
 }
 
 .chat-shell {
@@ -257,6 +269,13 @@ textarea {
 
 .chat-shell.is-fullscreen {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(244, 248, 246, 0.88));
+}
+
+.chat-shell.is-fullscreen.is-minimized {
+  opacity: 0;
+  transform: translateX(24px) scale(0.98);
+  pointer-events: none;
+  overflow: hidden;
 }
 
 .avatar-panel {
@@ -274,6 +293,12 @@ textarea {
     radial-gradient(circle at 50% 20%, rgba(255, 248, 234, 0.74), transparent 30%),
     linear-gradient(180deg, rgba(255, 251, 243, 0.88), rgba(222, 233, 228, 0.92));
   border: 1px solid rgba(19, 32, 38, 0.06);
+  transition: min-height 180ms ease, border-radius 180ms ease, transform 180ms ease;
+}
+
+.avatar-stage.is-fullscreen {
+  min-height: calc(100vh - 132px);
+  border-radius: 26px;
 }
 
 .scene-backdrop,
@@ -472,6 +497,10 @@ textarea {
   max-width: 42ch;
 }
 
+.avatar-shell.is-fullscreen .panel-copy p {
+  max-width: 56ch;
+}
+
 .panel-audio-toggle {
   display: inline-flex;
   align-items: center;
@@ -498,6 +527,51 @@ textarea {
   background: rgba(19, 32, 38, 0.06);
   color: var(--ink-soft);
   opacity: 0.8;
+}
+
+.fullscreen-overlay-controls {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.avatar-stage:hover .fullscreen-overlay-controls,
+.avatar-stage:focus-within .fullscreen-overlay-controls {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.avatar-overlay-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(19, 32, 38, 0.42);
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  backdrop-filter: blur(18px);
+  transition: background 140ms ease, transform 140ms ease, border-color 140ms ease;
+}
+
+.avatar-overlay-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(19, 32, 38, 0.56);
+}
+
+.avatar-overlay-button-exit {
+  padding-inline: 10px;
 }
 
 .presence-brief {
@@ -1506,6 +1580,11 @@ textarea {
 }
 
 @media (max-width: 1180px) {
+  .surface.is-fullscreen,
+  .surface.is-fullscreen.is-chat-minimized {
+    grid-template-columns: 1fr;
+  }
+
   .app-shell {
     padding: 16px;
   }
@@ -1519,6 +1598,13 @@ textarea {
     height: auto;
     max-height: none;
     min-height: 560px;
+  }
+
+  .app-shell.is-fullscreen .avatar-shell,
+  .app-shell.is-fullscreen .chat-shell {
+    height: auto;
+    max-height: none;
+    border-radius: 24px;
   }
 
   .avatar-stage {

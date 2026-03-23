@@ -91,13 +91,15 @@ function bindWindowRuntimeEvents(windowInstance) {
       return;
     }
 
-    if (input.key === "F11") {
+    const key = String(input.key || "").toLowerCase();
+
+    if (key === "f11" || (key === "f" && input.control)) {
       event.preventDefault();
       setFullscreen();
       return;
     }
 
-    if (input.key === "Escape" && windowInstance.isFullScreen()) {
+    if (key === "escape" && windowInstance.isFullScreen()) {
       event.preventDefault();
       setFullscreen(false);
     }
@@ -269,6 +271,14 @@ ipcMain.handle("vela:bridge-diary", async (_event) => {
 
 ipcMain.handle("vela:get-window-state", async () => {
   return getWindowState();
+});
+
+ipcMain.handle("vela:is-fullscreen", async () => {
+  return Boolean(getWindowState().fullscreen);
+});
+
+ipcMain.handle("vela:toggle-fullscreen", async () => {
+  return setFullscreen();
 });
 
 ipcMain.handle("vela:set-fullscreen", async (_event, nextValue) => {
