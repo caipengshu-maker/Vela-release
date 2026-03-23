@@ -214,6 +214,32 @@ textarea {
   background: radial-gradient(circle at 50% 74%, rgba(63, 150, 142, 0.22), transparent 40%);
 }
 
+.avatar-scene-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.avatar-scene-image {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  opacity: 0;
+  transition: opacity 1s ease;
+  pointer-events: none;
+  user-select: none;
+}
+
+.avatar-scene-image.is-visible {
+  opacity: 1;
+}
+
 .avatar-halo {
   position: absolute;
   inset: 66px 70px 98px;
@@ -243,6 +269,8 @@ textarea {
 }
 
 .avatar-render-canvas {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   height: 100%;

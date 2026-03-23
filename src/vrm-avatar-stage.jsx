@@ -1,16 +1,104 @@
 import { useEffect, useRef, useState } from "react";
 import { VrmAvatarController } from "./core/vrm-avatar-controller.js";
 
+const DAY_BACKGROUND_PATH = "D:\\Vela\\assets\\backgrounds\\bg-day.png";
+const NIGHT_BACKGROUND_PATH = "D:\\Vela\\assets\\backgrounds\\bg-night.png";
+const BACKGROUND_REFRESH_MS = 5 * 60 * 1000;
+
+function toBlobPart(binaryPayload) {
+  if (binaryPayload instanceof ArrayBuffer) {
+    return binaryPayload;
+  }
+
+  if (ArrayBuffer.isView(binaryPayload)) {
+    return binaryPayload.buffer.slice(
+      binaryPayload.byteOffset,
+      binaryPayload.byteOffset + binaryPayload.byteLength
+    );
+  }
+
+  return binaryPayload;
+}
+
+function getTimeSceneType(date = new Date()) {
+  const hour = date.getHours();
+  return hour >= 6 && hour < 18 ? "day" : "night";
+}
+
 export function VrmAvatarStage({ avatar, avatarAsset }) {
   const stageRef = useRef(null);
   const canvasRef = useRef(null);
   const controllerRef = useRef(null);
   const [controllerReady, setControllerReady] = useState(false);
   const [demoLabel, setDemoLabel] = useState(null);
+  const [sceneType, setSceneType] = useState(() => getTimeSceneType());
+  const [backgrounds, setBackgrounds] = useState({
+    day: "",
+    night: ""
+  });
   const [loadState, setLoadState] = useState({
     status: "idle",
     message: ""
   });
+
+  useEffect(() => {
+    setSceneType(getTimeSceneType());
+
+    const intervalId = window.setInterval(() => {
+      const nextSceneType = getTimeSceneType();
+      setSceneType((prev) => (prev === nextSceneType ? prev : nextSceneType));
+    }, BACKGROUND_REFRESH_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const objectUrls = [];
+
+    async function loadBackgrounds() {
+      if (typeof window.vela?.readBinaryFile !== "function") {
+        return;
+      }
+
+      try {
+        const [dayPayload, nightPayload] = await Promise.all([
+          window.vela.readBinaryFile(DAY_BACKGROUND_PATH),
+          window.vela.readBinaryFile(NIGHT_BACKGROUND_PATH)
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        const dayBlob = new Blob([toBlobPart(dayPayload)], { type: "image/png" });
+        const nightBlob = new Blob([toBlobPart(nightPayload)], { type: "image/png" });
+
+        const dayUrl = URL.createObjectURL(dayBlob);
+        const nightUrl = URL.createObjectURL(nightBlob);
+
+        objectUrls.push(dayUrl, nightUrl);
+
+        setBackgrounds({
+          day: dayUrl,
+          night: nightUrl
+        });
+      } catch {
+        // Keep existing gradient backdrop if binary scene backgrounds fail to load.
+      }
+    }
+
+    void loadBackgrounds();
+
+    return () => {
+      cancelled = true;
+      objectUrls.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
+    };
+  }, []);
 
   useEffect(() => {
     if (!canvasRef.current || !stageRef.current) {
@@ -156,8 +244,28 @@ export function VrmAvatarStage({ avatar, avatarAsset }) {
     };
   }, [avatarAsset?.path, controllerReady]);
 
+  const dayVisible = sceneType === "day";
+
   return (
     <div className="avatar-render-layer" ref={stageRef}>
+      <div className="avatar-scene-background" aria-hidden="true">
+        {backgrounds.day ? (
+          <img
+            className={`avatar-scene-image ${dayVisible ? "is-visible" : ""}`}
+            src={backgrounds.day}
+            alt=""
+            draggable={false}
+          />
+        ) : null}
+        {backgrounds.night ? (
+          <img
+            className={`avatar-scene-image ${!dayVisible ? "is-visible" : ""}`}
+            src={backgrounds.night}
+            alt=""
+            draggable={false}
+          />
+        ) : null}
+      </div>
       <canvas
         ref={canvasRef}
         className="avatar-render-canvas"
