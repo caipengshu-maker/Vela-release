@@ -472,6 +472,33 @@ function StatusBadge({ label, subtle = false, icon = null }) {
   );
 }
 
+function ErrorHint({ message, tone = "soft" }) {
+  if (!message) {
+    return null;
+  }
+
+  return (
+    <div className={`error-hint is-${tone}`} role="status" aria-live="polite">
+      <span>{message}</span>
+    </div>
+  );
+}
+
+function StartupErrorScreen({ message, onRetry }) {
+  return (
+    <div className="startup-error-screen">
+      <div className="startup-error-card" role="alert" aria-live="assertive">
+        <div className="startup-error-icon">⚠</div>
+        <h2>启动失败，请检查网络连接</h2>
+        <p>{message || "启动失败，请检查网络连接"}</p>
+        <button type="button" onClick={onRetry}>
+          重试
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AvatarPanel({ avatar, avatarAsset, app, persona, bgmEnabled, onToggleBgm }) {
   const presenceCopy = buildAvatarPresenceCopy(avatar);
 
@@ -519,7 +546,7 @@ function AvatarPanel({ avatar, avatarAsset, app, persona, bgmEnabled, onToggleBg
   );
 }
 
-function MessageList({ messages, welcomeNote, isBusy, assistantName, onReplay }) {
+function MessageList({ messages, welcomeNote, isBusy, assistantName, onReplay, sendError, onRetrySend }) {
   const listRef = useRef(null);
   const endRef = useRef(null);
   const hasStreamingAssistant = messages.some(
@@ -528,7 +555,7 @@ function MessageList({ messages, welcomeNote, isBusy, assistantName, onReplay })
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, isBusy]);
+  }, [messages, isBusy, sendError]);
 
   return (
     <div className="conversation" ref={listRef}>
@@ -570,6 +597,17 @@ function MessageList({ messages, welcomeNote, isBusy, assistantName, onReplay })
           </div>
         </article>
       ))}
+
+      {sendError ? (
+        <article className="message-row is-assistant">
+          <div className="message-error-banner" role="alert" aria-live="polite">
+            <span>{sendError}</span>
+            <button type="button" onClick={onRetrySend}>
+              重试
+            </button>
+          </div>
+        </article>
+      ) : null}
 
       {isBusy && !hasStreamingAssistant ? (
         <article className="message-row is-assistant">
@@ -729,12 +767,16 @@ export default function App() {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [isAsrListening, setIsAsrListening] = useState(false);
   const [asrHint, setAsrHint] = useState("");
+  const [ttsHint, setTtsHint] = useState("");
+  const [sendError, setSendError] = useState("");
   const [error, setError] = useState("");
   const [bgmEnabled, setBgmEnabled] = useState(true);
+  const [lastUserMessage, setLastUserMessage] = useState("");
   const audioPlayerRef = useRef(null);
   const asrProviderRef = useRef(null);
   const bgmControllerRef = useRef(null);
   const asrHintTimerRef = useRef(null);
+  const ttsHintTimerRef = useRef(null);
   const modelSwitcherRef = useRef(null);
   const proactiveBusyRef = useRef(false);
 
@@ -765,6 +807,10 @@ export default function App() {
         window.clearTimeout(asrHintTimerRef.current);
         asrHintTimerRef.current = null;
       }
+      if (ttsHintTimerRef.current) {
+        window.clearTimeout(ttsHintTimerRef.current);
+        ttsHintTimerRef.current = null;
+      }
 
       asrProviderRef.current?.stop();
       asrProviderRef.current = null;
@@ -783,7 +829,7 @@ export default function App() {
         }
       } catch (bootstrapError) {
         if (isMounted) {
-          setError(bootstrapError.message || "启动 Vela 失败。");
+          setError(bootstrapError.message || "启动失败，请检查网络连接");
         }
       } finally {
         if (isMounted) {
@@ -847,6 +893,7 @@ export default function App() {
       if (event.type === "speech-error") {
         audioPlayerRef.current?.reset();
         bgmControllerRef.current?.unduck();
+        flashTtsHint("语音暂时不可用");
       }
 
       setState((current) => {
@@ -1115,7 +1162,62 @@ export default function App() {
     asrHintTimerRef.current = window.setTimeout(() => {
       setAsrHint("");
       asrHintTimerRef.current = null;
-    }, 1400);
+    }, 5000);
+  }
+
+  function clearTtsHint() {
+    if (ttsHintTimerRef.current) {
+      window.clearTimeout(ttsHintTimerRef.current);
+      ttsHintTimerRef.current = null;
+    }
+
+    setTtsHint("");
+  }
+
+  function flashTtsHint(message) {
+    clearTtsHint();
+    setTtsHint(message);
+    ttsHintTimerRef.current = window.setTimeout(() => {
+      setTtsHint("");
+      ttsHintTimerRef.current = null;
+    }, 5000);
+  }
+
+  function getSendErrorMessage(rawMessage) {
+    const message = String(rawMessage || "").toLowerCase();
+
+    if (
+      message.includes("timeout") ||
+      message.includes("timed out") ||
+      message.includes("etimedout")
+    ) {
+      return "请求超时，请重试";
+    }
+
+    if (
+      message.includes("429") ||
+      message.includes("503") ||
+      message.includes("rate") ||
+      message.includes("limit") ||
+      message.includes("model") ||
+      message.includes("provider") ||
+      message.includes("unavailable") ||
+      message.includes("overloaded")
+    ) {
+      return "模型暂时不可用";
+    }
+
+    return "连接失败，点击重试";
+  }
+
+  function getAsrErrorMessage(errorLike) {
+    const code = String(errorLike?.code || errorLike?.message || "").toLowerCase();
+
+    if (code.includes("not-allowed") || code.includes("permission") || code.includes("service-not-allowed")) {
+      return "请允许麦克风权限";
+    }
+
+    return "无法识别语音";
   }
 
   const maybeRunProactive = useEffectEvent(async (kind) => {
@@ -1181,8 +1283,9 @@ export default function App() {
     }
   }
 
-  const submitDraftText = useEffectEvent(async (text) => {
+  const submitDraftText = useEffectEvent(async (text, options = {}) => {
     const trimmed = String(text || "").trim();
+    const isRetry = Boolean(options.retry);
 
     if (!trimmed || isSending) {
       return;
@@ -1206,6 +1309,8 @@ export default function App() {
 
     setDraft("");
     setError("");
+    setSendError("");
+    setLastUserMessage(trimmed);
     setIsSending(true);
     setState((current) => ({
       ...current,
@@ -1224,14 +1329,15 @@ export default function App() {
         ...(current.status || {}),
         phase: "thinking"
       },
-      messages: [...current.messages, optimisticMessage]
+      messages: isRetry ? current.messages : [...current.messages, optimisticMessage]
     }));
 
     try {
       const nextState = await window.vela.sendMessage(trimmed);
       setState(nextState);
+      setSendError("");
     } catch (sendError) {
-      setError(sendError.message || "消息发送失败。");
+      setSendError(getSendErrorMessage(sendError.message || sendError));
       audioPlayerRef.current?.reset();
     } finally {
       setIsSending(false);
@@ -1241,6 +1347,14 @@ export default function App() {
   function handleSubmit(event) {
     event.preventDefault();
     void submitDraftText(draft);
+  }
+
+  function handleRetrySend() {
+    if (!lastUserMessage || isSending) {
+      return;
+    }
+
+    void submitDraftText(lastUserMessage, { retry: true });
   }
 
   const stopAsrListening = useEffectEvent((options = {}) => {
@@ -1280,24 +1394,24 @@ export default function App() {
         setIsAsrListening(false);
 
         if (!nextTranscript) {
-          // Empty result — restart if mic still enabled
           if (isMicEnabled && isVoiceMode) {
+            flashAsrHint("无法识别语音");
             window.setTimeout(() => void startAsrListening(), 1000);
           }
           return;
         }
 
+        clearAsrHint();
         setDraft(nextTranscript);
         void submitDraftText(nextTranscript);
 
-        // Restart listening after successful recognition
         if (isMicEnabled && isVoiceMode) {
           window.setTimeout(() => void startAsrListening(), 1500);
         }
       },
-      () => {
+      (asrError) => {
         setIsAsrListening(false);
-        // On error, don't auto-restart — user can click mic to retry
+        flashAsrHint(getAsrErrorMessage(asrError));
       }
     );
 
@@ -1424,6 +1538,13 @@ export default function App() {
 
           {isLoading ? (
             <div className="loading-screen" />
+          ) : error && !state.app ? (
+            <StartupErrorScreen
+              message={error}
+              onRetry={() => {
+                window.location.reload();
+              }}
+            />
           ) : (
             <div className="surface">
               <AvatarPanel
@@ -1451,6 +1572,8 @@ export default function App() {
                 isBusy={isSending}
                 assistantName={state.persona?.name || "Vela"}
                 onReplay={handleReplay}
+                sendError={sendError}
+                onRetrySend={handleRetrySend}
               />
 
               <form
@@ -1463,26 +1586,32 @@ export default function App() {
                   </label>
 
                   <div className="composer-voice-controls" aria-hidden={!isVoiceMode}>
-                    <button
-                      type="button"
-                      className={`voice-control-button mic-control ${isMicEnabled ? "is-active" : "is-muted"}`}
-                      onClick={handleMicToggle}
-                      disabled={isSending}
-                      title={isMicEnabled ? "关闭麦克风" : "开启麦克风"}
-                      aria-label={isMicEnabled ? "关闭麦克风" : "开启麦克风"}
-                    >
-                      {isMicEnabled ? <MicIcon size={16} /> : <SpeakerMutedIcon size={16} />}
-                    </button>
-                    <button
-                      type="button"
-                      className={`voice-control-button speaker-control ${state.voiceMode.enabled ? "is-active" : "is-muted"}`}
-                      onClick={handleVoiceToggle}
-                      disabled={isSwitchingVoice}
-                      title={state.voiceMode.enabled ? "关闭语音回复" : "开启语音回复"}
-                      aria-label={state.voiceMode.enabled ? "关闭语音回复" : "开启语音回复"}
-                    >
-                      {state.voiceMode.enabled ? <SpeakerIcon size={16} /> : <SpeakerMutedIcon size={16} />}
-                    </button>
+                    <div className="voice-control-group">
+                      <button
+                        type="button"
+                        className={`voice-control-button mic-control ${isMicEnabled ? "is-active" : "is-muted"}`}
+                        onClick={handleMicToggle}
+                        disabled={isSending}
+                        title={isMicEnabled ? "关闭麦克风" : "开启麦克风"}
+                        aria-label={isMicEnabled ? "关闭麦克风" : "开启麦克风"}
+                      >
+                        {isMicEnabled ? <MicIcon size={16} /> : <SpeakerMutedIcon size={16} />}
+                      </button>
+                      <ErrorHint message={asrHint} tone="asr" />
+                    </div>
+                    <div className="voice-control-group">
+                      <button
+                        type="button"
+                        className={`voice-control-button speaker-control ${state.voiceMode.enabled ? "is-active" : "is-muted"}`}
+                        onClick={handleVoiceToggle}
+                        disabled={isSwitchingVoice}
+                        title={state.voiceMode.enabled ? "关闭语音回复" : "开启语音回复"}
+                        aria-label={state.voiceMode.enabled ? "关闭语音回复" : "开启语音回复"}
+                      >
+                        {state.voiceMode.enabled ? <SpeakerIcon size={16} /> : <SpeakerMutedIcon size={16} />}
+                      </button>
+                      <ErrorHint message={ttsHint} tone="tts" />
+                    </div>
                   </div>
 
                   <textarea
@@ -1578,7 +1707,7 @@ export default function App() {
                       <p className="error-text">{error}</p>
                     ) : (
                       <span className="composer-hint">
-                        {isAsrListening ? "正在听..." : asrHint || naturalComposerHint}
+                        {isAsrListening ? "正在听..." : naturalComposerHint}
                       </span>
                     )}
                   </div>

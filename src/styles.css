@@ -157,6 +157,58 @@ textarea {
   box-shadow: var(--shadow-panel);
 }
 
+.startup-error-screen {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-height: calc(100vh - 48px);
+}
+
+.startup-error-card {
+  width: min(460px, 92vw);
+  display: grid;
+  gap: 14px;
+  padding: 30px 28px;
+  border-radius: 32px;
+  background: linear-gradient(180deg, rgba(255, 250, 246, 0.96), rgba(250, 242, 236, 0.94));
+  border: 1px solid rgba(214, 121, 101, 0.18);
+  box-shadow: 0 28px 90px rgba(160, 79, 86, 0.12);
+  text-align: center;
+}
+
+.startup-error-icon {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(214, 121, 101, 0.12);
+  color: #b16459;
+  font-size: 28px;
+}
+
+.startup-error-card h2 {
+  margin: 0;
+  color: var(--ink-main);
+}
+
+.startup-error-card p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.startup-error-card button {
+  justify-self: center;
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 18px;
+  background: linear-gradient(135deg, #d98972, #c86e63);
+  color: #fffaf7;
+  cursor: pointer;
+}
+
 .avatar-shell,
 .chat-shell {
   height: calc(100vh - 48px);
@@ -575,6 +627,29 @@ textarea {
   border-color: rgba(45, 125, 119, 0.28);
 }
 
+.message-error-banner {
+  max-width: min(82%, 560px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255, 238, 232, 0.96), rgba(255, 247, 242, 0.94));
+  border: 1px solid rgba(214, 121, 101, 0.22);
+  color: #8f4d49;
+  box-shadow: 0 12px 30px rgba(160, 79, 86, 0.08);
+}
+
+.message-error-banner button {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: rgba(214, 121, 101, 0.14);
+  color: #8f4d49;
+  cursor: pointer;
+}
+
 .message-heading {
   display: flex;
   align-items: center;
@@ -660,7 +735,7 @@ textarea {
 .composer.is-voice-mode .composer-voice-controls {
   margin-bottom: 10px;
   padding: 10px 12px;
-  max-height: 96px;
+  max-height: 120px;
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
@@ -670,6 +745,33 @@ textarea {
   border: 1px solid rgba(19, 32, 38, 0.08);
   background: rgba(255, 255, 255, 0.58);
   backdrop-filter: blur(18px);
+}
+
+.voice-control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.error-hint {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #8b5e58;
+  background: rgba(255, 243, 238, 0.92);
+  border: 1px solid rgba(214, 121, 101, 0.18);
+  box-shadow: 0 10px 24px rgba(160, 79, 86, 0.06);
+}
+
+.error-hint.is-asr {
+  background: rgba(255, 245, 236, 0.92);
+}
+
+.error-hint.is-tts {
+  background: rgba(255, 240, 236, 0.92);
 }
 
 .voice-control-button {
