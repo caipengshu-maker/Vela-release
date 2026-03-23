@@ -59,6 +59,9 @@ const initialState = {
   session: {
     launchTurnCount: 0,
     lifetimeTurnCount: 0
+  },
+  window: {
+    fullscreen: false
   }
 };
 
@@ -122,6 +125,36 @@ function UpRightIcon(props) {
     <Icon {...props}>
       <path d="M7 17 17 7" />
       <path d="M9 7h8v8" />
+    </Icon>
+  );
+}
+
+function FullscreenEnterIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="M8 4H4v4" />
+      <path d="M4 4l5 5" />
+      <path d="M16 4h4v4" />
+      <path d="M20 4l-5 5" />
+      <path d="M8 20H4v-4" />
+      <path d="M4 20l5-5" />
+      <path d="M16 20h4v-4" />
+      <path d="M20 20l-5-5" />
+    </Icon>
+  );
+}
+
+function FullscreenExitIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="M9 4H4v5" />
+      <path d="M4 9l6-6" />
+      <path d="M15 4h5v5" />
+      <path d="M20 9l-6-6" />
+      <path d="M9 20H4v-5" />
+      <path d="M4 15l6 6" />
+      <path d="M15 20h5v-5" />
+      <path d="M20 15l-6 6" />
     </Icon>
   );
 }
@@ -464,6 +497,16 @@ function applyRuntimeEvent(state, event) {
     };
   }
 
+  if (event.type === "window-state") {
+    return {
+      ...state,
+      window: {
+        ...(state.window || {}),
+        ...(event.window || {})
+      }
+    };
+  }
+
   return state;
 }
 
@@ -790,6 +833,7 @@ export default function App() {
   const [sendError, setSendError] = useState("");
   const [error, setError] = useState("");
   const [bgmEnabled, setBgmEnabled] = useState(true);
+  const [isFullscreenBusy, setIsFullscreenBusy] = useState(false);
   const [lastUserMessage, setLastUserMessage] = useState("");
   const audioPlayerRef = useRef(null);
   const asrProviderRef = useRef(null);
@@ -853,9 +897,18 @@ export default function App() {
 
     async function bootstrap() {
       try {
-        const nextState = await window.vela.bootstrap();
+        const [nextState, windowState] = await Promise.all([
+          window.vela.bootstrap(),
+          window.vela.getWindowState().catch(() => ({ fullscreen: false }))
+        ]);
         if (isMounted) {
-          setState(nextState);
+          setState({
+            ...nextState,
+            window: {
+              ...(nextState.window || {}),
+              ...(windowState || {})
+            }
+          });
           setIsMainEntering(false);
 
           void window.vela.loadBridgeDiary().then((diaryState) => {
@@ -1560,6 +1613,32 @@ export default function App() {
     }
   }
 
+  async function handleFullscreenToggle() {
+    if (isFullscreenBusy) {
+      return;
+    }
+
+    setIsFullscreenBusy(true);
+    setError("");
+
+    try {
+      const nextWindowState = await window.vela.setFullscreen(!state.window?.fullscreen);
+      setState((current) => ({
+        ...current,
+        window: {
+          ...(current.window || {}),
+          ...(nextWindowState || {})
+        }
+      }));
+      setIsSettingsOpen(false);
+      setIsModelMenuOpen(false);
+    } catch (fullscreenError) {
+      setError(fullscreenError.message || "全屏切换失败。");
+    } finally {
+      setIsFullscreenBusy(false);
+    }
+  }
+
   function handleReplay(replayAudio) {
     audioPlayerRef.current?.playReplay(replayAudio);
   }
@@ -1580,8 +1659,10 @@ export default function App() {
     });
   }
 
+  const isFullscreen = Boolean(state.window?.fullscreen);
+
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${isFullscreen ? "is-fullscreen" : ""}`}>
       {!splashDone ? (
         <SplashScreen onDone={() => setSplashDone(true)} />
       ) : (
@@ -1599,7 +1680,7 @@ export default function App() {
               }}
             />
           ) : (
-            <div className="surface">
+            <div className={`surface ${isFullscreen ? "is-fullscreen" : ""}`}>
               <AvatarPanel
                 avatar={state.avatar}
                 avatarAsset={state.avatarAsset}
@@ -1625,7 +1706,7 @@ export default function App() {
                   isSubmitting={isOnboarding}
                 />
               ) : (
-                <section className={`chat-shell ${isMainEntering ? "is-main-enter" : ""}`}>
+                <section className={`chat-shell ${isMainEntering ? "is-main-enter" : ""} ${isFullscreen ? "is-fullscreen" : ""}`}>
 
               <MessageList
                 messages={state.messages}
@@ -1782,6 +1863,17 @@ export default function App() {
                   </div>
 
                   <div className="composer-secondary-actions">
+                    <button
+                      type="button"
+                      className={`secondary-button fullscreen-toggle ${isFullscreen ? "is-active" : ""}`}
+                      onClick={handleFullscreenToggle}
+                      disabled={isFullscreenBusy}
+                      title={isFullscreen ? "退出沉浸模式" : "进入沉浸模式"}
+                      aria-label={isFullscreen ? "退出沉浸模式" : "进入沉浸模式"}
+                    >
+                      {isFullscreen ? <FullscreenExitIcon size={15} /> : <FullscreenEnterIcon size={15} />}
+                      <span>{isFullscreen ? "退出沉浸" : "沉浸模式"}</span>
+                    </button>
                     {canInterrupt ? (
                       <button type="button" className="secondary-button" onClick={handleInterrupt}>
                         <UpRightIcon size={15} />

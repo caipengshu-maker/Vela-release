@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld("vela", {
   setThinkingMode: (mode) => ipcRenderer.invoke("vela:set-thinking-mode", mode),
   interruptOutput: () => ipcRenderer.invoke("vela:interrupt-output"),
   loadBridgeDiary: () => ipcRenderer.invoke("vela:bridge-diary"),
+  getWindowState: () => ipcRenderer.invoke("vela:get-window-state"),
+  setFullscreen: (enabled) => ipcRenderer.invoke("vela:set-fullscreen", enabled),
   onEvent: (listener) => {
     const wrappedListener = (_event, payload) => {
       listener(payload);

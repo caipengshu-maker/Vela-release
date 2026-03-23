@@ -111,6 +111,15 @@ textarea {
   min-height: 100vh;
   overflow: hidden;
   padding: 24px;
+  transition: padding 180ms ease, background 180ms ease;
+}
+
+.app-shell.is-fullscreen {
+  padding: 10px;
+  background:
+    radial-gradient(circle at top left, rgba(250, 241, 225, 0.82), transparent 32%),
+    radial-gradient(circle at 88% 12%, rgba(208, 234, 231, 0.46), transparent 24%),
+    linear-gradient(145deg, #eef4f0 0%, #e8eeeb 52%, #e4e8e5 100%);
 }
 
 .ambient {
@@ -143,6 +152,12 @@ textarea {
   gap: 20px;
   max-width: 1600px;
   margin: 0 auto;
+  transition: gap 180ms ease, max-width 180ms ease;
+}
+
+.surface.is-fullscreen {
+  max-width: none;
+  gap: 12px;
 }
 
 .loading-screen {
@@ -216,6 +231,14 @@ textarea {
   border-radius: 36px;
   border: 1px solid var(--line-soft);
   backdrop-filter: blur(22px);
+  transition: height 180ms ease, max-height 180ms ease, border-radius 180ms ease, box-shadow 180ms ease;
+}
+
+.app-shell.is-fullscreen .avatar-shell,
+.app-shell.is-fullscreen .chat-shell {
+  height: calc(100vh - 20px);
+  max-height: calc(100vh - 20px);
+  border-radius: 28px;
 }
 
 .avatar-shell {
@@ -230,6 +253,10 @@ textarea {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(245, 249, 247, 0.82));
   box-shadow: var(--shadow-soft);
   overflow: hidden;
+}
+
+.chat-shell.is-fullscreen {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(244, 248, 246, 0.88));
 }
 
 .avatar-panel {
@@ -1058,6 +1085,13 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fullscreen-toggle.is-active {
+  background: rgba(45, 125, 119, 0.12);
+  border-color: rgba(45, 125, 119, 0.18);
+  color: var(--mint);
 }
 
 .secondary-button,

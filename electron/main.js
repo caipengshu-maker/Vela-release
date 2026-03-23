@@ -47,6 +47,63 @@ fs.mkdirSync(electronSessionDir, { recursive: true });
 app.setPath("userData", electronDataDir);
 app.setPath("sessionData", electronSessionDir);
 
+function getWindowState(windowInstance = mainWindow) {
+  return {
+    fullscreen: Boolean(windowInstance && !windowInstance.isDestroyed() && windowInstance.isFullScreen())
+  };
+}
+
+function emitWindowState(windowInstance = mainWindow) {
+  if (!windowInstance || windowInstance.isDestroyed()) {
+    return;
+  }
+
+  windowInstance.webContents.send("vela:event", {
+    type: "window-state",
+    window: getWindowState(windowInstance)
+  });
+}
+
+function setFullscreen(nextValue) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return getWindowState(null);
+  }
+
+  const shouldFullscreen = typeof nextValue === "boolean"
+    ? nextValue
+    : !mainWindow.isFullScreen();
+
+  mainWindow.setFullScreen(shouldFullscreen);
+  const nextState = getWindowState(mainWindow);
+  emitWindowState(mainWindow);
+  return nextState;
+}
+
+function bindWindowRuntimeEvents(windowInstance) {
+  const pushWindowState = () => emitWindowState(windowInstance);
+
+  windowInstance.on("enter-full-screen", pushWindowState);
+  windowInstance.on("leave-full-screen", pushWindowState);
+  windowInstance.once("ready-to-show", pushWindowState);
+  windowInstance.webContents.on("did-finish-load", pushWindowState);
+  windowInstance.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") {
+      return;
+    }
+
+    if (input.key === "F11") {
+      event.preventDefault();
+      setFullscreen();
+      return;
+    }
+
+    if (input.key === "Escape" && windowInstance.isFullScreen()) {
+      event.preventDefault();
+      setFullscreen(false);
+    }
+  });
+}
+
 async function createMainWindow() {
   core = new VelaCore({ rootDir, userDataDir: app.getPath("userData") });
   await core.initialize();
@@ -69,12 +126,15 @@ async function createMainWindow() {
     show: !isSmokeTest,
     backgroundColor: "#f4ebe6",
     title: config.app.name,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false
     }
   });
+
+  bindWindowRuntimeEvents(mainWindow);
 
   if (isSmokeTest) {
     smokeTimer = setTimeout(() => {
@@ -205,6 +265,14 @@ ipcMain.handle("vela:bridge-diary", async (_event) => {
   return {
     bridgeDiaryNote: note || ""
   };
+});
+
+ipcMain.handle("vela:get-window-state", async () => {
+  return getWindowState();
+});
+
+ipcMain.handle("vela:set-fullscreen", async (_event, nextValue) => {
+  return setFullscreen(typeof nextValue === "boolean" ? nextValue : undefined);
 });
 
 app.whenReady().then(async () => {
