@@ -107,11 +107,25 @@ textarea {
 }
 
 .app-shell {
+  --app-bg: #f4ebe6;
   position: relative;
   min-height: 100vh;
   overflow: hidden;
   padding: 24px;
+  background: var(--app-bg);
   transition: padding 180ms ease, background 180ms ease;
+}
+
+.app-shell.relationship-reserved {
+  --app-bg: #f4ebe6;
+}
+
+.app-shell.relationship-warm {
+  --app-bg: #f2e4da;
+}
+
+.app-shell.relationship-close {
+  --app-bg: #efe0d4;
 }
 
 .app-shell.is-fullscreen {
@@ -715,6 +729,23 @@ textarea {
   text-transform: uppercase;
 }
 
+.empty-ambient-text {
+  flex: 1;
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.empty-ambient-text p {
+  margin: 0;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--ink-soft);
+  opacity: 0.4;
+}
+
 .message-row {
   display: flex;
   animation: messageEnter 280ms ease both;
@@ -764,6 +795,15 @@ textarea {
 
 .message-bubble.is-streaming {
   border-color: rgba(45, 125, 119, 0.28);
+}
+
+.message-timestamp {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.5;
+  color: currentColor;
 }
 
 .message-error-banner {

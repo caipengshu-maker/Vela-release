@@ -1136,6 +1136,33 @@ export class VrmAvatarController {
       return false;
     }
 
+    const presence = String(this.avatarState?.presence || "idle").trim().toLowerCase();
+
+    if (presence === "thinking") {
+      const thinkingClipName = this.idleClipMap.has("Thinking") ? "Thinking" : "";
+
+      if (!thinkingClipName) {
+        if (this.currentEmotionClipName) {
+          this.currentEmotionClipName = "";
+        }
+        return false;
+      }
+
+      if (thinkingClipName !== this.currentEmotionClipName) {
+        this._playIdleClipByName(thinkingClipName, EMOTION_CROSSFADE_DURATION);
+        this.currentEmotionClipName = thinkingClipName;
+        console.log(`[VRM][anim] presence=thinking clip=${thinkingClipName}`);
+      } else if (!this.mixerActive && this.currentIdleAction) {
+        this.currentIdleAction.enabled = true;
+        this.currentIdleAction.paused = false;
+        this.currentIdleAction.play();
+        this.currentIdleAction.fadeIn(EMOTION_CROSSFADE_DURATION);
+        this.mixerActive = true;
+      }
+
+      return true;
+    }
+
     const emotion = this._getActiveEmotion();
     const clipName = this._resolveEmotionAnimationClipName(emotion);
 

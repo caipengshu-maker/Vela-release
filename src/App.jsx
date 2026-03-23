@@ -292,6 +292,48 @@ function attachReplayToLatestAssistant(messages, replayAudio) {
   return applied ? nextMessages : messages;
 }
 
+function formatRelativeTimestamp(value, now = Date.now()) {
+  const timestamp = Date.parse(String(value || "").trim());
+
+  if (!Number.isFinite(timestamp)) {
+    return "";
+  }
+
+  const diffMs = Math.max(0, now - timestamp);
+  const diffMinutes = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+
+  if (diffMinutes < 1) {
+    return "刚刚";
+  }
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes}分钟前`;
+  }
+
+  if (diffHours < 24) {
+    return `${diffHours}小时前`;
+  }
+
+  const date = new Date(timestamp);
+  const nowDate = new Date(now);
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const startOfNow = new Date(
+    nowDate.getFullYear(),
+    nowDate.getMonth(),
+    nowDate.getDate()
+  ).getTime();
+  const dayDiff = Math.floor((startOfNow - startOfDate) / 86400000);
+
+  if (dayDiff === 1) {
+    return "昨天";
+  }
+
+  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, "0")}/${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+}
+
 function getLatestAssistantProviderMeta(messages) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -632,6 +674,7 @@ function AvatarPanel({
 function MessageList({ messages, welcomeNote, bridgeDiaryNote, isBusy, assistantName, onReplay, sendError, onRetrySend }) {
   const listRef = useRef(null);
   const endRef = useRef(null);
+  const [timeTick, setTimeTick] = useState(() => Date.now());
   const hasStreamingAssistant = messages.some(
     (message) => message.role === "assistant" && message.streaming
   );
@@ -639,6 +682,18 @@ function MessageList({ messages, welcomeNote, bridgeDiaryNote, isBusy, assistant
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isBusy, sendError]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setTimeTick(Date.now());
+    }, 60000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const showAmbientEmpty = messages.length === 0 && !welcomeNote;
 
   return (
     <div className="conversation" ref={listRef}>
@@ -692,6 +747,11 @@ function MessageList({ messages, welcomeNote, bridgeDiaryNote, isBusy, assistant
               {message.content}
               {message.streaming ? <span className="stream-caret" /> : null}
             </p>
+            {message.createdAt ? (
+              <time className="message-timestamp" dateTime={message.createdAt}>
+                {formatRelativeTimestamp(message.createdAt, timeTick)}
+              </time>
+            ) : null}
           </div>
         </article>
       ))}
@@ -749,6 +809,7 @@ export default function App() {
   const [isFullscreenBusy, setIsFullscreenBusy] = useState(false);
   const [isChatMinimized, setIsChatMinimized] = useState(false);
   const [lastUserMessage, setLastUserMessage] = useState("");
+  const [isFarewelling, setIsFarewelling] = useState(false);
   const audioPlayerRef = useRef(null);
   const asrProviderRef = useRef(null);
   const bgmControllerRef = useRef(null);
@@ -889,6 +950,11 @@ export default function App() {
       if (event.type === "speech-audio-chunk") {
         audioPlayerRef.current?.appendChunk(event.chunk);
         bgmControllerRef.current?.duck();
+      }
+
+      if (event.type === "farewell") {
+        triggerFarewell();
+        return;
       }
 
       const replay =
@@ -1345,7 +1411,8 @@ export default function App() {
     const optimisticMessage = {
       id: `user-${Date.now()}`,
       role: "user",
-      content: trimmed
+      content: trimmed,
+      createdAt: new Date().toISOString()
     };
 
     setDraft("");
@@ -1592,6 +1659,34 @@ export default function App() {
     audioPlayerRef.current?.playReplay(replayAudio);
   }
 
+  function triggerFarewell() {
+    setIsFarewelling(true);
+    setState((current) => {
+      if (!current.avatar) {
+        return current;
+      }
+
+      return {
+        ...current,
+        avatar: {
+          ...current.avatar,
+          presence: "speaking",
+          emotion: "affectionate",
+          action: "wave",
+          actionLabel: "挥手",
+          expression: "happy",
+          motion: "soft-lean",
+          caption: "那我先轻轻挥一下手。",
+          camera: current.avatar.camera === "close" ? "close" : "wide"
+        },
+        status: {
+          ...(current.status || {}),
+          phase: "speaking"
+        }
+      };
+    });
+  }
+
   function handleBgmToggle() {
     setBgmEnabled((current) => {
       const next = !current;
@@ -1609,6 +1704,10 @@ export default function App() {
   }
 
   const isFullscreen = Boolean(state.window?.fullscreen);
+  const relationshipStage = String(state.avatar?.relationshipStage || "reserved").trim().toLowerCase();
+  const relationshipClass = ["reserved", "warm", "close"].includes(relationshipStage)
+    ? `relationship-${relationshipStage}`
+    : "relationship-reserved";
 
   useEffect(() => {
     if (!isFullscreen) {
@@ -1617,7 +1716,7 @@ export default function App() {
   }, [isFullscreen]);
 
   return (
-    <main className={`app-shell ${isFullscreen ? "is-fullscreen" : ""}`}>
+    <main className={`app-shell ${relationshipClass} ${isFullscreen ? "is-fullscreen" : ""} ${isFarewelling ? "is-farewelling" : ""}`}>
       {!splashDone ? (
         <SplashScreen onDone={() => setSplashDone(true)} />
       ) : (
@@ -1859,24 +1958,6 @@ export default function App() {
     </main>
   );
 }
-
-
-
-
-sSave}
-      />
-    </main>
-  );
-}
-
-
-
-
-/>
-    </main>
-  );
-}
-
 
 
 
