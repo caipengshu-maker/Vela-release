@@ -653,7 +653,13 @@ function MessageList({ messages, welcomeNote, bridgeDiaryNote, isBusy, assistant
 
       {welcomeNote ? <div className="welcome-card">{welcomeNote}</div> : null}
 
-      {messages.length === 0 ? (
+      {showAmbientEmpty ? (
+        <div className="empty-ambient-text" aria-hidden="true">
+          <p>她在，你说就好。</p>
+        </div>
+      ) : null}
+
+      {messages.length === 0 && welcomeNote ? (
         <div className="empty-card">
           <p>想说什么就说什么，她在听。</p>
         </div>
@@ -1850,6 +1856,23 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         onSaved={handleSettingsSave}
       />
+    </main>
+  );
+}
+
+
+
+
+sSave}
+      />
+    </main>
+  );
+}
+
+
+
+
+/>
     </main>
   );
 }

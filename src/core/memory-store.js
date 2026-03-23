@@ -75,6 +75,49 @@ function normalizeStringList(values, limit = 3) {
     .slice(0, limit);
 }
 
+function normalizeEpisodeRecord(episode = {}) {
+  if (!episode || typeof episode !== "object" || Array.isArray(episode)) {
+    return null;
+  }
+
+  const type = String(episode.type || "summary").trim().toLowerCase();
+  const createdAt = normalizeTimestamp(episode.createdAt);
+
+  if (type === "raw-fallback") {
+    return {
+      id: String(episode.id || "").trim() || undefined,
+      type: "raw-fallback",
+      userMessage: String(episode.userMessage || "").trim(),
+      assistantReply: String(episode.assistantReply || "").trim(),
+      createdAt,
+      reason: String(episode.reason || "parse-error").trim() || "parse-error"
+    };
+  }
+
+  return {
+    ...episode,
+    id: String(episode.id || "").trim() || undefined,
+    type,
+    createdAt,
+    turnIndex: Number.isFinite(Number(episode.turnIndex))
+      ? Number(episode.turnIndex)
+      : 0,
+    summary: String(episode.summary || "").trim(),
+    bridgeSummary: String(episode.bridgeSummary || episode.summary || "").trim(),
+    openFollowUps: normalizeStringList(episode.openFollowUps, 3),
+    facts: Array.isArray(episode.facts) ? episode.facts : [],
+    emotionalMoment:
+      episode.emotionalMoment && typeof episode.emotionalMoment === "object"
+        ? episode.emotionalMoment
+        : {
+            detected: false,
+            emotion: "calm",
+            intensity: 0
+          },
+    topicLabel: String(episode.topicLabel || "").trim()
+  };
+}
+
 function mergeProfile(profile = {}) {
   const base = defaultProfile();
 
@@ -444,9 +487,15 @@ export class MemoryStore {
 
   async appendEpisode(episode) {
     try {
-      const day = sanitizeDay(episode?.createdAt);
-      await this.store.appendJsonLine(`${EPISODES_DIR}/${day}.jsonl`, episode);
-      return episode;
+      const normalizedEpisode = normalizeEpisodeRecord(episode);
+
+      if (!normalizedEpisode) {
+        return null;
+      }
+
+      const day = sanitizeDay(normalizedEpisode.createdAt);
+      await this.store.appendJsonLine(`${EPISODES_DIR}/${day}.jsonl`, normalizedEpisode);
+      return normalizedEpisode;
     } catch (error) {
       console.warn("append episode failed:", error?.message || error);
       return null;
@@ -512,7 +561,9 @@ export class MemoryStore {
       }
 
       const sortedEpisodes = sortByCreatedAtDesc(
-        episodes.filter((episode) => episode && typeof episode === "object")
+        episodes
+          .map((episode) => normalizeEpisodeRecord(episode))
+          .filter((episode) => episode && typeof episode === "object")
       );
 
       return Number.isFinite(limit) ? sortedEpisodes.slice(0, limit) : sortedEpisodes;

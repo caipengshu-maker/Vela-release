@@ -186,6 +186,26 @@ function normalizeEpisode(payload, defaults) {
   };
 }
 
+function truncateText(value, maxLength) {
+  const text = String(value || "").trim();
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, maxLength)}...`;
+}
+
+function createRawFallback(defaults, { userMessage, assistantReply }) {
+  return {
+    id: defaults.id,
+    type: "raw-fallback",
+    userMessage: String(userMessage || "").trim(),
+    assistantReply: truncateText(assistantReply, 200),
+    createdAt: defaults.createdAt,
+    reason: "parse-error"
+  };
+}
+
 export class MemorySummarizer {
   constructor({ memoryStore, config }) {
     this.memoryStore = memoryStore;
@@ -201,12 +221,13 @@ export class MemorySummarizer {
     triggerReasons = [],
     lastActiveAt = null
   }) {
+    const defaults = {
+      id: randomUUID(),
+      createdAt: new Date().toISOString(),
+      turnIndex: Number(turnIndex) || 0
+    };
+
     try {
-      const defaults = {
-        id: randomUUID(),
-        createdAt: new Date().toISOString(),
-        turnIndex: Number(turnIndex) || 0
-      };
       const context = {
         systemPrompt: MEMORY_SUMMARIZER_PROMPT,
         messages: [
@@ -276,8 +297,16 @@ export class MemorySummarizer {
       await this.memoryStore.autoUpdateProfile(facts);
       return finalEpisode;
     } catch (error) {
+      console.warn("[memory-summarizer] Parse failed, using raw fallback");
       console.warn("memory summarizer failed:", error?.message || error);
-      return null;
+
+      const fallbackEpisode = createRawFallback(defaults, {
+        userMessage,
+        assistantReply
+      });
+
+      await this.memoryStore.appendEpisode(fallbackEpisode);
+      return fallbackEpisode;
     }
   }
 }

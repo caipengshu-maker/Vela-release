@@ -42,6 +42,7 @@ const electronSessionDir = path.join(electronDataDir, "session");
 let mainWindow;
 let core;
 let smokeTimer;
+let isFarewellClosing = false;
 
 fs.mkdirSync(electronSessionDir, { recursive: true });
 app.setPath("userData", electronDataDir);
@@ -86,6 +87,29 @@ function bindWindowRuntimeEvents(windowInstance) {
   windowInstance.on("leave-full-screen", pushWindowState);
   windowInstance.once("ready-to-show", pushWindowState);
   windowInstance.webContents.on("did-finish-load", pushWindowState);
+  windowInstance.on("close", (event) => {
+    if (isFarewellClosing || isSmokeTest || windowInstance.isDestroyed()) {
+      return;
+    }
+
+    event.preventDefault();
+    isFarewellClosing = true;
+
+    try {
+      windowInstance.webContents.send("vela:event", {
+        type: "farewell"
+      });
+    } catch {
+      windowInstance.destroy();
+      return;
+    }
+
+    setTimeout(() => {
+      if (!windowInstance.isDestroyed()) {
+        windowInstance.destroy();
+      }
+    }, 500);
+  });
   windowInstance.webContents.on("before-input-event", (event, input) => {
     if (input.type !== "keyDown") {
       return;
@@ -107,6 +131,7 @@ function bindWindowRuntimeEvents(windowInstance) {
 }
 
 async function createMainWindow() {
+  isFarewellClosing = false;
   core = new VelaCore({ rootDir, userDataDir: app.getPath("userData") });
   await core.initialize();
 
