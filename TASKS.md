@@ -17,9 +17,9 @@
 ### Phase 1：核心能力补全
 
 #### M5.5-T1 ASR 语音识别接入
-- 状态：TODO
+- 状态：DONE — commit `0e1fc43`
 - 优先级：P0
-- Owner：待定
+- Owner：Codex
 - 验收：语音按钮 → 识别 → 文字填入 → 发送
 
 ### Phase 2：首次体验质感

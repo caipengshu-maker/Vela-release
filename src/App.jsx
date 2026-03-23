@@ -7,6 +7,7 @@ import {
   settleAvatarState
 } from "./core/avatar-state.js";
 import { VrmAvatarStage } from "./vrm-avatar-stage.jsx";
+import { SplashScreen } from "./SplashScreen.jsx";
 
 const initialState = {
   app: null,
@@ -706,6 +707,7 @@ export default function App() {
   const [state, setState] = useState(initialState);
   const [draft, setDraft] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [splashDone, setSplashDone] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [isMainEntering, setIsMainEntering] = useState(false);
@@ -1324,29 +1326,33 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <div className="ambient ambient-a" />
-      <div className="ambient ambient-b" />
-
-      {isLoading ? (
-        <div className="loading-screen">Vela 正在把记忆和状态接回来…</div>
+      {!splashDone ? (
+        <SplashScreen onDone={() => setSplashDone(true)} />
       ) : (
-        <div className="surface">
-          <AvatarPanel
-            avatar={state.avatar}
-            avatarAsset={state.avatarAsset}
-            app={state.app}
-            persona={state.persona}
-          />
+        <>
+          <div className="ambient ambient-a" />
+          <div className="ambient ambient-b" />
 
-          {state.onboarding?.required ? (
-            <OnboardingPanel
-              onboarding={state.onboarding}
-              onConfirm={handleOnboarding}
-              onComplete={handleOnboardingComplete}
-              isSubmitting={isOnboarding}
-            />
+          {isLoading ? (
+            <div className="loading-screen">Vela 正在把记忆和状态接回来…</div>
           ) : (
-            <section className={`chat-shell ${isMainEntering ? "is-main-enter" : ""}`}>
+            <div className="surface">
+              <AvatarPanel
+                avatar={state.avatar}
+                avatarAsset={state.avatarAsset}
+                app={state.app}
+                persona={state.persona}
+              />
+
+              {state.onboarding?.required ? (
+                <OnboardingPanel
+                  onboarding={state.onboarding}
+                  onConfirm={handleOnboarding}
+                  onComplete={handleOnboardingComplete}
+                  isSubmitting={isOnboarding}
+                />
+              ) : (
+                <section className={`chat-shell ${isMainEntering ? "is-main-enter" : ""}`}>
 
               <MessageList
                 messages={state.messages}
@@ -1496,9 +1502,11 @@ export default function App() {
                   </div>
                 </div>
               </form>
-            </section>
+                </section>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </main>
   );

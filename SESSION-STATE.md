@@ -1,30 +1,29 @@
-## 当前任务
-Vela M5-T4 情绪驱动动画切换
+# SESSION-STATE
 
-## Owner
-Codex CLI（session `briny-kelp`，pid 5860）
+## 当前任务
+Vela M5.5 施工中 → 下一刀：T11 背景插画接入
 
 ## 状态
-IN-PROGRESS — Codex 施工中，超时 1 小时
+DONE: ASR + composer 双模态 + 模型切换 + TTS 修复（speech-2.8-hd）已 commit `0e1fc43` 并推送
 
-## 上下文
-- M5-T1 表情预设系统 DONE（commit `93723c4`）
-- M5-T2 关系弧线系统 DONE（commit `3cf43b5` + fix `e16a2b6`）
-- M5-T3 语音体验：TTS 流式 + 重播按钮已有，lip sync 精度放后面
-- M5-T4：情绪 → Mixamo 动画切换 + P键demo增强 + blend shape 过渡平滑
+## 三阶段计划（CTO 视角）
 
-## Spec
-`scripts/codex-m5-t4-emotion-animation-prompt.md`
+### Phase 1 — 产品感补全（本周）
+1. T11 背景插画接入（bg-day.png / bg-night.png 已在 D:/Vela/assets/backgrounds/）
+2. T10 开屏动画（k-studio-logo.png 已在 D:/Vela/assets/splash/）
+3. T3 错误处理（TTS/ASR/网络静默失败 → 补提示）
+4. UI 小打磨
 
-## 验收步骤
-1. build ✅
-2. verify:core ✅
-3. P 键 demo 模式目视：情绪切换时动画+表情同步变化
-4. commit + push
+### Phase 2 — 可交付化（下周）
+- T2 设置界面 / T4 首次引导 / T7 持久化健壮性 / T12 BGM
 
-## Blockers
+### Phase 3 — 打包 + 开源（第三周）
+- M6 Electron Builder / T6 全屏 / README + 架构文档 / 社区准备
+
+## 下一步
+- Owner: Codex CLI
+- Task: T11 背景插画接入（日/夜背景根据时间段切换，VRM 模型叠加在背景上）
+- 验收：冷启动能看到背景插画，不影响 VRM 渲染
+
+## Blocker
 无
-
-## 用户要求
-- dev-only 快捷键标记 `// DEV-ONLY` 便于后期清除
-- Codex 超时口径放宽到 1 小时

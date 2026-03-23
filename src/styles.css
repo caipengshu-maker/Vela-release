@@ -44,6 +44,57 @@ textarea {
   min-height: 100vh;
 }
 
+.splash-screen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: #0d0d0d;
+  opacity: 0;
+  animation-timing-function: ease;
+  animation-fill-mode: forwards;
+}
+
+.splash-screen-overlay.is-entering {
+  animation-name: splash-fade-in;
+  animation-duration: 600ms;
+}
+
+.splash-screen-overlay.is-exiting {
+  animation-name: splash-fade-out;
+  animation-duration: 800ms;
+}
+
+.splash-screen-logo {
+  width: min(320px, 72vw);
+  max-width: 320px;
+  height: auto;
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+
+@keyframes splash-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes splash-fade-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
