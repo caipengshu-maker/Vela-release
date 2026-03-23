@@ -105,6 +105,15 @@ export function SettingsModal({
             />
           </label>
 
+          <label className="field-block">
+            <span>模型选择</span>
+            <select value={selectedModel} onChange={(e) => onModelSwitch?.(e.target.value)}>
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          </label>
+
           {error ? <p className="error-text">{error}</p> : null}
         </div>
 

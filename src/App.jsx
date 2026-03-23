@@ -188,16 +188,6 @@ function SpeakerMutedIcon(props) {
   );
 }
 
-function ModelSwitcherIcon(props) {
-  return (
-    <Icon {...props} strokeWidth={1.7}>
-      <path d="M12 4.8 14.9 12 12 19.2 9.1 12 12 4.8Z" />
-      <path d="M8.2 8.2h1.8l1.2 1.8" />
-      <path d="M15.8 15.8H14l-1.2-1.8" />
-    </Icon>
-  );
-}
-
 function buildComposerModelOptions(availableModels) {
   const normalizedModels = Array.isArray(availableModels)
     ? availableModels
@@ -221,14 +211,6 @@ function buildComposerModelOptions(availableModels) {
     { id: "k2p5", label: "Kimi (备)" },
     { id: "auto", label: "自动" }
   ];
-}
-
-function isModelSelected(modelStatus, modelId) {
-  if (!modelStatus || !modelId) {
-    return false;
-  }
-
-  return String(modelStatus.selectedModel || "").trim() === String(modelId).trim();
 }
 
 function upsertAssistantMessage(messages, messageId, content, streaming, patch = {}) {
@@ -793,7 +775,6 @@ export default function App() {
   const [isSwitchingVoice, setIsSwitchingVoice] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isMicEnabled, setIsMicEnabled] = useState(false);
-  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState({
     userAlias: "",
@@ -816,7 +797,6 @@ export default function App() {
   const bgmControllerRef = useRef(null);
   const asrHintTimerRef = useRef(null);
   const ttsHintTimerRef = useRef(null);
-  const modelSwitcherRef = useRef(null);
   const proactiveBusyRef = useRef(false);
 
   useEffect(() => {
@@ -998,16 +978,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    function handlePointerDown(event) {
-      if (
-        isModelMenuOpen &&
-        modelSwitcherRef.current &&
-        !modelSwitcherRef.current.contains(event.target)
-      ) {
-        setIsModelMenuOpen(false);
-      }
-    }
-
     function handleKeyDown(event) {
       const key = String(event.key || "").toLowerCase();
       const targetTag = String(event.target?.tagName || "").toLowerCase();
@@ -1016,15 +986,9 @@ export default function App() {
         targetTag === "input" ||
         event.target?.isContentEditable;
 
-      if (key === "escape") {
-        if (isModelMenuOpen) {
-          setIsModelMenuOpen(false);
-        }
-
-        if (isFullscreen) {
-          event.preventDefault();
-          void handleFullscreenToggle(false);
-        }
+      if (key === "escape" && isFullscreen) {
+        event.preventDefault();
+        void handleFullscreenToggle(false);
       }
 
       if (key === "f11") {
@@ -1039,14 +1003,12 @@ export default function App() {
       }
     }
 
-    document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [handleFullscreenToggle, isFullscreen, isModelMenuOpen]);
+  }, [handleFullscreenToggle, isFullscreen]);
 
   useEffect(() => {
     if (isLoading || state.onboarding?.required) {
@@ -1603,7 +1565,6 @@ export default function App() {
       return;
     }
 
-    setIsModelMenuOpen(false);
     setError("");
 
     try {
@@ -1648,7 +1609,6 @@ export default function App() {
         }
       }));
       setIsSettingsOpen(false);
-      setIsModelMenuOpen(false);
     } catch (fullscreenError) {
       setError(fullscreenError.message || "全屏切换失败。");
     } finally {
@@ -1872,45 +1832,14 @@ export default function App() {
                       type="button"
                       className="secondary-button settings-trigger"
                       onClick={() => setIsSettingsOpen(true)}
+                      title="设置"
+                      aria-label="设置"
                     >
-                      Settings
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.32 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                      </svg>
                     </button>
-                    <div
-                      className={`composer-model-switcher ${isModelMenuOpen ? "model-switcher-open" : ""}`}
-                      ref={modelSwitcherRef}
-                    >
-                      <button
-                        type="button"
-                        className="model-switcher-button"
-                        onClick={() => setIsModelMenuOpen((current) => !current)}
-                        title={`切换模型：${state.modelStatus?.selectedLabel || "自动"}`}
-                        aria-label="切换模型"
-                        aria-haspopup="menu"
-                        aria-expanded={isModelMenuOpen}
-                      >
-                        <ModelSwitcherIcon size={14} />
-                      </button>
-
-                      <div className="model-switcher-menu" role="menu" aria-label="模型切换">
-                        {composerModelOptions.map((model) => {
-                          const selected = isModelSelected(state.modelStatus, model.id);
-
-                          return (
-                            <button
-                              key={model.id}
-                              type="button"
-                              className={`model-switcher-item ${selected ? "is-selected" : ""}`}
-                              onClick={() => void handleModelSwitch(model.id)}
-                              role="menuitemradio"
-                              aria-checked={selected}
-                            >
-                              <span className="model-switcher-item-label">{model.label}</span>
-                              {selected ? <span className="model-switcher-check">✓</span> : null}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
 
                     {error ? (
                       <p className="error-text">{error}</p>
@@ -1954,6 +1883,9 @@ export default function App() {
         initialValues={settingsDraft}
         onClose={() => setIsSettingsOpen(false)}
         onSaved={handleSettingsSave}
+        models={composerModelOptions}
+        selectedModel={state.modelStatus?.selectedModel || "auto"}
+        onModelSwitch={handleModelSwitch}
       />
     </main>
   );

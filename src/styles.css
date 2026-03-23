@@ -1292,7 +1292,8 @@ textarea {
   font-size: 14px;
 }
 
-.field-block input {
+.field-block input,
+.field-block select {
   width: 100%;
   border: 1px solid var(--line-soft);
   border-radius: 18px;
@@ -1302,7 +1303,8 @@ textarea {
   outline: none;
 }
 
-.field-block input:focus {
+.field-block input:focus,
+.field-block select:focus {
   border-color: rgba(45, 125, 119, 0.24);
   box-shadow: 0 0 0 5px rgba(45, 125, 119, 0.08);
 }
