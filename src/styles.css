@@ -499,15 +499,92 @@ textarea {
 
 .composer {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   padding: 14px 22px 20px;
   border-top: 1px solid var(--line-soft);
   background: rgba(249, 251, 250, 0.66);
 }
 
+.composer.is-voice-mode {
+  gap: 10px;
+}
+
 .composer-field {
   position: relative;
   display: block;
+  padding-bottom: 0;
+  transition: padding-bottom 200ms ease-out, transform 200ms ease-out;
+}
+
+.composer-field.is-voice-mode {
+  padding-bottom: 8px;
+}
+
+.composer-voice-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  margin-bottom: 0;
+  padding: 0 0 0;
+  opacity: 0;
+  visibility: hidden;
+  max-height: 0;
+  overflow: hidden;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition:
+    opacity 200ms ease-out,
+    transform 200ms ease-out,
+    max-height 200ms ease-out,
+    margin-bottom 200ms ease-out,
+    padding 200ms ease-out,
+    visibility 0s linear 200ms;
+}
+
+.composer.is-voice-mode .composer-voice-controls {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  max-height: 96px;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  visibility: visible;
+  transition-delay: 0s;
+  border-radius: 18px;
+  border: 1px solid rgba(19, 32, 38, 0.08);
+  background: rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(18px);
+}
+
+.voice-control-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border: 1px solid rgba(19, 32, 38, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, color 140ms ease, border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.voice-control-button.is-active {
+  background: rgba(45, 125, 119, 0.12);
+  border-color: rgba(45, 125, 119, 0.18);
+  color: var(--mint);
+}
+
+.voice-control-button.is-muted {
+  background: rgba(19, 32, 38, 0.06);
+  color: var(--ink-soft);
+  opacity: 0.7;
+}
+
+.voice-control-button.mic-control.is-active {
+  animation: pttPulse 1.5s ease-in-out infinite;
 }
 
 .composer textarea {
@@ -520,7 +597,21 @@ textarea {
   background: var(--surface-2);
   color: var(--ink-main);
   outline: none;
-  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  overflow-y: auto;
+  transition:
+    min-height 200ms ease-out,
+    border-radius 200ms ease-out,
+    padding 200ms ease-out,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.composer.is-voice-mode .composer textarea {
+  min-height: 40px;
+  border-radius: 999px;
+  padding: 9px 72px 9px 18px;
 }
 
 .composer textarea:focus {
@@ -530,49 +621,175 @@ textarea {
 
 .composer-primary-action {
   position: absolute;
-  right: 14px;
-  bottom: 14px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1;
 }
 
-.round-action {
+.composer-primary-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  gap: 8px;
   border: 1px solid var(--line-soft);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink-main);
   cursor: pointer;
-  transition: transform 140ms ease, background 140ms ease, color 140ms ease;
+  transition: transform 140ms ease, background 140ms ease, color 140ms ease, border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
-.round-action.primary,
-.round-action.is-active {
+.composer-primary-button.is-send {
+  width: 44px;
+  height: 44px;
+  padding: 0;
   background: linear-gradient(135deg, #2d7d77, #23665f);
   color: #f5fffd;
   border-color: transparent;
 }
 
-.round-action:hover:not(:disabled),
-.voice-mode-button:hover:not(:disabled),
-.message-icon-button:hover,
-.composer button:hover:not(:disabled) {
+.composer-primary-button.is-voice-start,
+.composer-primary-button.is-stop {
+  min-height: 44px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.composer-primary-button.is-voice-start {
+  background: rgba(45, 125, 119, 0.12);
+  border-color: rgba(45, 125, 119, 0.18);
+  color: var(--mint);
+}
+
+.composer-primary-button.is-stop {
+  background: rgba(19, 32, 38, 0.06);
+}
+
+.composer-primary-button:hover:not(:disabled),
+.voice-control-button:hover:not(:disabled),
+.model-switcher-button:hover:not(:disabled),
+.secondary-button:hover:not(:disabled),
+.message-icon-button:hover {
   transform: translateY(-1px);
 }
 
 .composer-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
+}
+
+.composer-meta {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.composer-model-switcher {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.model-switcher-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(19, 32, 38, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, color 140ms ease, border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.model-switcher-open .model-switcher-button {
+  background: rgba(45, 125, 119, 0.12);
+  border-color: rgba(45, 125, 119, 0.16);
+  color: var(--mint);
+  box-shadow: 0 10px 24px rgba(19, 32, 38, 0.08);
+}
+
+.model-switcher-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  z-index: 5;
+  width: 220px;
+  padding: 8px;
+  border-radius: 18px;
+  border: 1px solid rgba(19, 32, 38, 0.08);
+  background: rgba(253, 254, 253, 0.92);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 40px rgba(19, 32, 38, 0.12);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px) scale(0.98);
+  transform-origin: bottom left;
+  pointer-events: none;
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease,
+    visibility 0s linear 150ms;
+}
+
+.model-switcher-open .model-switcher-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+
+.model-switcher-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink-main);
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.model-switcher-item:hover {
+  background: rgba(45, 125, 119, 0.08);
+}
+
+.model-switcher-item.is-selected {
+  background: rgba(45, 125, 119, 0.12);
+  color: var(--mint);
+}
+
+.model-switcher-item-label {
+  font-size: 13px;
+}
+
+.model-switcher-check {
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .composer-hint,
 .onboarding-hint {
   color: var(--ink-soft);
   font-size: 13px;
+  min-width: 0;
+}
+
+.composer-hint {
+  max-width: 42ch;
 }
 
 .composer-secondary-actions {
@@ -582,7 +799,6 @@ textarea {
 }
 
 .secondary-button,
-.composer button,
 .onboarding-form button {
   display: inline-flex;
   align-items: center;
@@ -602,7 +818,10 @@ textarea {
   color: var(--ink-main);
 }
 
-.composer button:disabled,
+.composer-primary-button:disabled,
+.voice-control-button:disabled,
+.model-switcher-button:disabled,
+.secondary-button:disabled,
 .onboarding-form button:disabled,
 .voice-mode-button:disabled,
 .round-action:disabled {
@@ -718,6 +937,23 @@ textarea {
   }
 }
 
+@keyframes pttPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(45, 125, 119, 0.32);
+    transform: scale(1);
+  }
+
+  70% {
+    box-shadow: 0 0 0 12px rgba(45, 125, 119, 0);
+    transform: scale(1.02);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(45, 125, 119, 0);
+    transform: scale(1);
+  }
+}
+
 @keyframes onboardingStepEnter {
   from {
     opacity: 0;
@@ -782,12 +1018,26 @@ textarea {
     align-items: stretch;
   }
 
+  .composer-meta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .composer-voice-controls {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
   .chat-header-actions {
     justify-content: flex-start;
   }
 
   .message-bubble {
     max-width: 88%;
+  }
+
+  .model-switcher-menu {
+    width: min(220px, calc(100vw - 64px));
   }
 
   .composer-secondary-actions {

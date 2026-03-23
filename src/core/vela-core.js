@@ -534,6 +534,7 @@ export class VelaCore {
         provider: asr.id,
         label: asr.label,
         available: asr.available,
+        configured: asr.configured,
         status: asr.status,
         reason: asr.reason
       },
@@ -701,6 +702,15 @@ export class VelaCore {
   }
 
   createSpeechOrchestrator(onEvent) {
+    const tts = getTtsCapabilities(this.config);
+    console.log("[vela-core] createSpeechOrchestrator", {
+      voiceModeEnabled: Boolean(this.runtimeSession.voiceModeEnabled),
+      ttsAvailable: tts.available,
+      ttsProvider: tts.id,
+      ttsConfigured: tts.configured,
+      hasApiKey: tts.hasApiKey
+    });
+
     const speech = new SpeechOrchestrator({
       config: this.config,
       voiceModeEnabled: this.runtimeSession.voiceModeEnabled,
@@ -855,8 +865,14 @@ export class VelaCore {
   }
 
   async setVoiceMode(enabled, options = {}) {
+    console.log("[vela-core] setVoiceMode called", {
+      enabled: Boolean(enabled)
+    });
     this.runtimeSession.voiceModeEnabled = Boolean(enabled);
     await this.sessionStore.savePreferences(this.runtimeSession);
+    console.log("[vela-core] setVoiceMode updated runtime session", {
+      runtimeVoiceModeEnabled: Boolean(this.runtimeSession.voiceModeEnabled)
+    });
 
     if (!enabled && this.currentSpeech) {
       await this.cancelCurrentSpeech(options.onEvent);
@@ -896,6 +912,33 @@ export class VelaCore {
 
     await this.sessionStore.saveProviderRouting(this.runtimeSession);
     this.persistedState = await this.sessionStore.loadPersistedState();
+  }
+
+  async switchModel(selection) {
+    const normalizedSelection = String(selection || "").trim().toLowerCase() || "auto";
+
+    if (
+      normalizedSelection !== "auto" &&
+      !resolveModelSelection(this.config, normalizedSelection)
+    ) {
+      return this.buildAppState({
+        messages: [
+          ...this.runtimeSession.messages,
+          buildInvalidModelMessage(this.config)
+        ],
+        welcomeNote: ""
+      });
+    }
+
+    await this.setModelSelection(normalizedSelection);
+
+    return this.buildAppState({
+      messages: [
+        ...this.runtimeSession.messages,
+        buildModelSwitchMessage(this.config, normalizedSelection)
+      ],
+      welcomeNote: ""
+    });
   }
 
   async interruptOutput(options = {}) {
@@ -1275,21 +1318,7 @@ export class VelaCore {
 
     const modelCommand = parseModelCommand(trimmedMessage);
     if (modelCommand) {
-      const selection = modelCommand.toLowerCase();
-
-      if (selection !== "auto" && !resolveModelSelection(this.config, selection)) {
-        return this.buildAppState({
-          messages: [...this.runtimeSession.messages, buildInvalidModelMessage(this.config)],
-          welcomeNote: ""
-        });
-      }
-
-      await this.setModelSelection(selection);
-
-      return this.buildAppState({
-        messages: [...this.runtimeSession.messages, buildModelSwitchMessage(this.config, selection)],
-        welcomeNote: ""
-      });
+      return this.switchModel(modelCommand);
     }
 
     if (this.currentSpeech) {
@@ -1345,9 +1374,17 @@ export class VelaCore {
     let assistantResponse = null;
     let streamedText = "";
     let speech = null;
+    let speechQueuedText = false;
     let prefixBuffer = null;
     let streamingIntent = null;
     let streamingAvatarResolved = false;
+
+    console.log("[vela-core] handleUserMessage processing", {
+      voiceModeEnabled: Boolean(this.runtimeSession.voiceModeEnabled),
+      hasOnEvent: typeof options.onEvent === "function",
+      ttsEnabled: Boolean(this.config?.tts?.enabled),
+      ttsProvider: this.config?.tts?.provider || null
+    });
 
     const providerOptions = {
       thinkingMode: this.runtimeSession.thinkingMode,
@@ -1368,6 +1405,10 @@ export class VelaCore {
       if (this.runtimeSession.voiceModeEnabled) {
         speech = this.createSpeechOrchestrator(options.onEvent);
       }
+
+      console.log("[vela-core] speech orchestrator status", {
+        created: Boolean(speech)
+      });
 
       prefixBuffer = createStreamPrefixBuffer();
 
@@ -1417,6 +1458,7 @@ export class VelaCore {
             }
 
             if (speech && prefixResult.textDelta) {
+              speechQueuedText = true;
               void speech.pushDelta(prefixResult.textDelta, plan).catch((error) => {
                 options.onEvent?.({
                   type: "speech-error",
@@ -1525,6 +1567,21 @@ export class VelaCore {
     this.currentAvatar = avatarForPersistence;
 
     if (speech) {
+      if (!speechQueuedText && assistantReply.trim()) {
+        console.log("[vela-core] speech fallback push after stream completion", {
+          replyLength: assistantReply.length
+        });
+        try {
+          await speech.pushDelta(assistantReply, plan);
+          speechQueuedText = true;
+        } catch (error) {
+          options.onEvent?.({
+            type: "speech-error",
+            message: error.message || "speech fallback delta failed"
+          });
+        }
+      }
+
       void speech
         .finish()
         .then(() => {

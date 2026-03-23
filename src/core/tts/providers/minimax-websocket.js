@@ -197,6 +197,12 @@ export class MiniMaxWebSocketTtsSession {
       Authorization: `Bearer ${this.apiKey}`
     };
 
+    console.log("[vela-tts] connecting websocket", {
+      wsUrl: this.config.tts.wsUrl,
+      model: this.config.tts.model,
+      voiceId: this.config.tts.voiceId
+    });
+
     this.taskStarted = false;
     this.taskStartedDeferred = createDeferred();
     this.finishDeferred = createDeferred();

@@ -51,15 +51,15 @@
     }
   },
   "asr": {
-    "enabled": false,
-    "provider": "placeholder"
+    "enabled": true,
+    "provider": "webspeech"
   },
   "tts": {
     "enabled": true,
     "provider": "minimax-websocket",
     "apiKey": "sk-cp-Kit5f2b4vHQOPuiuuHcgehqhNdZzldOb4oRvUi0ztvMuqfZngUHu1SC3nZGpFjVyV4FFbhkzhqGY1-eMDWEQheFZZWDlca8pswRVNINGkDcjVe7KMmO4J_8",
     "apiKeyEnv": "MINIMAX_API_KEY",
-    "model": "speech-2.8-turbo",
+    "model": "speech-2.8-hd",
     "wsUrl": "wss://api.minimaxi.com/ws/v1/t2a_v2",
     "languageBoost": "Chinese",
     "voiceId": "Chinese (Mandarin)_Sweet_Lady",

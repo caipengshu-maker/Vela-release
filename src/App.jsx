@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { AudioPlayerService } from "./audio-player.js";
 import { useEffectEvent } from "react";
+import { createWebSpeechProvider } from "./core/asr/provider.js";
 import {
   releaseCloseCamera,
   settleAvatarState
@@ -117,6 +118,78 @@ function UpRightIcon(props) {
       <path d="M9 7h8v8" />
     </Icon>
   );
+}
+
+function StopIcon(props) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.2" />
+      <rect x="9" y="9" width="6" height="6" rx="1.4" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
+function SpeakerIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="M6.5 10.5v3h3.6l4.4 3.5V7l-4.4 3.5H6.5Z" />
+      <path d="M16.8 8.2a4.8 4.8 0 0 1 0 7.6" />
+      <path d="M19.2 6.1a8 8 0 0 1 0 11.8" />
+    </Icon>
+  );
+}
+
+function SpeakerMutedIcon(props) {
+  return (
+    <Icon {...props}>
+      <path d="M6.5 10.5v3h3.6l4.4 3.5V7l-4.4 3.5H6.5Z" />
+      <line x1="22" y1="9" x2="16" y2="15" />
+      <line x1="16" y1="9" x2="22" y2="15" />
+    </Icon>
+  );
+}
+
+function ModelSwitcherIcon(props) {
+  return (
+    <Icon {...props} strokeWidth={1.7}>
+      <path d="M12 4.8 14.9 12 12 19.2 9.1 12 12 4.8Z" />
+      <path d="M8.2 8.2h1.8l1.2 1.8" />
+      <path d="M15.8 15.8H14l-1.2-1.8" />
+    </Icon>
+  );
+}
+
+function buildComposerModelOptions(availableModels) {
+  const normalizedModels = Array.isArray(availableModels)
+    ? availableModels
+        .filter((model) => model && model.id && model.label)
+        .map((model) => ({
+          id: String(model.id).trim(),
+          label: String(model.label).trim()
+        }))
+        .filter((model) => model.id && model.label)
+    : [];
+
+  if (normalizedModels.length > 1) {
+    const hasAuto = normalizedModels.some((model) => model.id === "auto");
+    return hasAuto
+      ? normalizedModels
+      : [...normalizedModels, { id: "auto", label: "自动" }];
+  }
+
+  return [
+    { id: "minimax", label: "MiniMax (主)" },
+    { id: "k2p5", label: "Kimi (备)" },
+    { id: "auto", label: "自动" }
+  ];
+}
+
+function isModelSelected(modelStatus, modelId) {
+  if (!modelStatus || !modelId) {
+    return false;
+  }
+
+  return String(modelStatus.selectedModel || "").trim() === String(modelId).trim();
 }
 
 function upsertAssistantMessage(messages, messageId, content, streaming, patch = {}) {
@@ -637,8 +710,16 @@ export default function App() {
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [isMainEntering, setIsMainEntering] = useState(false);
   const [isSwitchingVoice, setIsSwitchingVoice] = useState(false);
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [isMicEnabled, setIsMicEnabled] = useState(false);
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+  const [isAsrListening, setIsAsrListening] = useState(false);
+  const [asrHint, setAsrHint] = useState("");
   const [error, setError] = useState("");
   const audioPlayerRef = useRef(null);
+  const asrProviderRef = useRef(null);
+  const asrHintTimerRef = useRef(null);
+  const modelSwitcherRef = useRef(null);
   const proactiveBusyRef = useRef(false);
 
   useEffect(() => {
@@ -647,6 +728,20 @@ export default function App() {
 
     return () => {
       void player.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    asrProviderRef.current = createWebSpeechProvider();
+
+    return () => {
+      if (asrHintTimerRef.current) {
+        window.clearTimeout(asrHintTimerRef.current);
+        asrHintTimerRef.current = null;
+      }
+
+      asrProviderRef.current?.stop();
+      asrProviderRef.current = null;
     };
   }, []);
 
@@ -739,6 +834,32 @@ export default function App() {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isModelMenuOpen) {
+      return undefined;
+    }
+
+    function handlePointerDown(event) {
+      if (modelSwitcherRef.current && !modelSwitcherRef.current.contains(event.target)) {
+        setIsModelMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        setIsModelMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isModelMenuOpen]);
 
   useEffect(() => {
     if (isLoading || state.onboarding?.required) {
@@ -868,8 +989,20 @@ export default function App() {
     [state.messages]
   );
 
+  const canUseAsr = Boolean(
+    (state.status?.asr?.configured && state.status?.asr?.available) ||
+    (state.asr?.configured && state.asr?.available)
+  );
 
   const naturalComposerHint = useMemo(() => {
+    if (isVoiceMode && state.voiceMode.enabled) {
+      return "语音模式已开，听写和播报可以分开控制。";
+    }
+
+    if (isVoiceMode) {
+      return "语音模式已开，先说最想说的那一句。";
+    }
+
     if (state.voiceMode.enabled && !state.voiceMode.available) {
       return "语音回复还没完全接通，这轮会先用文字继续。";
     }
@@ -882,9 +1015,33 @@ export default function App() {
   }, [
     latestAssistantProviderMeta?.fallbackUsed,
     state.modelStatus?.fallbackUsed,
+    isVoiceMode,
     state.voiceMode.available,
     state.voiceMode.enabled
   ]);
+
+  const composerModelOptions = useMemo(
+    () => buildComposerModelOptions(state.modelStatus?.availableModels),
+    [state.modelStatus?.availableModels]
+  );
+
+  function clearAsrHint() {
+    if (asrHintTimerRef.current) {
+      window.clearTimeout(asrHintTimerRef.current);
+      asrHintTimerRef.current = null;
+    }
+
+    setAsrHint("");
+  }
+
+  function flashAsrHint(message) {
+    clearAsrHint();
+    setAsrHint(message);
+    asrHintTimerRef.current = window.setTimeout(() => {
+      setAsrHint("");
+      asrHintTimerRef.current = null;
+    }, 1400);
+  }
 
   const maybeRunProactive = useEffectEvent(async (kind) => {
     if (
@@ -949,10 +1106,9 @@ export default function App() {
     }
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  const submitDraftText = useEffectEvent(async (text) => {
+    const trimmed = String(text || "").trim();
 
-    const trimmed = draft.trim();
     if (!trimmed || isSending) {
       return;
     }
@@ -1005,7 +1161,73 @@ export default function App() {
     } finally {
       setIsSending(false);
     }
+  });
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    void submitDraftText(draft);
   }
+
+  const stopAsrListening = useEffectEvent((options = {}) => {
+    const provider = asrProviderRef.current || createWebSpeechProvider();
+    asrProviderRef.current = provider;
+
+    if (provider.isListening()) {
+      provider.stop();
+    }
+
+    setIsAsrListening(false);
+
+    if (!options.keepHint) {
+      clearAsrHint();
+    }
+  });
+
+  const asrRetryCountRef = useRef(0);
+
+  const startAsrListening = useEffectEvent(() => {
+    if (isSending) {
+      return;
+    }
+
+    const provider = asrProviderRef.current || createWebSpeechProvider();
+    asrProviderRef.current = provider;
+
+    if (provider.isListening()) {
+      return;
+    }
+
+    setError("");
+
+    provider.start(
+      (transcript) => {
+        const nextTranscript = String(transcript || "").trim();
+        setIsAsrListening(false);
+
+        if (!nextTranscript) {
+          // Empty result — restart if mic still enabled
+          if (isMicEnabled && isVoiceMode) {
+            window.setTimeout(() => void startAsrListening(), 1000);
+          }
+          return;
+        }
+
+        setDraft(nextTranscript);
+        void submitDraftText(nextTranscript);
+
+        // Restart listening after successful recognition
+        if (isMicEnabled && isVoiceMode) {
+          window.setTimeout(() => void startAsrListening(), 1500);
+        }
+      },
+      () => {
+        setIsAsrListening(false);
+        // On error, don't auto-restart — user can click mic to retry
+      }
+    );
+
+    setIsAsrListening(true);
+  });
 
   async function handleVoiceToggle() {
     setIsSwitchingVoice(true);
@@ -1021,6 +1243,78 @@ export default function App() {
       setError(toggleError.message || "语音模式切换失败。");
     } finally {
       setIsSwitchingVoice(false);
+    }
+  }
+
+  async function handleVoiceModeEnter() {
+    setIsVoiceMode(true);
+    setIsMicEnabled(true);
+
+    // Always call backend to ensure TTS is enabled — don't trust frontend state
+    setIsSwitchingVoice(true);
+    try {
+      const nextState = await window.vela.setVoiceMode(true);
+      setState(nextState);
+    } catch (e) {
+      setError(e.message || "语音模式启动失败");
+    } finally {
+      setIsSwitchingVoice(false);
+    }
+
+    void startAsrListening();
+  }
+
+  async function handleVoiceModeExit() {
+    stopAsrListening();
+    setIsMicEnabled(false);
+    setIsVoiceMode(false);
+
+    // Disable TTS when exiting voice mode
+    if (state.voiceMode.enabled) {
+      setIsSwitchingVoice(true);
+      try {
+        const nextState = await window.vela.setVoiceMode(false);
+        audioPlayerRef.current?.reset();
+        setState(nextState);
+      } catch (e) {
+        setError(e.message || "语音模式关闭失败");
+      } finally {
+        setIsSwitchingVoice(false);
+      }
+    }
+  }
+
+  function handleMicToggle() {
+    if (isMicEnabled) {
+      // Turn off
+      stopAsrListening();
+      setIsMicEnabled(false);
+    } else {
+      // Turn on
+      setIsMicEnabled(true);
+      void startAsrListening();
+    }
+  }
+
+  function handleAsrToggle() {
+    handleMicToggle();
+  }
+
+  async function handleModelSwitch(modelId) {
+    if (!modelId) {
+      return;
+    }
+
+    setIsModelMenuOpen(false);
+    setError("");
+
+    try {
+      const nextState = await window.vela.switchModel(modelId);
+      if (nextState) {
+        setState(nextState);
+      }
+    } catch (switchError) {
+      setError(switchError.message || "模型切换失败。");
     }
   }
 
@@ -1062,19 +1356,49 @@ export default function App() {
                 onReplay={handleReplay}
               />
 
-              <form className="composer" onSubmit={handleSubmit}>
-                <label className="composer-field">
-                  <span className="sr-only">输入消息</span>
+              <form
+                className={`composer ${isVoiceMode ? "is-voice-mode" : ""}`}
+                onSubmit={handleSubmit}
+              >
+                <div className={`composer-field ${isVoiceMode ? "is-voice-mode" : ""}`}>
+                  <label className="sr-only" htmlFor="composer-draft">
+                    输入消息
+                  </label>
+
+                  <div className="composer-voice-controls" aria-hidden={!isVoiceMode}>
+                    <button
+                      type="button"
+                      className={`voice-control-button mic-control ${isMicEnabled ? "is-active" : "is-muted"}`}
+                      onClick={handleMicToggle}
+                      disabled={isSending}
+                      title={isMicEnabled ? "关闭麦克风" : "开启麦克风"}
+                    >
+                      {isMicEnabled ? <MicIcon size={16} /> : <SpeakerMutedIcon size={16} />}
+                      <span>{isMicEnabled ? "麦克风" : "已关闭"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`voice-control-button speaker-control ${state.voiceMode.enabled ? "is-active" : "is-muted"}`}
+                      onClick={handleVoiceToggle}
+                      disabled={isSwitchingVoice}
+                      title={state.voiceMode.enabled ? "关闭语音回复" : "开启语音回复"}
+                    >
+                      {state.voiceMode.enabled ? <SpeakerIcon size={16} /> : <SpeakerMutedIcon size={16} />}
+                      <span>{state.voiceMode.enabled ? "扬声器" : "已静音"}</span>
+                    </button>
+                  </div>
+
                   <textarea
+                    id="composer-draft"
                     rows="3"
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     placeholder={
-                      state.voiceMode.enabled
-                        ? state.voiceMode.available
-                          ? "先把话写下来，她会尽量开口回应你。"
-                          : "先把话写下来，文字回复不会受影响。"
-                        : "把现在最想说的那句交给她。"
+                      isAsrListening
+                        ? "正在听..."
+                        : isVoiceMode
+                          ? "说点什么，或者直接打字。"
+                          : "把现在最想说的那句交给她。"
                     }
                   />
 
@@ -1082,40 +1406,89 @@ export default function App() {
                     {draft.trim() ? (
                       <button
                         type="submit"
-                        className="round-action primary"
+                        className="composer-primary-button is-send"
                         disabled={isSending}
                         title="发送"
+                        aria-label="发送"
                       >
                         <SendIcon size={18} />
+                      </button>
+                    ) : isVoiceMode ? (
+                      <button
+                        type="button"
+                        className="composer-primary-button is-stop"
+                        onClick={handleVoiceModeExit}
+                        title="停止"
+                      >
+                        <StopIcon size={16} />
+                        <span>停止</span>
                       </button>
                     ) : (
                       <button
                         type="button"
-                        className={`round-action ${state.voiceMode.enabled ? "is-active" : ""}`}
-                        onClick={handleVoiceToggle}
-                        disabled={isSwitchingVoice}
-                        title={state.voiceMode.enabled ? "关闭语音回复" : "开启语音回复"}
+                        className="composer-primary-button is-voice-start"
+                        onClick={handleVoiceModeEnter}
+                        disabled={isSending}
+                        title="开始说话"
                       >
-                        <MicIcon size={18} />
+                        <MicIcon size={16} />
+                        <span>开始说话</span>
                       </button>
                     )}
                   </div>
-                </label>
+                </div>
 
                 <div className="composer-actions">
-                  {error ? (
-                    <p className="error-text">{error}</p>
-                  ) : (
-                    <span className="composer-hint">{naturalComposerHint}</span>
-                  )}
+                  <div className="composer-meta">
+                    <div
+                      className={`composer-model-switcher ${isModelMenuOpen ? "model-switcher-open" : ""}`}
+                      ref={modelSwitcherRef}
+                    >
+                      <button
+                        type="button"
+                        className="model-switcher-button"
+                        onClick={() => setIsModelMenuOpen((current) => !current)}
+                        title={`切换模型：${state.modelStatus?.selectedLabel || "自动"}`}
+                        aria-label="切换模型"
+                        aria-haspopup="menu"
+                        aria-expanded={isModelMenuOpen}
+                      >
+                        <ModelSwitcherIcon size={14} />
+                      </button>
+
+                      <div className="model-switcher-menu" role="menu" aria-label="模型切换">
+                        {composerModelOptions.map((model) => {
+                          const selected = isModelSelected(state.modelStatus, model.id);
+
+                          return (
+                            <button
+                              key={model.id}
+                              type="button"
+                              className={`model-switcher-item ${selected ? "is-selected" : ""}`}
+                              onClick={() => void handleModelSwitch(model.id)}
+                              role="menuitemradio"
+                              aria-checked={selected}
+                            >
+                              <span className="model-switcher-item-label">{model.label}</span>
+                              {selected ? <span className="model-switcher-check">✓</span> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {error ? (
+                      <p className="error-text">{error}</p>
+                    ) : (
+                      <span className="composer-hint">
+                        {isAsrListening ? "正在听..." : asrHint || naturalComposerHint}
+                      </span>
+                    )}
+                  </div>
 
                   <div className="composer-secondary-actions">
                     {canInterrupt ? (
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={handleInterrupt}
-                      >
+                      <button type="button" className="secondary-button" onClick={handleInterrupt}>
                         <UpRightIcon size={15} />
                         <span>先停一下</span>
                       </button>

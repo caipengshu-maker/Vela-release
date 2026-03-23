@@ -230,9 +230,11 @@ function normalizeLlmConfig(llmConfig = {}) {
 }
 
 function normalizeAsrConfig(asrConfig = {}) {
+  const provider = normalizeProviderId(asrConfig.provider, "placeholder");
+
   return {
     enabled: Boolean(asrConfig.enabled),
-    provider: String(asrConfig.provider || "placeholder").trim().toLowerCase(),
+    provider,
     apiKeyEnv: String(asrConfig.apiKeyEnv || "").trim(),
     model: String(asrConfig.model || "").trim()
   };

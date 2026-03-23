@@ -1,4 +1,4 @@
-﻿# CURRENT-ROUTE.md
+# CURRENT-ROUTE.md
 
 > Vela 当前主线钉板。只回答：现在先做什么，什么别碰。
 
@@ -6,81 +6,60 @@
 
 ## 当前主线
 
-### M4：让她像个人，不只是在场
+### M5.5：产品补全（M5 收口后，M6 打包前）
 
-M3 已关门（2026-03-21）。M4 Phase A 已关门（2026-03-22）。
+M5 已收口（2026-03-22）。M6（Electron Builder 打包）延后。
+在 M5 和 M6 之间插入 **M5.5 产品补全**，专门清理产品层缺口 + 提升首次体验质感。
 
-**当前方向：体验优先，记忆收窄。**
+**核心目标：从 demo 变成产品。**
 
-GPT-5.4 定的 Phase B（context-first continuity 大重构）经 Opus 审核后降级——核心论点没错（长上下文优先、记忆不膨胀），但把配置调参包装成了一整个 Phase，优先级错位。记忆是地基，但用户看到的是房子。
+**施工顺序（已锁定）：**
 
-**修正后的 M4 优先级（从高到低）：**
+1. **T1 ASR 语音识别接入** — 解除断腿，语音交互闭环
+2. **T10 开屏动画（K Studio Splash）** — 首次体验门面
+3. **T5 UI 打磨** — M3/M4 遗留 UI 问题集合清理
+4. **T11 Avatar 场景背景** — 视觉冲击最大的一刀（日/夜切换 + 轻粒子点缀）
+5. **T12 环境 BGM** — 配合背景，体验翻倍
+6. **T3 错误处理 UI** — 防止用户懵逼
+7. **T2 设置界面 + T4 首次体验引导** — 连做
+8. **T7 聊天记录持久化**
+9. **T6 全屏沉浸模式**
+10. **C1 P键剥离 + C2 summarizer 修复**
+11. **T8 窗口状态记忆**
+12. **T9 Lip Sync**
 
-#### Tier 1：快速收尾（小任务，不值得叫 Phase）
-- bridge summary（跨会话续接摘要）
-- context window 扩展（`sessionMessageLimit` 12→40，prompt slice 6→budget-aware）
-- per-turn 摘要改 trigger-based（session 结束 / 长间隔 / 高情感轮次才触发）
-- 这三件事合在一起是一个 Codex 任务，不是一个 Phase
-
-#### Tier 2：体验层打磨（M4 主力应该打在这里）
-- idle 微动（偶尔摸头发、换重心、视线游走、伸懒腰，15-30s 间隔）
-- 手臂自然度（肘部弯曲加大 + 左右不对称 + idle 时轻微摆动）
-- UX 打磨（M3 遗留）：
-  - 语音模式按钮缩小
-  - 消息气泡收窄 + 发送动画
-  - "Vela兜底回应""在。"标签清理
-  - 节奏按钮降级到次要位置
-  - 发送按钮改纸飞机/箭头
-  - 输入框拉宽、圆角更大、背景更浅
-  - 聊天消息区滑动窗口
-  - 全屏交互模式
-
-#### Tier 3：轻主动（体验层站住之后）
-- proactive engine（时间间隔 / 事件回忆 / 环境变化 / 模式偏离）
-- 频率限制（4h/条，2条/天，关系阶段系数）
-- 自发回忆（>7天高情感情节偶尔浮现）
-
-#### Tier 4：联网搜索 + 深度记忆（M4 尾声或 M5）
-- 联网搜索接入
-- 更丰富的关系演化
-- 记忆编辑 UI
+**图片资产生成方案：** Gemini 3.1 Pro Preview（lemonapi）生图 — K Studio logo 高清版 + avatar 场景背景插画。
 
 ---
 
 ## 已完成里程碑
 
-### Phase A（已关门，2026-03-22）
-- 感知融合（时间 / 天气 / 行为模式 / 记忆 / 关系状态）
-- Provider 优雅降级（2 次失败熔断 + 5 小时 cooldown + fallback routing）
-- `/model minimax|k2p5|auto` 手动切模型
-- UI 重做（SVG 化、输入区重构、fallback/model 轻提示、assistant replay）
-- 重复状态面板清理（session turn count 移除、fallback 只在生效时显示）
-- 技术验证全通过（`build` / `smoke` / `verify:core` / `verify:providers` / `verify:m2`）
+### M5 closure（2026-03-22）
+- T1 表情-动画-镜头预设系统（12 情绪 × blend shape 配方 + 动画绑定 + 镜头偏好 + 骨骼 overlay）
+- T2 关系弧线系统（reserved→warm→close 三阶段 + 退阶机制 + 持久化）
+- T4 情绪驱动动画切换（11 个 Mixamo FBX，情绪变化 crossfade 切换）
+- 最终 commit：`04e2952`
+
+### M4 closure（2026-03-22）
+- T5 记忆收窄三件套
+- T6b 手指 curl + idle 微动
+- T6c Mixamo 动画系统（6→11 FBX，替换手写四元数）
+- T7 UX 清理（chat header 删除 / 空状态标签 / grid 修复）
+- T8 轻主动机制（动态定位 + 天气触发 + 随机问候 + 每日上限 3 次）
+- docs 清理 + 分支清理
+- 最终 commit：`a466890`
 
 ### M3 closure（2026-03-21）
 - TTS 流式开口（MiniMax WebSocket MSE）
 - VRM 骨骼全链路激活 + 自动轴向探测
 - LLM 自主表演协议（结构化 JSON 前缀，12 种 emotion）
 - wide/close 镜头（close 对焦脸部中心）
-- 用户体验验收通过
 
 ### M2 closure（2026-03-20）
 - 流式文本 + 状态机 + thinking + 基础 fallback
-- k2p5 第二视角真实验收通过
 
 ### M1 closure（2026-03-20）
 - 连续人格 + 连续记忆 + 初始化流 + 真实 LLM 验证
-
----
-
-## Git 状态（2026-03-22 对齐）
-
-- 分支：`main`（唯一活跃分支）
-- 最新 commit：`fa0e9b4` — m4: phase-a closure
-- remote：`origin/main` 已同步
-- worktree：clean
-- 遗留分支：`feat/m2-pipeline`（历史残留，可清理）
-- 共 20 个 commit，从 M0 到 M4 Phase A 全程可追踪
 
 ---
 
@@ -91,8 +70,7 @@ GPT-5.4 定的 Phase B（context-first continuity 大重构）经 Opus 审核后
 - 本地不可让渡：记忆文件、主动机制、关系/人格状态、avatar 控制层
 - 配置系统：单一主配置文件
 - 审美方向：二次元乙游，不是 AI 工具
-- 零新 npm 依赖原则
-- 存储走 D 盘
+- 存储走 D 盘（大文件禁 C 盘）
 
 ---
 
@@ -106,10 +84,10 @@ GPT-5.4 定的 Phase B（context-first continuity 大重构）经 Opus 审核后
 - 成人向主线
 - 完整 gateway / 插件平台
 - 向量数据库 / embedding 模型
-- 重型记忆平台（per-turn 全量摘要、无限扩字段的 episode/facts/user-model）
+- 重型记忆平台
 
 ---
 
 ## 一句话钉死
 
-**M4 = 让她像个人。记忆快速收窄，主力打体验层。**
+**M5.5 = 从 demo 变产品。ASR 解断腿，开屏 + 背景 + BGM 提质感，设置 + 引导 + 错误处理补闭环。**

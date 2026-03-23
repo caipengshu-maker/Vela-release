@@ -97,6 +97,10 @@ ipcMain.handle("vela:send-message", async (_event, message) => {
   });
 });
 
+ipcMain.handle("vela:switch-model", async (_event, modelId) => {
+  return core.switchModel(modelId);
+});
+
 ipcMain.handle("vela:cache-location", async (_event, location) => {
   return core.cacheBrowserLocation(location);
 });
@@ -126,6 +130,10 @@ ipcMain.handle("vela:complete-onboarding", async (_event, payload) => {
 });
 
 ipcMain.handle("vela:set-voice-mode", async (_event, enabled) => {
+  console.log("[vela:main] setVoiceMode request", {
+    enabled: Boolean(enabled)
+  });
+
   const sendEvent = (payload) => {
     _event.sender.send("vela:event", payload);
   };
