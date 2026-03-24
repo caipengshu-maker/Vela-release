@@ -69,13 +69,13 @@ const EMOTION_TO_ANIMATION = {
   happy: "Happy Idle",
   affectionate: "Talking",
   playful: "Happy Idle",
-  concerned: "Talking",
+  concerned: "Thinking",
   sad: "Sad Idle",
   angry: "Angry",
-  whisper: "Thinking",
+  whisper: "Breathing Idle",
   surprised: "Looking Around",
   curious: "Thinking",
-  shy: "Bashful",
+  shy: "Standing Idle",
   determined: "Standing Idle"
 };
 
@@ -100,7 +100,7 @@ const EXPRESSION_KEYS = [
 ];
 const PRESET_DEMO_STEP_MS = 5000;
 const RAW_MORPH_DAMP_STRENGTH = 14;
-const EMOTION_BLEND_DAMP_STRENGTH = 10;
+const EMOTION_BLEND_DAMP_STRENGTH = 6;
 const EMOTION_CROSSFADE_DURATION = 1.0;
 const CORE_POSE_BONES = [
   VRMHumanBoneName.Hips,
@@ -344,7 +344,8 @@ const IDLE_ANIMATION_PATHS = [
   "/assets/animations/Angry.fbx",
   "/assets/animations/Bashful.fbx",
   "/assets/animations/Looking Around.fbx",
-  "/assets/animations/Talking.fbx"
+  "/assets/animations/Talking.fbx",
+  "/assets/animations/Yawn.fbx"
 ];
 const IDLE_CROSSFADE_INTERVAL_MIN = 15;
 const IDLE_CROSSFADE_INTERVAL_MAX = 30;
@@ -360,9 +361,20 @@ function degToRad(value) {
   return THREE.MathUtils.degToRad(Number(value || 0));
 }
 
-function transitionMsToStrength(transitionMs, fallback = 10) {
-  const safeMs = Math.max(180, Number(transitionMs) || 0);
-  return THREE.MathUtils.clamp(6500 / safeMs, 4, fallback);
+function transitionMsToStrength(
+  transitionMs,
+  fallbackStrength = EMOTION_BLEND_DAMP_STRENGTH
+) {
+  const requestedMs = Number(transitionMs);
+
+  if (!Number.isFinite(requestedMs) || requestedMs <= 0) {
+    return fallbackStrength;
+  }
+
+  const safeMs = Math.max(180, requestedMs);
+  // Reach roughly 95% of the target by the requested transition time.
+  const strength = -Math.log(0.05) / (safeMs / 1000);
+  return THREE.MathUtils.clamp(strength, 4, 14);
 }
 
 function sortByWeightDescending(entries) {
@@ -1369,8 +1381,10 @@ export class VrmAvatarController {
       targetWeights.set(blinkName, Math.max(baseBlink, blinkWeight));
     }
 
-    const strength = transitionMsToStrength(preset?.transitionMs, 10);
-    const dampStrength = THREE.MathUtils.clamp(strength, 8, 12);
+    const dampStrength = transitionMsToStrength(
+      preset?.transitionMs,
+      EMOTION_BLEND_DAMP_STRENGTH
+    );
     const influences = this.rawMorphTargetMesh.morphTargetInfluences;
 
     this.rawMorphTargetDictionary.forEach((index, name) => {
@@ -1456,7 +1470,7 @@ export class VrmAvatarController {
     return amplitude * (0.55 * baseOpen + 0.45 * accentOpen);
   }
 
-  _updateExpressions(presentation, mouthOpen, blinkWeight, delta) {
+  _updateExpressions(presentation, mouthOpen, blinkWeight, delta, preset) {
     const expressionManager = this.vrm?.expressionManager;
 
     if (!expressionManager) {
@@ -1499,6 +1513,12 @@ export class VrmAvatarController {
       targets[mouthExpressionName] = this.externalMouthControl.value;
     }
 
+    const activePreset = preset || resolveEmotionPreset(presentation?.emotion);
+    const expressionDampStrength = transitionMsToStrength(
+      activePreset?.transitionMs,
+      EMOTION_BLEND_DAMP_STRENGTH
+    );
+
     EXPRESSION_KEYS.forEach((key) => {
       const shouldApplyExternalMouthDirectly =
         hasExternalMouthControl && key === mouthExpressionName;
@@ -1508,7 +1528,7 @@ export class VrmAvatarController {
         : dampNumber(
             this.expressionWeights[key] || 0,
             targets[key],
-            key === "blink" ? 30 : EMOTION_BLEND_DAMP_STRENGTH,
+            key === "blink" ? 30 : expressionDampStrength,
             delta
           );
       expressionManager.setValue(key, this.expressionWeights[key]);

@@ -335,7 +335,7 @@ export const EMOTION_PRESETS = {
     emotion: "sad",
     legacyExpression: "sad",
     transitionMs: 640,
-    animationClip: "Bored",
+    animationClip: "Sad Idle",
     camera: camera("close"),
     blendShapes: [
       expr("sad", 0.58),
