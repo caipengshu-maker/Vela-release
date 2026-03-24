@@ -1375,6 +1375,76 @@ textarea {
   flex-wrap: wrap;
 }
 
+/* --- Settings buttons --- */
+.settings-btn {
+  padding: 8px 20px;
+  border-radius: 14px;
+  border: 1px solid rgba(19, 32, 38, 0.12);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.settings-btn-secondary {
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.settings-btn-secondary:hover {
+  background: rgba(19, 32, 38, 0.04);
+}
+
+.settings-btn-primary {
+  background: var(--mint);
+  color: #fff;
+  border-color: var(--mint);
+}
+
+.settings-btn-primary:hover {
+  opacity: 0.88;
+}
+
+.settings-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Model list (radio-style buttons) --- */
+.settings-model-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.settings-model-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(19, 32, 38, 0.08);
+  background: transparent;
+  color: var(--ink-main);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.settings-model-item:hover {
+  background: rgba(19, 32, 38, 0.03);
+}
+
+.settings-model-item.is-selected {
+  border-color: var(--mint);
+  background: rgba(45, 125, 119, 0.06);
+}
+
+.settings-model-check {
+  color: var(--mint);
+  font-weight: 600;
+}
+
 .onboarding-v2 {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);

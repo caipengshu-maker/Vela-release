@@ -40,12 +40,18 @@ export function SettingsModal({
       return;
     }
 
+    const trimmed = String(userAlias || "").trim().slice(0, 20);
+    if (!trimmed) {
+      setError("称呼不能为空");
+      return;
+    }
+
     setIsSaving(true);
     setError("");
 
     try {
       const payload = {
-        userName: String(userAlias || "").trim(),
+        userName: trimmed,
         bgmVolume: Number(bgmVolume),
         ttsVolume: Number(ttsVolume)
       };
@@ -60,6 +66,9 @@ export function SettingsModal({
     }
   }
 
+  const modelOptions = Array.isArray(models) ? models : [];
+  const currentModel = selectedModel || "auto";
+
   return (
     <div className="settings-modal-overlay" onClick={onClose} role="presentation">
       <div
@@ -70,22 +79,23 @@ export function SettingsModal({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="settings-modal-header">
-          <h3>Settings</h3>
+          <h3>设置</h3>
           <p>调整语音与称呼偏好</p>
         </div>
 
         <div className="settings-modal-body">
           <label className="field-block">
-            <span>你的称呼：</span>
+            <span>你的称呼</span>
             <input
               value={userAlias}
-              onChange={(event) => setUserAlias(event.target.value)}
+              onChange={(event) => setUserAlias(event.target.value.slice(0, 20))}
               placeholder="比如：舒总"
+              maxLength={20}
             />
           </label>
 
           <label className="field-block settings-slider-block">
-            <span>BGM Volume：{percentLabel(bgmVolume)}</span>
+            <span>BGM 音量：{percentLabel(bgmVolume)}</span>
             <input
               type="range"
               min="0"
@@ -97,7 +107,7 @@ export function SettingsModal({
           </label>
 
           <label className="field-block settings-slider-block">
-            <span>TTS Volume：{percentLabel(ttsVolume)}</span>
+            <span>语音音量：{percentLabel(ttsVolume)}</span>
             <input
               type="range"
               min="0"
@@ -108,25 +118,33 @@ export function SettingsModal({
             />
           </label>
 
-          {Array.isArray(models) && models.length > 0 ? (
-            <label className="field-block">
+          {modelOptions.length > 0 ? (
+            <div className="field-block">
               <span>模型选择</span>
-              <select value={selectedModel || "auto"} onChange={(e) => onModelSwitch?.(e.target.value)}>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
+              <div className="settings-model-list">
+                {modelOptions.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={`settings-model-item ${currentModel === m.id ? "is-selected" : ""}`}
+                    onClick={() => onModelSwitch?.(m.id)}
+                  >
+                    <span>{m.label}</span>
+                    {currentModel === m.id ? <span className="settings-model-check">✓</span> : null}
+                  </button>
                 ))}
-              </select>
-            </label>
+              </div>
+            </div>
           ) : null}
 
           {error ? <p className="error-text">{error}</p> : null}
         </div>
 
         <div className="settings-modal-actions">
-          <button type="button" className="secondary-button" onClick={onClose} disabled={isSaving}>
-            Close
+          <button type="button" className="settings-btn settings-btn-secondary" onClick={onClose} disabled={isSaving}>
+            关闭
           </button>
-          <button type="button" onClick={() => void handleSave()} disabled={isSaving}>
+          <button type="button" className="settings-btn settings-btn-primary" onClick={() => void handleSave()} disabled={isSaving}>
             {isSaving ? "保存中..." : "保存"}
           </button>
         </div>
