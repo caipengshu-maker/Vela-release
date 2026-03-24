@@ -375,6 +375,34 @@ function sortByWeightDescending(entries) {
   return [...entries].sort((left, right) => (right.weight || 0) - (left.weight || 0));
 }
 
+function normalizeExpressionName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function resolveExpressionName(expressionManager, preferredNames = []) {
+  const expressionMap = expressionManager?.expressionMap || {};
+  const expressionEntries = Object.keys(expressionMap).map((name) => [
+    normalizeExpressionName(name),
+    name
+  ]);
+  const normalizedExpressionMap = new Map(expressionEntries);
+
+  for (const preferredName of preferredNames) {
+    const resolvedName = normalizedExpressionMap.get(
+      normalizeExpressionName(preferredName)
+    );
+
+    if (resolvedName) {
+      return resolvedName;
+    }
+  }
+
+  return "";
+}
+
 export class VrmAvatarController {
   constructor({ canvas, onPresetDemoStateChange = null }) {
     this.canvas = canvas;
@@ -440,6 +468,11 @@ export class VrmAvatarController {
     this.lastIdleClipIndex = -1;
     this.nextCrossfadeIn = randomRange(IDLE_CROSSFADE_INTERVAL_MIN, IDLE_CROSSFADE_INTERVAL_MAX);
     this.mixerActive = false;
+    this.externalMouthControl = {
+      active: false,
+      expressionName: "",
+      value: 0
+    };
     this.presetDemoState = {
       enabled: false,
       emotion: "calm",
@@ -534,6 +567,21 @@ export class VrmAvatarController {
       nextState.emotion !== previousEmotion
     ) {
       this._applyEmotionDrivenAnimation();
+    }
+  }
+
+  setMouthOpenness(value) {
+    const nextValue = THREE.MathUtils.clamp(Number(value) || 0, 0, 1);
+    const expressionName = this._resolveMouthExpressionName();
+
+    this.externalMouthControl = {
+      active: true,
+      expressionName,
+      value: nextValue
+    };
+
+    if (expressionName && this.vrm?.expressionManager) {
+      this.vrm.expressionManager.setValue(expressionName, nextValue);
     }
   }
 
@@ -1001,6 +1049,11 @@ export class VrmAvatarController {
     this.currentIdleClipName = "";
     this.currentEmotionClipName = "";
     this.mixerActive = false;
+    this.externalMouthControl = {
+      active: false,
+      expressionName: "",
+      value: 0
+    };
     this._resetExpressions();
   }
 
@@ -1129,6 +1182,36 @@ export class VrmAvatarController {
     }
 
     return "";
+  }
+
+  _resolveMouthExpressionName() {
+    const expressionManager = this.vrm?.expressionManager;
+
+    if (!expressionManager) {
+      return "";
+    }
+
+    const cachedExpressionName = this.externalMouthControl?.expressionName;
+
+    if (
+      cachedExpressionName &&
+      typeof expressionManager.getExpression === "function" &&
+      expressionManager.getExpression(cachedExpressionName)
+    ) {
+      return cachedExpressionName;
+    }
+
+    const nextExpressionName = resolveExpressionName(expressionManager, [
+      "mouth_open",
+      "aa",
+      "oh"
+    ]);
+
+    if (nextExpressionName) {
+      this.externalMouthControl.expressionName = nextExpressionName;
+    }
+
+    return nextExpressionName;
   }
 
   _applyEmotionDrivenAnimation() {
@@ -1352,9 +1435,13 @@ export class VrmAvatarController {
     }
 
     const targets = Object.fromEntries(EXPRESSION_KEYS.map((key) => [key, 0]));
+    const mouthExpressionName = this.externalMouthControl.active
+      ? this._resolveMouthExpressionName()
+      : "";
+    const hasExternalMouthControl = Boolean(mouthExpressionName);
 
     if (this._isPresetModeEnabled()) {
-      if (presentation.presence === "speaking") {
+      if (!hasExternalMouthControl && presentation.presence === "speaking") {
         const mouthScale = presentation.emotion === "whisper" ? 0.72 : 1;
         targets.aa = mouthOpen * 1.02 * mouthScale;
         targets.oh = mouthOpen * 0.44 * mouthScale;
@@ -1368,7 +1455,7 @@ export class VrmAvatarController {
 
       targets.blink = blinkWeight;
 
-      if (presentation.presence === "speaking") {
+      if (!hasExternalMouthControl && presentation.presence === "speaking") {
         const mouthScale = presentation.emotion === "whisper" ? 0.72 : 1;
         targets.aa = mouthOpen * 1.02 * mouthScale;
         targets.oh = mouthOpen * 0.44 * mouthScale;
@@ -1376,15 +1463,37 @@ export class VrmAvatarController {
       }
     }
 
+    if (
+      hasExternalMouthControl &&
+      Object.prototype.hasOwnProperty.call(targets, mouthExpressionName)
+    ) {
+      targets[mouthExpressionName] = this.externalMouthControl.value;
+    }
+
     EXPRESSION_KEYS.forEach((key) => {
-      this.expressionWeights[key] = dampNumber(
-        this.expressionWeights[key] || 0,
-        targets[key],
-        key === "blink" ? 30 : EMOTION_BLEND_DAMP_STRENGTH,
-        delta
-      );
+      const shouldApplyExternalMouthDirectly =
+        hasExternalMouthControl && key === mouthExpressionName;
+
+      this.expressionWeights[key] = shouldApplyExternalMouthDirectly
+        ? targets[key]
+        : dampNumber(
+            this.expressionWeights[key] || 0,
+            targets[key],
+            key === "blink" ? 30 : EMOTION_BLEND_DAMP_STRENGTH,
+            delta
+          );
       expressionManager.setValue(key, this.expressionWeights[key]);
     });
+
+    if (
+      hasExternalMouthControl &&
+      !Object.prototype.hasOwnProperty.call(targets, mouthExpressionName)
+    ) {
+      expressionManager.setValue(
+        mouthExpressionName,
+        this.externalMouthControl.value
+      );
+    }
   }
 
   _debugPresentation(presentation, mouthOpen, blinkWeight) {

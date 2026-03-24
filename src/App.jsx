@@ -11,6 +11,7 @@ import { SplashScreen } from "./SplashScreen.jsx";
 import { BgmController } from "./core/bgm-controller.js";
 import { SettingsModal } from "./SettingsModal.jsx";
 import { OnboardingFlow } from "./OnboardingFlow.jsx";
+import { LipSyncAnalyser } from "./core/lip-sync.js";
 
 const initialState = {
   app: null,
@@ -797,6 +798,9 @@ export default function App() {
   const bgmControllerRef = useRef(null);
   const asrHintTimerRef = useRef(null);
   const ttsHintTimerRef = useRef(null);
+  const lipSyncContextRef = useRef(null);
+  const lipSyncFrameRef = useRef(null);
+  const lipSyncSmoothedRef = useRef(0);
   const proactiveBusyRef = useRef(false);
 
   useEffect(() => {
@@ -931,6 +935,28 @@ export default function App() {
       if (event.type === "speech-audio-chunk") {
         audioPlayerRef.current?.appendChunk(event.chunk);
         bgmControllerRef.current?.duck();
+
+        // Start lip sync RAF loop if not already running
+        if (!lipSyncFrameRef.current && audioPlayerRef.current) {
+          const mediaEl = audioPlayerRef.current.getMediaElement?.();
+          if (mediaEl) {
+            if (!lipSyncContextRef.current) {
+              const ctx = new AudioContext();
+              const analyser = new LipSyncAnalyser(ctx);
+              analyser.connectSource(mediaEl);
+              lipSyncContextRef.current = { ctx, analyser };
+            }
+            const tick = () => {
+              const amp = lipSyncContextRef.current?.analyser?.getAmplitude() || 0;
+              const prev = lipSyncSmoothedRef.current;
+              const smoothed = prev + (amp - prev) * 0.3;
+              lipSyncSmoothedRef.current = smoothed;
+              window.__velaSetMouthOpenness?.(smoothed);
+              lipSyncFrameRef.current = window.requestAnimationFrame(tick);
+            };
+            lipSyncFrameRef.current = window.requestAnimationFrame(tick);
+          }
+        }
       }
 
       if (event.type === "farewell") {
@@ -946,15 +972,24 @@ export default function App() {
       if (event.type === "speech-finished" && event.cancelled) {
         audioPlayerRef.current?.reset();
         bgmControllerRef.current?.unduck();
+        if (lipSyncFrameRef.current) { window.cancelAnimationFrame(lipSyncFrameRef.current); lipSyncFrameRef.current = null; }
+        lipSyncSmoothedRef.current = 0;
+        window.__velaSetMouthOpenness?.(0);
       }
 
       if (event.type === "speech-finished" && !event.cancelled) {
         bgmControllerRef.current?.unduck();
+        if (lipSyncFrameRef.current) { window.cancelAnimationFrame(lipSyncFrameRef.current); lipSyncFrameRef.current = null; }
+        lipSyncSmoothedRef.current = 0;
+        window.__velaSetMouthOpenness?.(0);
       }
 
       if (event.type === "speech-error") {
         audioPlayerRef.current?.reset();
         bgmControllerRef.current?.unduck();
+        if (lipSyncFrameRef.current) { window.cancelAnimationFrame(lipSyncFrameRef.current); lipSyncFrameRef.current = null; }
+        lipSyncSmoothedRef.current = 0;
+        window.__velaSetMouthOpenness?.(0);
         flashTtsHint("语音暂时不可用");
       }
 

@@ -288,6 +288,11 @@ export class AudioPlayerService {
     };
   }
 
+  getMediaElement() {
+    this._createElements();
+    return this.audio;
+  }
+
   playReplay(replay) {
     if (!replay?.url) {
       return;

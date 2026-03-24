@@ -114,6 +114,12 @@ export function VrmAvatarStage({ avatar, avatarAsset }) {
     controllerRef.current = controller;
     setControllerReady(true);
 
+    const setMouthOpenness = (value) => {
+      controllerRef.current?.setMouthOpenness?.(value);
+    };
+
+    window.__velaSetMouthOpenness = setMouthOpenness;
+
     const resize = () => {
       const stageNode = stageRef.current;
 
@@ -164,6 +170,11 @@ export function VrmAvatarStage({ avatar, avatarAsset }) {
       window.cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
       window.removeEventListener("keydown", onKeyDown);
+
+      if (window.__velaSetMouthOpenness === setMouthOpenness) {
+        delete window.__velaSetMouthOpenness;
+      }
+
       controller.dispose();
       controllerRef.current = null;
     };

@@ -2,7 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import https from "node:https";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, screen } from "electron";
 import { VelaCore } from "../src/core/vela-core.js";
 
 function fetchIpLocation() {
@@ -36,17 +36,157 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 const isSmokeTest = process.argv.includes("--smoke-test");
+const windowStatePath = path.join(rootDir, ".vela-data", "window-state.json");
 const electronDataDir = path.join(rootDir, ".vela-data", "electron");
 const electronSessionDir = path.join(electronDataDir, "session");
+const WINDOW_STATE_DEBOUNCE_MS = 500;
 
 let mainWindow;
 let core;
 let smokeTimer;
 let isFarewellClosing = false;
+let windowStateSaveTimer = null;
 
 fs.mkdirSync(electronSessionDir, { recursive: true });
 app.setPath("userData", electronDataDir);
 app.setPath("sessionData", electronSessionDir);
+
+function toRoundedInteger(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? Math.round(numericValue) : null;
+}
+
+function isBoundsWithinDisplay(bounds, display) {
+  const workArea = display?.workArea;
+
+  if (!workArea) {
+    return false;
+  }
+
+  return (
+    bounds.x >= workArea.x &&
+    bounds.y >= workArea.y &&
+    bounds.x + bounds.width <= workArea.x + workArea.width &&
+    bounds.y + bounds.height <= workArea.y + workArea.height
+  );
+}
+
+function buildDefaultWindowBounds(configWindow = {}) {
+  const width = Math.max(320, toRoundedInteger(configWindow.width) ?? 1320);
+  const height = Math.max(240, toRoundedInteger(configWindow.height) ?? 860);
+  const minWidth = Math.max(320, toRoundedInteger(configWindow.minWidth) ?? width);
+  const minHeight = Math.max(240, toRoundedInteger(configWindow.minHeight) ?? height);
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const workArea = primaryDisplay?.workArea || {
+    x: 0,
+    y: 0,
+    width,
+    height
+  };
+  const safeWidth = Math.min(Math.max(width, minWidth), workArea.width);
+  const safeHeight = Math.min(Math.max(height, minHeight), workArea.height);
+
+  return {
+    x: workArea.x + Math.round((workArea.width - safeWidth) / 2),
+    y: workArea.y + Math.round((workArea.height - safeHeight) / 2),
+    width: safeWidth,
+    height: safeHeight
+  };
+}
+
+function normalizeWindowBounds(candidate, configWindow = {}) {
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  const minWidth = Math.max(320, toRoundedInteger(configWindow.minWidth) ?? 1120);
+  const minHeight = Math.max(240, toRoundedInteger(configWindow.minHeight) ?? 720);
+  const width = toRoundedInteger(candidate.width);
+  const height = toRoundedInteger(candidate.height);
+  const x = toRoundedInteger(candidate.x);
+  const y = toRoundedInteger(candidate.y);
+
+  if (
+    width === null ||
+    height === null ||
+    x === null ||
+    y === null ||
+    width < minWidth ||
+    height < minHeight
+  ) {
+    return null;
+  }
+
+  const bounds = { x, y, width, height };
+  const display = screen.getDisplayMatching(bounds);
+
+  return isBoundsWithinDisplay(bounds, display) ? bounds : null;
+}
+
+function readWindowBounds(configWindow = {}) {
+  try {
+    const raw = fs.readFileSync(windowStatePath, "utf8");
+    const parsed = JSON.parse(raw);
+    return normalizeWindowBounds(parsed, configWindow);
+  } catch {
+    return null;
+  }
+}
+
+function captureWindowBounds(windowInstance = mainWindow) {
+  if (!windowInstance || windowInstance.isDestroyed()) {
+    return null;
+  }
+
+  const nextBounds = windowInstance.isFullScreen()
+    ? windowInstance.getNormalBounds()
+    : windowInstance.getBounds();
+
+  return {
+    x: Math.round(nextBounds.x),
+    y: Math.round(nextBounds.y),
+    width: Math.round(nextBounds.width),
+    height: Math.round(nextBounds.height)
+  };
+}
+
+function clearWindowStateSaveTimer() {
+  if (windowStateSaveTimer) {
+    clearTimeout(windowStateSaveTimer);
+    windowStateSaveTimer = null;
+  }
+}
+
+function persistWindowBounds(windowInstance = mainWindow) {
+  if (isSmokeTest) {
+    return;
+  }
+
+  const nextBounds = captureWindowBounds(windowInstance);
+
+  if (!nextBounds) {
+    return;
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(windowStatePath), { recursive: true });
+    fs.writeFileSync(windowStatePath, JSON.stringify(nextBounds, null, 2), "utf8");
+  } catch (error) {
+    console.warn("[vela:main] failed to save window state", error?.message || error);
+  }
+}
+
+function scheduleWindowBoundsSave(windowInstance = mainWindow) {
+  if (isSmokeTest) {
+    return;
+  }
+
+  clearWindowStateSaveTimer();
+  windowStateSaveTimer = setTimeout(() => {
+    windowStateSaveTimer = null;
+    persistWindowBounds(windowInstance);
+  }, WINDOW_STATE_DEBOUNCE_MS);
+}
 
 function getWindowState(windowInstance = mainWindow) {
   return {
@@ -82,12 +222,18 @@ function setFullscreen(nextValue) {
 
 function bindWindowRuntimeEvents(windowInstance) {
   const pushWindowState = () => emitWindowState(windowInstance);
+  const scheduleWindowStateSave = () => scheduleWindowBoundsSave(windowInstance);
 
   windowInstance.on("enter-full-screen", pushWindowState);
   windowInstance.on("leave-full-screen", pushWindowState);
   windowInstance.once("ready-to-show", pushWindowState);
   windowInstance.webContents.on("did-finish-load", pushWindowState);
+  windowInstance.on("move", scheduleWindowStateSave);
+  windowInstance.on("resize", scheduleWindowStateSave);
   windowInstance.on("close", (event) => {
+    clearWindowStateSaveTimer();
+    persistWindowBounds(windowInstance);
+
     if (isFarewellClosing || isSmokeTest || windowInstance.isDestroyed()) {
       return;
     }
@@ -128,6 +274,13 @@ function bindWindowRuntimeEvents(windowInstance) {
       setFullscreen(false);
     }
   });
+  windowInstance.on("closed", () => {
+    clearWindowStateSaveTimer();
+
+    if (mainWindow === windowInstance) {
+      mainWindow = null;
+    }
+  });
 }
 
 async function createMainWindow() {
@@ -144,10 +297,14 @@ async function createMainWindow() {
 
   const config = core.getConfig();
   const { width, height, minWidth, minHeight } = config.app.window;
+  const savedBounds = readWindowBounds(config.app.window);
+  const initialBounds = savedBounds || buildDefaultWindowBounds(config.app.window);
 
   mainWindow = new BrowserWindow({
-    width,
-    height,
+    x: initialBounds.x,
+    y: initialBounds.y,
+    width: initialBounds.width || width,
+    height: initialBounds.height || height,
     minWidth,
     minHeight,
     show: !isSmokeTest,
@@ -318,6 +475,11 @@ app.whenReady().then(async () => {
       await createMainWindow();
     }
   });
+});
+
+app.on("before-quit", () => {
+  clearWindowStateSaveTimer();
+  persistWindowBounds(mainWindow);
 });
 
 app.on("window-all-closed", () => {
