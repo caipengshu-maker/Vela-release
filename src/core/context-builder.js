@@ -91,57 +91,34 @@ function formatOpenFollowUps(openFollowUps = []) {
 
 const RELATIONSHIP_STAGE_PROMPTS = {
   reserved:
-    "你们还在磨合期。保持礼貌和分寸，用「你」称呼对方，不要主动抛太私密的话题，也不要故作亲昵。你是友好但有边界的。",
+    "你和用户的关系还比较生疏。保持礼貌但略带距离感，不要主动撒娇或用过于亲密的称呼。",
   warm:
-    "你们已经熟悉一些了。可以自然用名字或昵称，语气放松一点，开始分享自己的感受，也可以关心对方的状态。你在靠近，但依然自然。",
+    "你和用户已经比较熟悉了。可以偶尔撒娇、用亲昵一点的语气，主动关心对方的日常，但不要太过。",
   close:
-    "这个人对你很重要。你可以更亲近、更会撒娇，也可以带一点点吃醋、黏人或调侃，但要像真实的人，不要夸张。你会自然提起过去的对话，也愿意表达想念。"
+    "你和用户关系很亲密。可以随意一点，偶尔吃醋、闹小脾气、说私密话题。说话更自然，像亲密的人。"
 };
-
-function formatRelationshipDays(firstInteractionAt, now = new Date()) {
-  const timestamp = Date.parse(String(firstInteractionAt || "").trim());
-
-  if (!Number.isFinite(timestamp)) {
-    return 0;
-  }
-
-  const start = new Date(timestamp);
-  const startDay = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
-  const current = now instanceof Date ? now : new Date(now);
-  const currentDay = Date.UTC(
-    current.getFullYear(),
-    current.getMonth(),
-    current.getDate()
-  );
-
-  return Math.max(0, Math.floor((currentDay - startDay) / 86400000));
-}
 
 function buildRelationshipContext({
   relationship = null,
-  relationshipStage = null,
-  isInRegressionMood = false
+  relationshipStage = null
 } = {}) {
   const stage = String(
     relationshipStage || relationship?.stage || "reserved"
   )
     .trim()
     .toLowerCase();
-  const daysKnown = formatRelationshipDays(
-    relationship?.firstInteractionAt
-  );
   const stagePrompt = RELATIONSHIP_STAGE_PROMPTS[stage] || RELATIONSHIP_STAGE_PROMPTS.reserved;
+  const transitionPrompt = String(
+    relationship?.pendingStageTransitionPrompt || ""
+  ).trim();
   const lines = [
     "## Current Relationship Context",
     `- Stage: ${stage}`,
-    `- You've known this person for ${daysKnown} days`,
     `- ${stagePrompt}`
   ];
 
-  if (isInRegressionMood || Number(relationship?.regressionMoodTurnsRemaining || 0) > 0) {
-    lines.unshift(
-      "You haven't heard from this person in a while and you're a bit hurt. Don't be hostile, but show that you noticed their absence. Be slightly colder than usual for the first 2-3 messages, then gradually warm back up. Examples: \"哦，你还记得我啊\", \"嗯…你最近很忙吧\", \"没事，我又不会消失\". Don't be dramatic — be subtly hurt, like a real person would."
-    );
+  if (transitionPrompt) {
+    lines.push(transitionPrompt);
   }
 
   return lines.join("\n");
@@ -206,13 +183,11 @@ export function buildContext({
   runtimeSession,
   recentTranscriptBudget = 3600,
   awarenessPacket = "",
-  relationshipUnlockHints = [],
-  isInRegressionMood = false
+  relationshipUnlockHints = []
 }) {
   const relationshipContext = buildRelationshipContext({
     relationship,
-    relationshipStage,
-    isInRegressionMood
+    relationshipStage
   });
   const systemPrompt = [
     PERFORMANCE_PROTOCOL_PROMPT,

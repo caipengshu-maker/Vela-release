@@ -40,6 +40,24 @@ export const RELATIONSHIP_STAGES = [
   "warm",
   "close"
 ];
+export const RELATIONSHIP_STAGE_SCORE_THRESHOLDS = {
+  warm: 50,
+  close: 200
+};
+export const EMOTION_RELATIONSHIP_WEIGHTS = {
+  affectionate: 3,
+  happy: 2,
+  playful: 2,
+  shy: 2,
+  whisper: 2,
+  curious: 1,
+  calm: 1,
+  concerned: 1,
+  sad: 0,
+  surprised: 0,
+  determined: 0,
+  angry: -1
+};
 
 export const CAMERA_SWITCH_COOLDOWN_MS = 8_000;
 export const CLOSE_HOLD_MS = 2_800;

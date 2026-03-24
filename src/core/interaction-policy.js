@@ -431,7 +431,7 @@ export function resolveInteractionPlan({
   const safeRelationshipStage = sanitizeEnum(
     relationshipStage,
     RELATIONSHIP_STAGES,
-    "warm"
+    "reserved"
   );
   const nowDate = now instanceof Date ? now : new Date(now);
   const nowMs = nowDate.getTime();

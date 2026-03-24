@@ -5,8 +5,7 @@ import { parse } from "jsonc-parser";
 import { loadConfig } from "./config.js";
 import {
   buildPersona,
-  onboardingOptions,
-  relationshipPreset
+  onboardingOptions
 } from "./default-persona.js";
 import { LocalStore } from "./local-store.js";
 import { MemoryStore } from "./memory-store.js";
@@ -31,7 +30,10 @@ import {
   mapAvatarState,
   settleAvatarState
 } from "./avatar-state.js";
-import { RelationshipTracker } from "./relationship.js";
+import {
+  getRelationshipStageNote,
+  RelationshipTracker
+} from "./relationship.js";
 import { RELATIONSHIP_STAGES } from "./interaction-contract.js";
 import {
   createStreamPrefixBuffer,
@@ -230,19 +232,15 @@ function buildRelationshipUnlockHints(relationship) {
   const stage = String(relationship?.stage || "reserved").trim().toLowerCase();
   const hints = [];
 
-  if (relationship?.regressionMoodTurnsRemaining > 0 || relationship?.isInRegressionMood) {
-    hints.push("先别急着靠得太近，语气稍微带一点在意对方缺席的痕迹。");
-  }
-
   switch (stage) {
     case "reserved":
       hints.push("先保持礼貌和分寸，重点是接住情绪，不要抢着靠近。");
       break;
     case "warm":
-      hints.push("可以自然叫名字，语气放松一点，但不要突然越级亲密。");
+      hints.push("可以自然放松一点，偶尔更亲昵一点，但不要突然越级亲密。");
       break;
     case "close":
-      hints.push("可以更亲近一点，偶尔调侃或表达想念，但要像真实的人。");
+      hints.push("可以更亲近一点，偶尔调侃、撒娇或表达想念，但要像真实的人。");
       break;
     default:
       hints.push("先保持自然和分寸，不要突然越级表达。");
@@ -402,8 +400,8 @@ export class VelaCore {
     this.relationshipTracker = await this.loadRelationshipTracker(
       initialMemorySnapshot.relationship?.stage
     );
-    this.relationshipTracker.checkRegression();
     await this.saveRelationshipTracker();
+    await this.syncRelationshipMemoryState(initialMemorySnapshot.relationship);
     this.memorySnapshot = this.mergeRelationshipIntoMemorySnapshot(
       initialMemorySnapshot
     );
@@ -430,22 +428,13 @@ export class VelaCore {
       RELATIONSHIP_STATE_FILE,
       null
     );
-    const hasPersistedRelationship =
-      persistedRelationship && typeof persistedRelationship === "object";
-    const validStages = RELATIONSHIP_STAGES;
-    const persistedStage = String(persistedRelationship?.stage || "").trim().toLowerCase();
+    const hasPersistedRelationship = Boolean(
+      persistedRelationship && typeof persistedRelationship === "object"
+    );
     const fallback = String(fallbackStage || "reserved").trim().toLowerCase();
-    const stage = validStages.includes(persistedStage)
-      ? persistedStage
-      : validStages.includes(fallback)
-        ? fallback
-        : "reserved";
+    const stage = RELATIONSHIP_STAGES.includes(fallback) ? fallback : "reserved";
     const tracker = new RelationshipTracker(
-      validStages.includes(persistedStage)
-        ? persistedRelationship
-        : {
-            stage
-          }
+      hasPersistedRelationship ? persistedRelationship : { stage }
     );
 
     if (!hasPersistedRelationship && stage) {
@@ -479,32 +468,76 @@ export class VelaCore {
 
   getRelationshipState(baseRelationship = null) {
     const trackerState = this.relationshipTracker?.toJSON?.() || {};
-    const base = baseRelationship && typeof baseRelationship === "object"
-      ? baseRelationship
-      : {};
+    const base =
+      baseRelationship && typeof baseRelationship === "object"
+        ? baseRelationship
+        : {};
     const stage = String(
       trackerState.stage || base.stage || "reserved"
     )
       .trim()
       .toLowerCase();
+    const baseStage = String(base.stage || "").trim().toLowerCase();
+    const note =
+      baseStage === stage && String(base.note || "").trim()
+        ? base.note
+        : getRelationshipStageNote(stage);
 
     return {
       ...base,
       ...trackerState,
       stage,
-      isInRegressionMood: Boolean(
-        trackerState.regressionMoodTurnsRemaining > 0
-      )
+      note,
+      pendingStageTransitionPrompt: trackerState.pendingStageTransitionPrompt || null,
+      isInRegressionMood: false
     };
   }
 
-  async recordRelationshipTurn(emotionFromLLM) {
+  async syncRelationshipMemoryState(baseRelationship = null) {
+    const base =
+      baseRelationship && typeof baseRelationship === "object"
+        ? baseRelationship
+        : this.memorySnapshot?.relationship || {};
+    const relationship = this.getRelationshipState(base);
+
+    await this.memoryStore.updateRelationship({
+      ...base,
+      stage: relationship.stage,
+      note: relationship.note,
+      sharedMoments: Array.isArray(base.sharedMoments) ? base.sharedMoments : []
+    });
+
+    return relationship;
+  }
+
+  async clearPendingRelationshipTransitionPrompt(expectedPrompt = null) {
     if (!this.relationshipTracker) {
       return;
     }
 
-    this.relationshipTracker.recordTurn(emotionFromLLM);
+    if (
+      expectedPrompt &&
+      this.relationshipTracker.pendingStageTransitionPrompt !== expectedPrompt
+    ) {
+      return;
+    }
+
+    this.relationshipTracker.clearPendingStageTransitionPrompt();
     await this.saveRelationshipTracker();
+  }
+
+  async recordRelationshipTurn(plan, baseRelationship = null) {
+    if (!this.relationshipTracker) {
+      return null;
+    }
+
+    const result = this.relationshipTracker.recordTurn({
+      emotion: plan?.emotion || "calm",
+      intensity: plan?.intensity ?? 0
+    });
+    await this.saveRelationshipTracker();
+    await this.syncRelationshipMemoryState(baseRelationship);
+    return result;
   }
 
   async loadMemorySnapshot() {
@@ -859,24 +892,10 @@ export class VelaCore {
 
   async completeOnboarding(payload) {
     await this.memoryStore.completeOnboarding(payload);
-    const relationship = relationshipPreset(payload.distance);
-    await this.memoryStore.updateRelationship({
-      stage: relationship.stage,
-      note: relationship.note,
-      sharedMoments: []
+    await this.syncRelationshipMemoryState({
+      ...(this.memorySnapshot?.relationship || {}),
+      sharedMoments: this.memorySnapshot?.relationship?.sharedMoments || []
     });
-
-    if (this.relationshipTracker) {
-      const nowIso = new Date().toISOString();
-      this.relationshipTracker.stage = relationship.stage;
-      this.relationshipTracker.stageEnteredAt = nowIso;
-      this.relationshipTracker.firstInteractionAt =
-        this.relationshipTracker.firstInteractionAt || nowIso;
-      this.relationshipTracker.lastInteractionAt = nowIso;
-      this.relationshipTracker.emotionalTurnCount = 0;
-      this.relationshipTracker.regressionMoodTurnsRemaining = 0;
-      await this.saveRelationshipTracker();
-    }
 
     const memory = await this.loadMemorySnapshot();
     const replyText = `${this.persona.name}，我醒来了。接下来我会用现在的语气陪你，也会慢慢记住关于你的事。`;

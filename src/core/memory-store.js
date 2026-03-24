@@ -49,8 +49,8 @@ function defaultUserModel() {
 
 function defaultRelationship() {
   return {
-    stage: "warm",
-    note: "熟悉，但仍然克制。",
+    stage: "reserved",
+    note: "还比较生疏，先保持礼貌和分寸。",
     sharedMoments: []
   };
 }
