@@ -462,7 +462,7 @@ export const EMOTION_PRESETS = {
       raw("mouth_narrow", 0.18),
       raw("eyebrow_down", 0.22),
       raw("eye_jito_2", 0.10),
-      raw("lookDown", 0.06)
+      expr("lookDown", 0.06)
     ],
     actionOverlay: DETERMINED_OVERLAY
   }
