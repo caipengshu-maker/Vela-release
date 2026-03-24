@@ -2,10 +2,10 @@
 
 ## 项目信息
 - 项目名称：Vela
-- 当前阶段：M5.5 产品补全
+- 当前阶段：AX（Avatar eXperience 体验优化）
 - 项目责任人：小新
-- 默认编码施工位：Codex（GPT-5.4 xhigh）
-- 最后更新：2026-03-23
+- 默认编码施工位：Codex CLI（GPT-5.4 xhigh `--yolo`）
+- 最后更新：2026-03-24
 
 ## 状态枚举
 - TODO / IN-PROGRESS / BLOCKED / IN-REVIEW / DONE
@@ -200,3 +200,62 @@
 - 重型主动推送 / 复杂关系数值 / 重型记忆平台
 - Live2D 重资产路线 / 多角色平台 / 成人向主线
 - 完整 gateway / 插件平台 / 向量数据库
+
+---
+
+## AX - Avatar eXperience 体验优化（当前阶段）
+
+> 详细方案：docs/AX-AVATAR-EXPERIENCE-PLAN.md
+> 施工方式：全部 Codex CLI `--yolo`，不用 subagent
+
+### AX-L1：开启已有能力（配置层）
+
+#### AX-L1-1 开启 V2 表情系统
+- 状态：TODO
+- 优先级：P0
+- 说明：EMOTION_PRESETS_V2 = true + raw morph → expressionManager 链路贯通
+
+#### AX-L1-2 放开镜头限制
+- 状态：TODO
+- 优先级：P0
+- 说明：去掉 normalizeAvatarState() camera 强制 wide 逻辑
+
+#### AX-L1-3 Lip Sync 增益
+- 状态：TODO
+- 优先级：P1
+- 说明：振幅放大 ×1.5~2，lerp 响应加快到 0.4
+
+#### AX-L1-4 全量验证 + 修复
+- 状态：TODO
+- 优先级：P0
+- 说明：12 个 emotion 逐一测试，修复 blend shape 名称不匹配
+
+### AX-L2：情绪-动画-镜头-语音联动（AX-L1 验收后）
+- 状态：TODO
+- 子项：情绪驱动镜头 / TTS语速语调联动 / 表情过渡平滑 / 扩展动画库 / emotion intensity
+
+### AX-L3：Lip Sync 升级（AX-L2 验收后）
+- 状态：TODO
+- 子项：HeadAudio 评估 / viseme lip sync 集成 / fallback 链
+
+### AX-L4：长期体验升级（归入 M6-M7）
+- VRM 模型升级 / 动作编排系统 / 关系阶段表情风格 / 微动联动
+
+---
+
+## 待处理池
+
+### T8 窗口状态记忆
+- 状态：IN-PROGRESS（Codex CLI 施工中）
+- 优先级：P2
+
+### T9 Lip Sync（振幅驱动）
+- 状态：IN-PROGRESS（Codex CLI 施工中，与 T8 合并）
+- 优先级：P2
+
+### 存量 Bug 池
+- docs/DEEP-AUDIT-2026-03-23.md（11 个 DEEP + 12 个 UX）
+- 状态：待 triage
+
+### BGM 音乐源
+- 状态：BLOCKED — 等用户选定路线（免费版权 / AI 生成 / 自购）
