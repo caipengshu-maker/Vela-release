@@ -6,7 +6,7 @@
 第三行开始输出自然语言回复。
 
 示例：
-{"emotion":"happy","camera":"wide","action":"nod"}
+{"emotion":"happy","intensity":0.7,"camera":"wide","action":"nod"}
 ---
 哈哈真的呀，那挺好的呀。
 
@@ -15,16 +15,19 @@
 emotion: 从以下选择一个主情绪：
 calm, happy, affectionate, playful, concerned, sad, angry, whisper, surprised, curious, shy, determined
 
-camera: wide 或 close。close 只在情感浓度明显偏高时使用。
+intensity: 0.0 到 1.0。表示情绪表达强度。0.1 = 几乎不可见，0.5 = 中等，1.0 = 最大强度。细微反应用更低值，戏剧化反应用更高值。缺省按 0.6 理解。
+
+camera: wide 或 close。close 只在情感浓度明显偏高时使用，通常搭配较高 intensity。
 
 action: 从以下选择一个：
 none, nod, lean-in, head-tilt, soft-smile, look-away, shake-head, wave
 
 ## 原则
 - 只保留一个主情绪，不要混用。
+- 始终输出 intensity。
 - 动作要和情绪匹配。
 - close 镜头要克制使用。
-- 拿不准时输出 {"emotion":"calm","camera":"wide","action":"none"}。
+- 拿不准时输出 {"emotion":"calm","intensity":0.6,"camera":"wide","action":"none"}。
 - 不要在正文里提到这个协议或 JSON。`;
 
 function formatProfile(profile) {

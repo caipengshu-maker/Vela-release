@@ -102,6 +102,7 @@ const PRESET_DEMO_STEP_MS = 5000;
 const RAW_MORPH_DAMP_STRENGTH = 14;
 const EMOTION_BLEND_DAMP_STRENGTH = 6;
 const EMOTION_CROSSFADE_DURATION = 1.0;
+const DEFAULT_INTENSITY = 0.6;
 const CORE_POSE_BONES = [
   VRMHumanBoneName.Hips,
   VRMHumanBoneName.Spine,
@@ -233,6 +234,7 @@ function normalizeAvatarState(avatar) {
   return {
     presence,
     emotion,
+    intensity: normalizeIntensity(avatar?.intensity),
     relationshipStage,
     camera: String(avatar?.camera || "wide").trim().toLowerCase(),
     expression: String(avatar?.expression || "neutral").trim().toLowerCase(),
@@ -359,6 +361,22 @@ function randomRange(min, max) {
 
 function degToRad(value) {
   return THREE.MathUtils.degToRad(Number(value || 0));
+}
+
+function normalizeIntensity(value, fallback = DEFAULT_INTENSITY) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return fallback;
+  }
+
+  return THREE.MathUtils.clamp(numericValue, 0, 1);
+}
+
+function shouldScaleExpressionWeight(name) {
+  return !["aa", "ee", "ih", "oh", "ou", "blink", "blinkLeft", "blinkRight"].includes(
+    String(name || "")
+  );
 }
 
 function transitionMsToStrength(
@@ -553,13 +571,15 @@ export class VrmAvatarController {
     const requestedCamera = String(avatar?.camera || "wide").trim().toLowerCase();
     const previousEmotion = String(this.avatarState?.emotion || "calm").trim().toLowerCase();
     const nextState = resolveSafePresentation(avatar);
-    const signature = `${nextState.presence}|${nextState.camera}|${nextState.expression}|${nextState.motion}|${nextState.emotion}|${nextState.relationshipStage}`;
+    const signature =
+      `${nextState.presence}|${nextState.camera}|${nextState.expression}|${nextState.motion}|` +
+      `${nextState.emotion}|${nextState.relationshipStage}|${nextState.intensity.toFixed(2)}`;
 
     if (signature !== this.debugState.lastAvatarSignature) {
       console.log(
         `[VRM][state] requestedCamera=${requestedCamera} resolvedCamera=${nextState.camera} ` +
         `presence=${nextState.presence} expression=${nextState.expression} motion=${nextState.motion} emotion=${nextState.emotion} ` +
-        `relationshipStage=${nextState.relationshipStage || "reserved"}`
+        `intensity=${nextState.intensity.toFixed(2)} relationshipStage=${nextState.relationshipStage || "reserved"}`
       );
       this.debugState.lastAvatarSignature = signature;
     }
@@ -619,6 +639,7 @@ export class VrmAvatarController {
       this.avatarState = {
         presence: "speaking",
         emotion,
+        intensity: 1,
         relationshipStage: this.avatarState?.relationshipStage || "reserved",
         camera: preset.camera || "wide",
         expression: preset.legacyExpression || "neutral",
@@ -685,7 +706,7 @@ export class VrmAvatarController {
       this.vrm.update(delta);
 
       if (this._isPresetModeEnabled()) {
-        this._applyPresetMorphTargets(preset, blinkWeight, delta);
+        this._applyPresetMorphTargets(preset, blinkWeight, delta, presentation.intensity);
       } else {
         this._clearPresetMorphTargets(delta);
       }
@@ -1137,6 +1158,7 @@ export class VrmAvatarController {
     this.avatarState = {
       presence: "speaking",
       emotion: this.presetDemoState.emotion,
+      intensity: 1,
       relationshipStage: this.avatarState?.relationshipStage || "reserved",
       camera: preset.camera || "wide",
       expression: preset.legacyExpression || "neutral",

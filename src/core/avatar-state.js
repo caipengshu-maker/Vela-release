@@ -41,10 +41,21 @@ function buildAvatarLabel(plan) {
   return presenceLabels[plan.presence] || presenceLabels.idle;
 }
 
+function normalizeIntensity(value, fallback = 0.6) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(numericValue, 0), 1);
+}
+
 export function mapAvatarState(plan) {
   return {
     presence: plan.presence,
     emotion: plan.emotion,
+    intensity: normalizeIntensity(plan.intensity),
     emotionStrength: plan.emotionStrength,
     camera: plan.camera,
     action: plan.action,
@@ -69,6 +80,7 @@ export function settleAvatarState(avatar, { voiceModeEnabled }) {
 
   return {
     ...avatar,
+    intensity: normalizeIntensity(avatar?.intensity),
     presence: targetPresence,
     label: presenceLabels[targetPresence] || presenceLabels.idle,
     action: targetPresence === "listening" ? "listen-settle" : "none",

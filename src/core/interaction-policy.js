@@ -32,6 +32,18 @@ const EMOTION_TO_DEFAULT_MOTION = {
   determined: "tiny-nod"
 };
 
+const DEFAULT_INTENSITY = 0.6;
+
+function normalizeIntensity(value, fallback = DEFAULT_INTENSITY) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(numericValue, 0), 1);
+}
+
 function inferEmotionIntent({ replyText, userMessage, relationshipStage }) {
   const reply = String(replyText || "");
   const user = String(userMessage || "");
@@ -235,6 +247,7 @@ function resolveCamera({
 function resolveTtsPreset({
   emotion,
   requestedEmotion,
+  intensity,
   relationshipStage,
   voiceModeEnabled,
   ttsCapabilities,
@@ -248,6 +261,7 @@ function resolveTtsPreset({
     relationshipStage === "close"
       ? TTS_PRESET_MAP.affectionate || TTS_PRESET_MAP.calm
       : TTS_PRESET_MAP.calm;
+  const safeIntensity = normalizeIntensity(intensity);
   const explicitForceRequested =
     normalizeTtsEmotionMode(requestedEmotionMode) === "force" ||
     requestedEmotion === "whisper";
@@ -283,8 +297,8 @@ function resolveTtsPreset({
     presetId: preset.id,
     emotionMode,
     providerEmotion,
-    speedMultiplier: preset.speedMultiplier,
-    pitchOffset: preset.pitchOffset,
+    speedMultiplier: 1 + (preset.speedMultiplier - 1) * safeIntensity,
+    pitchOffset: preset.pitchOffset * safeIntensity,
     fallbackProviderEmotion:
       emotionMode === "force" ? fallbackPreset.providerEmotion : null,
     downgradedFrom:
@@ -369,6 +383,7 @@ export function buildInteractionIntent({
       replyText,
       thinkingMode: normalizeThinkingMode(thinkingMode),
       emotionIntent: sanitizeEnum(llmIntent.emotion, EMOTION_FAMILIES, "calm"),
+      intensityIntent: normalizeIntensity(llmIntent.intensity),
       cameraIntent: sanitizeEnum(llmIntent.camera, CAMERA_STATES, "wide"),
       actionIntent: sanitizeEnum(llmIntent.action, ACTION_INTENTS, "none"),
       emotionStrength: inferEmotionStrength({
@@ -389,6 +404,7 @@ export function buildInteractionIntent({
     replyText,
     thinkingMode: normalizeThinkingMode(thinkingMode),
     emotionIntent,
+    intensityIntent: DEFAULT_INTENSITY,
     cameraIntent: ["affectionate", "concerned", "whisper"].includes(emotionIntent)
       ? "close"
       : "wide",
@@ -427,6 +443,7 @@ export function resolveInteractionPlan({
       presence,
       thinkingMode: normalizeThinkingMode(intent?.thinkingMode),
       emotion: "calm",
+      intensity: DEFAULT_INTENSITY,
       emotionStrength: "light",
       action: "none",
       camera: "wide",
@@ -456,6 +473,7 @@ export function resolveInteractionPlan({
       presence,
       thinkingMode: normalizeThinkingMode(intent?.thinkingMode),
       emotion: "calm",
+      intensity: DEFAULT_INTENSITY,
       emotionStrength: "light",
       action,
       camera: "wide",
@@ -485,6 +503,7 @@ export function resolveInteractionPlan({
     lateNight,
     gapMs
   );
+  const intensity = normalizeIntensity(intent?.intensityIntent);
   const emotionStrength = sanitizeEnum(
     inferEmotionStrength({
       emotion,
@@ -510,6 +529,7 @@ export function resolveInteractionPlan({
   const ttsPreset = resolveTtsPreset({
     emotion,
     requestedEmotion,
+    intensity,
     relationshipStage: safeRelationshipStage,
     voiceModeEnabled,
     ttsCapabilities,
@@ -523,6 +543,7 @@ export function resolveInteractionPlan({
     presence,
     thinkingMode: normalizeThinkingMode(intent?.thinkingMode),
     emotion,
+    intensity,
     emotionStrength,
     action,
     camera,

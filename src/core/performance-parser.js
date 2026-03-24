@@ -44,6 +44,7 @@ function normalizeIntent(parsed) {
 
   return {
     emotion: parsed.emotion,
+    intensity: parsed.intensity,
     camera: parsed.camera ?? "wide",
     action: parsed.action ?? "none"
   };
