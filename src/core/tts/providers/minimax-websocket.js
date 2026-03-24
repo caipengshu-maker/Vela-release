@@ -28,6 +28,15 @@ function toStatusError(message, payload = null) {
   return error;
 }
 
+function normalizeFiniteNumber(value, fallback) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+}
+
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function resolveVoiceSetting(ttsConfig, presetMeta = {}) {
   const requestedEmotionMode = normalizeTtsEmotionMode(
     presetMeta.emotionMode,
@@ -42,12 +51,17 @@ function resolveVoiceSetting(ttsConfig, presetMeta = {}) {
     resolvedEmotion = presetMeta.fallbackProviderEmotion || "calm";
   }
 
+  const baseSpeed = normalizeFiniteNumber(ttsConfig.voiceSettings?.speed, 1);
+  const basePitch = normalizeFiniteNumber(ttsConfig.voiceSettings?.pitch, 0);
+  const speedMultiplier = normalizeFiniteNumber(presetMeta.speedMultiplier, 1);
+  const pitchOffset = normalizeFiniteNumber(presetMeta.pitchOffset, 0);
+
   const voiceSetting = {
     voice_id: ttsConfig.voiceId,
     emotion_mode: emotionMode,
-    speed: ttsConfig.voiceSettings.speed,
+    speed: clampNumber(baseSpeed * speedMultiplier, 0.5, 2),
     vol: ttsConfig.voiceSettings.volume,
-    pitch: ttsConfig.voiceSettings.pitch,
+    pitch: clampNumber(basePitch + pitchOffset, -12, 12),
     english_normalization: Boolean(
       ttsConfig.voiceSettings.englishNormalization
     )

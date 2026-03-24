@@ -6,11 +6,16 @@ function buildPresetMetaFromPlan(speechPlan) {
     return null;
   }
 
+  const speedMultiplier = Number(speechPlan.ttsSpeedMultiplier);
+  const pitchOffset = Number(speechPlan.ttsPitchOffset);
+
   return {
     presetId: speechPlan.ttsPreset,
     emotionMode: speechPlan.ttsEmotionMode || "auto",
     providerEmotion: speechPlan.ttsProviderEmotion || null,
-    fallbackProviderEmotion: "calm"
+    fallbackProviderEmotion: "calm",
+    speedMultiplier: Number.isFinite(speedMultiplier) ? speedMultiplier : 1,
+    pitchOffset: Number.isFinite(pitchOffset) ? pitchOffset : 0
   };
 }
 

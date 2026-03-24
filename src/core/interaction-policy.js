@@ -283,6 +283,8 @@ function resolveTtsPreset({
     presetId: preset.id,
     emotionMode,
     providerEmotion,
+    speedMultiplier: preset.speedMultiplier,
+    pitchOffset: preset.pitchOffset,
     fallbackProviderEmotion:
       emotionMode === "force" ? fallbackPreset.providerEmotion : null,
     downgradedFrom:
@@ -433,6 +435,8 @@ export function resolveInteractionPlan({
       ttsPreset: "calm",
       ttsEmotionMode: "auto",
       ttsProviderEmotion: null,
+      ttsSpeedMultiplier: 1,
+      ttsPitchOffset: 0,
       ttsForceReason: null,
       cameraHoldMs: 0,
       caption: buildCaption({
@@ -460,6 +464,8 @@ export function resolveInteractionPlan({
       ttsPreset: "calm",
       ttsEmotionMode: "auto",
       ttsProviderEmotion: null,
+      ttsSpeedMultiplier: 1,
+      ttsPitchOffset: 0,
       ttsForceReason: null,
       cameraHoldMs: 0,
       caption: buildCaption({
@@ -525,6 +531,8 @@ export function resolveInteractionPlan({
     ttsPreset: ttsPreset.presetId,
     ttsEmotionMode: ttsPreset.emotionMode,
     ttsProviderEmotion: ttsPreset.providerEmotion,
+    ttsSpeedMultiplier: ttsPreset.speedMultiplier,
+    ttsPitchOffset: ttsPreset.pitchOffset,
     ttsDowngradedFrom: ttsPreset.downgradedFrom,
     ttsForceReason: ttsPreset.forceReason,
     cameraHoldMs: camera === "close" ? CLOSE_HOLD_MS : 0,

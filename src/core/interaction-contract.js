@@ -49,51 +49,75 @@ export const TTS_FORCE_CONTINUITY_WINDOW_MS = 20 * 60 * 1000;
 export const TTS_PRESET_MAP = {
   calm: {
     id: "calm",
-    providerEmotion: "calm"
+    providerEmotion: "calm",
+    speedMultiplier: 1.0,
+    pitchOffset: 0
   },
   happy: {
     id: "happy",
-    providerEmotion: "happy"
-  },
-  affectionate: {
-    id: "affectionate",
-    providerEmotion: "calm"
+    providerEmotion: "happy",
+    speedMultiplier: 1.1,
+    pitchOffset: 1
   },
   playful: {
     id: "happy",
-    providerEmotion: "happy"
+    providerEmotion: "happy",
+    speedMultiplier: 1.15,
+    pitchOffset: 2
+  },
+  affectionate: {
+    id: "affectionate",
+    providerEmotion: "fluent",
+    speedMultiplier: 0.92,
+    pitchOffset: -1
   },
   concerned: {
     id: "concerned",
-    providerEmotion: "calm"
+    providerEmotion: "sad",
+    speedMultiplier: 0.9,
+    pitchOffset: -1
   },
   sad: {
     id: "sad",
-    providerEmotion: "sad"
+    providerEmotion: "sad",
+    speedMultiplier: 0.85,
+    pitchOffset: -2
   },
   angry: {
     id: "angry_soft",
-    providerEmotion: "angry"
+    providerEmotion: "angry",
+    speedMultiplier: 1.08,
+    pitchOffset: -1
   },
   whisper: {
     id: "whisper",
-    providerEmotion: "whisper"
+    providerEmotion: "whisper",
+    speedMultiplier: 0.88,
+    pitchOffset: 0
   },
   surprised: {
     id: "surprised",
-    providerEmotion: "surprised"
+    providerEmotion: "surprised",
+    speedMultiplier: 1.12,
+    pitchOffset: 2
   },
   curious: {
     id: "curious",
-    providerEmotion: "fluent"
+    providerEmotion: "fluent",
+    speedMultiplier: 1.0,
+    pitchOffset: 1
   },
   shy: {
     id: "shy",
-    providerEmotion: "calm"
+    providerEmotion: "fearful",
+    speedMultiplier: 0.88,
+    pitchOffset: 1
   },
   determined: {
     id: "determined",
-    providerEmotion: "fluent"
+    providerEmotion: "angry",
+    speedMultiplier: 1.05,
+    pitchOffset: -2
   }
 };
 
@@ -102,20 +126,12 @@ export { EMOTION_PRESETS_V2, EMOTION_PRESET_ORDER, EMOTION_PRESETS, resolveEmoti
 
 export const EMOTION_TO_VRM_PRESETS = EMOTION_PRESETS;
 
-export const EMOTION_TO_TTS_PROVIDER = {
-  calm: "calm",
-  happy: "happy",
-  playful: "happy",
-  surprised: "surprised",
-  affectionate: "calm",
-  shy: "calm",
-  whisper: "whisper",
-  concerned: "calm",
-  sad: "sad",
-  angry: "angry",
-  determined: "fluent",
-  curious: "fluent"
-};
+export const EMOTION_TO_TTS_PROVIDER = Object.fromEntries(
+  Object.entries(TTS_PRESET_MAP).map(([emotion, preset]) => [
+    emotion,
+    preset.providerEmotion
+  ])
+);
 
 export function sanitizeEnum(value, allowedValues, fallback) {
   return allowedValues.includes(value) ? value : fallback;
