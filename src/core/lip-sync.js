@@ -1,7 +1,7 @@
 const ANALYSER_FFT_SIZE = 512;
 const MIN_FREQUENCY_BIN = 2;
 const MAX_FREQUENCY_BIN_RATIO = 0.35;
-const AMPLITUDE_NORMALIZER = 96;
+const AMPLITUDE_NORMALIZER = 48;
 const MEDIA_SOURCE_CACHE = new WeakMap();
 
 function getMediaSourceCache(audioContext) {

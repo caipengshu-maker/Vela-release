@@ -1,4 +1,4 @@
-export const EMOTION_PRESETS_V2 = false;
+export const EMOTION_PRESETS_V2 = true;
 
 export const EMOTION_PRESET_ORDER = [
   "calm",
@@ -477,6 +477,11 @@ for (const preset of Object.values(EMOTION_PRESETS)) {
       weight: 1
     }
   ];
+  preset.expressionWeights = Object.fromEntries(
+    (preset.blendShapes || [])
+      .filter((entry) => entry.kind === "expression")
+      .map((entry) => [entry.name, entry.weight])
+  );
   preset.expressions = Object.fromEntries(
     (preset.blendShapes || [])
       .filter((entry) => entry.kind === "raw")

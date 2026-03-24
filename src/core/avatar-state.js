@@ -74,6 +74,7 @@ export function settleAvatarState(avatar, { voiceModeEnabled }) {
     action: targetPresence === "listening" ? "listen-settle" : "none",
     actionLabel:
       actionLabels[targetPresence === "listening" ? "listen-settle" : "none"],
+    cameraHoldMs: 0,
     caption:
       targetPresence === "listening"
         ? "我在，继续吧。"
@@ -89,6 +90,7 @@ export function releaseCloseCamera(avatar) {
   return {
     ...avatar,
     camera: "wide",
-    cameraLabel: cameraLabels.wide
+    cameraLabel: cameraLabels.wide,
+    cameraHoldMs: 0
   };
 }
