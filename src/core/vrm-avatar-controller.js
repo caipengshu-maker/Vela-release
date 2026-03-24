@@ -352,6 +352,14 @@ const IDLE_ANIMATION_PATHS = [
 const IDLE_CROSSFADE_INTERVAL_MIN = 15;
 const IDLE_CROSSFADE_INTERVAL_MAX = 30;
 const IDLE_CROSSFADE_DURATION = 1.5;
+const IDLE_MICRO_TRIGGER_MIN = 20;
+const IDLE_MICRO_TRIGGER_MAX = 40;
+const IDLE_MICRO_FADE_IN = 0.3;
+const IDLE_MICRO_FADE_OUT = 0.5;
+const IDLE_MICRO_SMILE_WEIGHT = 0.15;
+const IDLE_MICRO_GLANCE_WEIGHT = 0.12;
+const IDLE_MICRO_HEAD_TILT_DEGREES = 3;
+const IDLE_MICRO_TYPES = ["smile", "tilt", "glance"];
 const PRESET_CROSSFADE_MIN = 0.45;
 const PRESET_CROSSFADE_MAX = 1.8;
 
@@ -491,6 +499,7 @@ export class VrmAvatarController {
     this.currentEmotionClipName = "";
     this.lastIdleClipIndex = -1;
     this.nextCrossfadeIn = randomRange(IDLE_CROSSFADE_INTERVAL_MIN, IDLE_CROSSFADE_INTERVAL_MAX);
+    this.idleMicroState = this._createIdleMicroState();
     this.mixerActive = false;
     this.externalMouthControl = {
       active: false,
@@ -597,6 +606,90 @@ export class VrmAvatarController {
     }
   }
 
+  _createIdleMicroState() {
+    return {
+      nextTriggerIn: randomRange(IDLE_MICRO_TRIGGER_MIN, IDLE_MICRO_TRIGGER_MAX),
+      activeType: null,
+      elapsed: 0,
+      duration: 0,
+      fadeIn: IDLE_MICRO_FADE_IN,
+      fadeOut: IDLE_MICRO_FADE_OUT,
+      tiltDirection: 1
+    };
+  }
+
+  _resetIdleMicroState() {
+    this.idleMicroState = this._createIdleMicroState();
+  }
+
+  _startIdleMicroExpression() {
+    const activeType =
+      IDLE_MICRO_TYPES[Math.floor(Math.random() * IDLE_MICRO_TYPES.length)] || "smile";
+    const duration = activeType === "glance"
+      ? randomRange(1, 2)
+      : randomRange(2, 3);
+
+    this.idleMicroState = {
+      ...this.idleMicroState,
+      activeType,
+      elapsed: 0,
+      duration,
+      fadeIn: IDLE_MICRO_FADE_IN,
+      fadeOut: IDLE_MICRO_FADE_OUT,
+      tiltDirection: Math.random() < 0.5 ? -1 : 1
+    };
+  }
+
+  _tickIdleMicroState(presentation, delta) {
+    if (presentation?.presence !== "idle") {
+      if (this.idleMicroState?.activeType) {
+        this._resetIdleMicroState();
+      }
+      return;
+    }
+
+    const state = this.idleMicroState || this._createIdleMicroState();
+    state.nextTriggerIn -= delta;
+
+    if (state.activeType) {
+      state.elapsed += delta;
+      if (state.elapsed >= state.duration) {
+        state.activeType = null;
+        state.elapsed = 0;
+        state.duration = 0;
+      }
+    }
+
+    if (state.nextTriggerIn <= 0 && !state.activeType) {
+      this._startIdleMicroExpression();
+      this.idleMicroState.nextTriggerIn = randomRange(
+        IDLE_MICRO_TRIGGER_MIN,
+        IDLE_MICRO_TRIGGER_MAX
+      );
+    } else {
+      this.idleMicroState = state;
+    }
+  }
+
+  _getIdleMicroBlend() {
+    const state = this.idleMicroState;
+
+    if (!state?.activeType || state.duration <= 0) {
+      return 0;
+    }
+
+    const fadeIn = Math.min(state.fadeIn || 0, state.duration);
+    const fadeOut = Math.min(state.fadeOut || 0, state.duration);
+    const fadeInWeight = fadeIn > 0 ? Math.min(state.elapsed / fadeIn, 1) : 1;
+    const fadeOutStart = Math.max(state.duration - fadeOut, 0);
+    const fadeOutWeight =
+      state.elapsed > fadeOutStart && fadeOut > 0
+        ? Math.max((state.duration - state.elapsed) / fadeOut, 0)
+        : 1;
+
+    return THREE.MathUtils.clamp(Math.min(fadeInWeight, fadeOutWeight), 0, 1);
+  }
+
   setMouthOpenness(value) {
     const nextValue = THREE.MathUtils.clamp(Number(value) || 0, 0, 1);
     const expressionName = this._resolveMouthExpressionName();
@@ -697,6 +790,7 @@ export class VrmAvatarController {
 
       const mouthOpen = this._computeMouthOpen(presentation);
       const blinkWeight = this._computeBlink(delta);
+      this._tickIdleMicroState(presentation, delta);
 
       this._updateCamera(delta, presentation, preset);
       this._updateExpressions(presentation, mouthOpen, blinkWeight, delta, preset);
@@ -1111,6 +1205,7 @@ export class VrmAvatarController {
     this.currentIdleClipName = "";
     this.currentEmotionClipName = "";
     this.mixerActive = false;
+    this._resetIdleMicroState();
     this.externalMouthControl = {
       active: false,
       expressionName: "",
@@ -1535,6 +1630,15 @@ export class VrmAvatarController {
       targets[mouthExpressionName] = this.externalMouthControl.value;
     }
 
+    const idleMicroBlend = this._getIdleMicroBlend();
+    if (idleMicroBlend > 0) {
+      if (this.idleMicroState.activeType === "smile") {
+        targets.happy = Math.max(targets.happy, IDLE_MICRO_SMILE_WEIGHT * idleMicroBlend);
+      } else if (this.idleMicroState.activeType === "glance") {
+        targets.lookUp = Math.max(targets.lookUp, IDLE_MICRO_GLANCE_WEIGHT * idleMicroBlend);
+      }
+    }
+
     const activePreset = preset || resolveEmotionPreset(presentation?.emotion);
     const expressionDampStrength = transitionMsToStrength(
       activePreset?.transitionMs,
@@ -1748,6 +1852,13 @@ export class VrmAvatarController {
         break;
       default:
         break;
+    }
+
+    if (this.idleMicroState?.activeType === "tilt") {
+      head.z +=
+        degToRad(IDLE_MICRO_HEAD_TILT_DEGREES) *
+        (this.idleMicroState.tiltDirection || 1) *
+        this._getIdleMicroBlend();
     }
 
     if (this._isPresetModeEnabled()) {

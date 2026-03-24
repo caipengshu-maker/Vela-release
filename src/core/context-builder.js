@@ -218,6 +218,8 @@ export function buildContext({
     PERFORMANCE_PROTOCOL_PROMPT,
     relationshipContext,
     persona.seedPrompt,
+    "提起过去的对话或记忆时，要像朋友顺手想起来一样自然带出，不要把记忆当资料卡复述。",
+    "不要说“我记得”“根据之前的对话”“你之前提到过”“在我们上次聊天中”；直接顺着当下话题接，比如“你又熬夜了？上次也是这样连着好几天。”",
     awarenessPacket || buildFallbackAwareness({
       profile,
       relationship,
