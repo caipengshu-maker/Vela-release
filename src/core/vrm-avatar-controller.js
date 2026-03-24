@@ -234,10 +234,7 @@ function normalizeAvatarState(avatar) {
     presence,
     emotion,
     relationshipStage,
-    camera:
-      presence === "speaking"
-        ? String(avatar?.camera || "wide").trim().toLowerCase()
-        : "wide",
+    camera: String(avatar?.camera || "wide").trim().toLowerCase(),
     expression: String(avatar?.expression || "neutral").trim().toLowerCase(),
     motion: String(avatar?.motion || "still").trim().toLowerCase()
   };
@@ -249,7 +246,6 @@ function resolveSafePresentation(avatar) {
   if (state.presence === "idle") {
     return {
       ...state,
-      camera: "wide",
       expression: "neutral",
       motion: "still"
     };
@@ -258,7 +254,6 @@ function resolveSafePresentation(avatar) {
   if (state.presence === "listening") {
     return {
       ...state,
-      camera: "wide",
       expression: "relaxed",
       motion: "listen-settle"
     };
@@ -267,7 +262,6 @@ function resolveSafePresentation(avatar) {
   if (state.presence === "thinking") {
     return {
       ...state,
-      camera: "wide",
       expression: "neutral",
       motion: "tiny-head-drop"
     };
@@ -491,7 +485,8 @@ export class VrmAvatarController {
       lastCameraLogAt: -Infinity,
       lastAvatarSignature: "",
       lastPresentationLogAt: -Infinity,
-      lastPresetEmotion: ""
+      lastPresetEmotion: "",
+      loggedMorphAudit: false
     };
 
     const hemisphereLight = new THREE.HemisphereLight(0xfff2ea, 0x8d6b73, 1.45);
@@ -832,6 +827,39 @@ export class VrmAvatarController {
     console.log(
       `[VRM][morph] cached mesh=${bestMesh.name || "(unnamed)"} morphTargets=${this.rawMorphTargetDictionary.size}`
     );
+    this._logMorphAudit();
+  }
+
+  _logMorphAudit() {
+    if (this.debugState.loggedMorphAudit || this.rawMorphTargetDictionary.size === 0) {
+      return;
+    }
+
+    this.debugState.loggedMorphAudit = true;
+
+    const available = new Set(this.rawMorphTargetDictionary.keys());
+    const unionUsed = new Set();
+    const unionMissing = new Set();
+
+    EMOTION_PRESET_ORDER.forEach((emotion) => {
+      const preset = resolveEmotionPreset(emotion);
+      const rawNames = Object.keys(preset?.expressions || {});
+      const present = rawNames.filter((name) => available.has(name));
+      const missing = rawNames.filter((name) => !available.has(name));
+
+      rawNames.forEach((name) => unionUsed.add(name));
+      missing.forEach((name) => unionMissing.add(name));
+
+      console.log(
+        `[VRM][morph-audit] emotion=${emotion} present=${present.length}/${rawNames.length}` +
+          (missing.length ? ` missing=${missing.join(",")}` : " missing=none")
+      );
+    });
+
+    console.log(
+      `[VRM][morph-audit][summary] used=${unionUsed.size} available=${available.size} missing=${unionMissing.size}` +
+        (unionMissing.size ? ` missingNames=${Array.from(unionMissing).join(",")}` : " missingNames=none")
+    );
   }
 
   _applyArmsDown() {
@@ -1043,6 +1071,7 @@ export class VrmAvatarController {
     this.rawMorphTargetDictionary.clear();
     this.rawMorphTargetWeights.clear();
     this.rawMorphTargetMesh = null;
+    this.debugState.loggedMorphAudit = false;
     this.restQuaternions.clear();
     this.idleClipMap.clear();
     this.currentIdleAction = null;
@@ -1743,8 +1772,9 @@ export class VrmAvatarController {
     }
 
     this._tempVecB.copy(this.camera.position);
-    this._tempVecB.z -= presentation.camera === "close" ? 0.18 : 0.34;
-    this._tempVecB.y += presentation.camera === "close" ? 0.02 : -0.06;
+    const lookAtCameraMode = this._resolveCameraMode(presentation);
+    this._tempVecB.z -= lookAtCameraMode === "close" ? 0.18 : 0.34;
+    this._tempVecB.y += lookAtCameraMode === "close" ? 0.02 : -0.06;
 
     if (presentation.presence === "thinking") {
       this._tempVecB.y -= 0.26;
