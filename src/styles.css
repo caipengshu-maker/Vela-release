@@ -50,7 +50,7 @@ textarea {
   z-index: 9999;
   display: grid;
   place-items: center;
-  background: radial-gradient(ellipse at center, #1a1a2e 0%, #0d0d0d 70%);
+  background: #ffffff;
   opacity: 0;
   animation-timing-function: ease;
   animation-fill-mode: forwards;
@@ -67,13 +67,12 @@ textarea {
 }
 
 .splash-screen-logo {
-  width: min(480px, 80vw);
-  max-width: 480px;
+  width: 92vw;
+  max-width: 1200px;
   height: auto;
   display: block;
   user-select: none;
   pointer-events: none;
-  filter: drop-shadow(0 0 40px rgba(255, 255, 255, 0.06));
 }
 
 @keyframes splash-fade-in {
