@@ -8,6 +8,7 @@ import {
 } from "./core/avatar-state.js";
 import { VrmAvatarStage } from "./vrm-avatar-stage.jsx";
 import { SplashScreen } from "./SplashScreen.jsx";
+import { VelaTitleScreen } from "./VelaTitleScreen.jsx";
 import { BgmController } from "./core/bgm-controller.js";
 import { SettingsModal } from "./SettingsModal.jsx";
 import { OnboardingFlow } from "./OnboardingFlow.jsx";
@@ -769,6 +770,7 @@ export default function App() {
   const [draft, setDraft] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [splashDone, setSplashDone] = useState(false);
+  const [titleDone, setTitleDone] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [isMainEntering, setIsMainEntering] = useState(false);
@@ -1745,14 +1747,14 @@ export default function App() {
     <main className={`app-shell ${relationshipClass} ${isFullscreen ? "is-fullscreen" : ""} ${isFarewelling ? "is-farewelling" : ""}`}>
       {!splashDone ? (
         <SplashScreen onDone={() => setSplashDone(true)} />
+      ) : !titleDone ? (
+        <VelaTitleScreen isReady={!isLoading} onDone={() => setTitleDone(true)} />
       ) : (
         <>
           <div className="ambient ambient-a" />
           <div className="ambient ambient-b" />
 
-          {isLoading ? (
-            <div className="loading-screen" />
-          ) : error && !state.app ? (
+          {error && !state.app ? (
             <StartupErrorScreen
               message={error}
               onRetry={() => {

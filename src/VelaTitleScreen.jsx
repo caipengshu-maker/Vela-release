@@ -1,0 +1,148 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+
+const TITLE_LOGO_PATH = "D:\\Vela\\assets\\splash\\vela-title-logo.png";
+const FADE_OUT_MS = 900;
+const MIN_DISPLAY_MS = 1800;
+
+function toBlobPart(binaryPayload) {
+  if (binaryPayload instanceof ArrayBuffer) {
+    return binaryPayload;
+  }
+
+  if (ArrayBuffer.isView(binaryPayload)) {
+    return binaryPayload.buffer.slice(
+      binaryPayload.byteOffset,
+      binaryPayload.byteOffset + binaryPayload.byteLength
+    );
+  }
+
+  return binaryPayload;
+}
+
+export function VelaTitleScreen({ isReady, onDone }) {
+  const [logoSrc, setLogoSrc] = useState("");
+  const [isExiting, setIsExiting] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const mountedAtRef = useRef(Date.now());
+  const hasFiredDone = useRef(false);
+
+  // Load logo image via preload bridge
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = "";
+
+    async function loadLogo() {
+      if (typeof window.vela?.readBinaryFile !== "function") {
+        return;
+      }
+
+      try {
+        const payload = await window.vela.readBinaryFile(TITLE_LOGO_PATH);
+
+        if (cancelled) {
+          return;
+        }
+
+        const blob = new Blob([toBlobPart(payload)], { type: "image/png" });
+        objectUrl = URL.createObjectURL(blob);
+        setLogoSrc(objectUrl);
+      } catch {
+        // Title screen works fine without the logo (just progress line).
+      }
+    }
+
+    void loadLogo();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, []);
+
+  // Simulated progress that accelerates when ready
+  useEffect(() => {
+    let raf;
+    let last = performance.now();
+
+    function tick(now) {
+      const dt = now - last;
+      last = now;
+
+      setProgress((prev) => {
+        if (prev >= 1) return 1;
+
+        // Before ready: crawl slowly toward ~70%
+        // After ready: rush to 100%
+        if (!isReady) {
+          const target = 0.7;
+          const speed = 0.0003; // slow crawl
+          return prev + (target - prev) * speed * dt;
+        }
+
+        // Ready: fast fill to 100%
+        const speed = 0.006;
+        return Math.min(1, prev + speed * dt);
+      });
+
+      raf = requestAnimationFrame(tick);
+    }
+
+    raf = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(raf);
+  }, [isReady]);
+
+  // When progress hits 1 and min display time has passed, begin exit
+  useEffect(() => {
+    if (progress < 1 || isExiting || hasFiredDone.current) {
+      return;
+    }
+
+    const elapsed = Date.now() - mountedAtRef.current;
+    const delay = Math.max(0, MIN_DISPLAY_MS - elapsed);
+
+    const timer = setTimeout(() => {
+      setIsExiting(true);
+
+      const fadeTimer = setTimeout(() => {
+        if (!hasFiredDone.current) {
+          hasFiredDone.current = true;
+          onDone?.();
+        }
+      }, FADE_OUT_MS);
+
+      return () => clearTimeout(fadeTimer);
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [progress, isExiting, onDone]);
+
+  const overlayClass = useMemo(
+    () => `vela-title-overlay ${isExiting ? "is-exiting" : "is-entering"}`,
+    [isExiting]
+  );
+
+  return (
+    <div className={overlayClass} aria-hidden="true">
+      {logoSrc ? (
+        <img
+          className="vela-title-logo"
+          src={logoSrc}
+          alt=""
+          draggable={false}
+        />
+      ) : (
+        <div className="vela-title-text">Vela</div>
+      )}
+
+      <div className="vela-title-progress-track">
+        <div
+          className="vela-title-progress-fill"
+          style={{ transform: `scaleX(${progress})` }}
+        />
+      </div>
+    </div>
+  );
+}
