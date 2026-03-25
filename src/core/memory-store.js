@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { generateReply } from "./provider.js";
+import { defaultMilestonesState, mergeMilestonesState } from "./milestones.js";
 
 const PROFILE_FILE = "memory/profile.json";
 const USER_MODEL_FILE = "memory/user-model.json";
@@ -51,7 +52,8 @@ function defaultRelationship() {
   return {
     stage: "reserved",
     note: "还比较生疏，先保持礼貌和分寸。",
-    sharedMoments: []
+    sharedMoments: [],
+    milestones: defaultMilestonesState()
   };
 }
 
@@ -164,7 +166,8 @@ function mergeRelationship(relationship = {}) {
     ...relationship,
     sharedMoments: Array.isArray(relationship.sharedMoments)
       ? relationship.sharedMoments
-      : []
+      : [],
+    milestones: mergeMilestonesState(relationship.milestones)
   };
 }
 

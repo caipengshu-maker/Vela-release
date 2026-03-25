@@ -34,6 +34,10 @@ import {
   getRelationshipStageNote,
   RelationshipTracker
 } from "./relationship.js";
+import {
+  advanceMilestones,
+  buildMilestoneSystemMessage
+} from "./milestones.js";
 import { RELATIONSHIP_STAGES } from "./interaction-contract.js";
 import {
   createStreamPrefixBuffer,
@@ -248,6 +252,30 @@ function buildRelationshipUnlockHints(relationship) {
   }
 
   return hints;
+}
+
+function buildMilestonePromptBlock(milestones = []) {
+  if (!Array.isArray(milestones) || milestones.length === 0) {
+    return "";
+  }
+
+  return milestones
+    .map((milestone) => buildMilestoneSystemMessage(milestone))
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function appendSystemPromptBlock(context, promptBlock) {
+  const trimmedBlock = String(promptBlock || "").trim();
+
+  if (!trimmedBlock) {
+    return context;
+  }
+
+  return {
+    ...context,
+    systemPrompt: [context.systemPrompt, trimmedBlock].filter(Boolean).join("\n\n")
+  };
 }
 
 const RELATIONSHIP_STATE_FILE = "state/relationship.json";
@@ -538,6 +566,35 @@ export class VelaCore {
     await this.saveRelationshipTracker();
     await this.syncRelationshipMemoryState(baseRelationship);
     return result;
+  }
+
+  async prepareMilestonesForUserTurn(memory, userMessage, conversationAt) {
+    const baseRelationship =
+      memory?.relationship && typeof memory.relationship === "object"
+        ? memory.relationship
+        : {};
+    const { milestones, newlyTriggeredMilestones } = advanceMilestones({
+      relationship: baseRelationship,
+      userMessage,
+      now: conversationAt
+    });
+    const nextRelationship = {
+      ...baseRelationship,
+      milestones
+    };
+
+    await this.memoryStore.updateRelationship(nextRelationship);
+
+    if (memory && typeof memory === "object") {
+      memory.relationship = nextRelationship;
+    }
+
+    return {
+      relationship: this.getRelationshipState(nextRelationship),
+      relationshipForPersistence: nextRelationship,
+      milestonePromptBlock: buildMilestonePromptBlock(newlyTriggeredMilestones),
+      newlyTriggeredMilestones
+    };
   }
 
   async loadMemorySnapshot() {
@@ -1439,7 +1496,9 @@ export class VelaCore {
     const proactiveCountToday = Number(this.persistedState?.proactiveCountToday || 0) + 1;
 
     await this.memoryStore.appendTurnSummary(summary);
-    await this.recordRelationshipTurn(parsedPerformance.intent?.emotion || "calm");
+    await this.recordRelationshipTurn(
+      parsedPerformance.intent || { emotion: "calm", intensity: 0 }
+    );
     const relationshipStage = this.relationshipTracker?.stage || speakingAvatar.relationshipStage;
     const avatarForPersistence = {
       ...speakingAvatar,
@@ -1526,6 +1585,16 @@ export class VelaCore {
     this.currentAvatar = this.buildPresenceAvatar("thinking");
     await this.emitAvatarState(options.onEvent, this.currentAvatar);
 
+    const {
+      relationship: relationship,
+      relationshipForPersistence,
+      milestonePromptBlock
+    } = await this.prepareMilestonesForUserTurn(
+      memory,
+      trimmedMessage,
+      userTurn.createdAt
+    );
+
     const inferredEmotion = inferEmotionFromText(trimmedMessage);
     const relevantMemories = await this.memoryRetriever.retrieveRelevantMemories({
       userInput: trimmedMessage,
@@ -1534,8 +1603,7 @@ export class VelaCore {
     });
     const { awarenessPacket, relationshipUnlockHints } =
       await this.buildAwarenessPacket(memory, relevantMemories, options);
-    const relationship = this.getRelationshipState(memory.relationship);
-    const context = buildContext({
+    let context = buildContext({
       persona: this.persona,
       profile: memory.profile,
       relationship,
@@ -1551,6 +1619,7 @@ export class VelaCore {
       relationshipUnlockHints,
       isInRegressionMood: relationship.isInRegressionMood
     });
+    context = appendSystemPromptBlock(context, milestonePromptBlock);
 
     const assistantMessageId = randomUUID();
     let assistantResponse = null;
@@ -1727,10 +1796,13 @@ export class VelaCore {
 
     await this.memoryStore.appendTurnSummary(summary);
     await this.recordRelationshipTurn(
-      parsedPerformance.intent?.emotion ||
+      parsedPerformance.intent ||
         streamingIntent ||
-        prefixBuffer?.getIntent() ||
-        "calm"
+        prefixBuffer?.getIntent() || {
+          emotion: "calm",
+          intensity: 0
+        },
+      relationshipForPersistence
     );
     const relationshipStage = this.relationshipTracker?.stage || speakingAvatar.relationshipStage;
     const avatarForPersistence = {
