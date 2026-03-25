@@ -1750,13 +1750,7 @@ export default function App() {
 
   return (
     <main className={`app-shell ${relationshipClass} ${isFullscreen ? "is-fullscreen" : ""} ${isFarewelling ? "is-farewelling" : ""} ${!titleDone ? "is-title-active" : ""}`}>
-      {/* Overlay layers: splash/title cover content until ready */}
-      {!splashDone && <SplashScreen onDone={() => setSplashDone(true)} />}
-      {splashDone && !titleDone && (
-        <VelaTitleScreen isReady={isSettled} onDone={() => setTitleDone(true)} />
-      )}
-
-      {/* Content always renders (behind overlays) so VRM loads early */}
+      {/* Content always renders behind the overlay stack so VRM loads early. */}
       <div className="ambient ambient-a" />
       <div className="ambient ambient-b" />
 
@@ -1959,6 +1953,15 @@ export default function App() {
         selectedModel={state.modelStatus?.selectedModel || "auto"}
         onModelSwitch={handleModelSwitch}
       />
+
+      {!titleDone ? (
+        <VelaTitleScreen
+          isReady={isSettled}
+          canExit={splashDone}
+          onDone={() => setTitleDone(true)}
+        />
+      ) : null}
+      {!splashDone ? <SplashScreen onDone={() => setSplashDone(true)} /> : null}
     </main>
   );
 }

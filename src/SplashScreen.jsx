@@ -76,17 +76,18 @@ export function SplashScreen({ onDone }) {
   }, [onDone]);
 
   const overlayClassName = useMemo(
-    () =>
-      `splash-screen-overlay ${
-        isExiting ? "is-exiting" : "is-entering"
-      }`,
+    () => `splash-screen-overlay${isExiting ? " is-exiting" : ""}`,
+    [isExiting]
+  );
+  const logoClassName = useMemo(
+    () => `splash-screen-logo${isExiting ? "" : " is-entering"}`,
     [isExiting]
   );
 
   return (
     <div className={overlayClassName} aria-hidden="true">
       {logoSrc ? (
-        <img className="splash-screen-logo" src={logoSrc} alt="" draggable={false} />
+        <img className={logoClassName} src={logoSrc} alt="" draggable={false} />
       ) : null}
     </div>
   );

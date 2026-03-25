@@ -19,7 +19,7 @@ function toBlobPart(binaryPayload) {
   return binaryPayload;
 }
 
-export function VelaTitleScreen({ isReady, onDone }) {
+export function VelaTitleScreen({ isReady, canExit = false, onDone }) {
   const [logoSrc, setLogoSrc] = useState("");
   const [isExiting, setIsExiting] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -96,31 +96,41 @@ export function VelaTitleScreen({ isReady, onDone }) {
 
   // When progress hits 1 and min display time has passed, begin exit
   useEffect(() => {
-    if (progress < 1 || isExiting || hasFiredDone.current) {
+    if (progress < 1 || !canExit || isExiting || hasFiredDone.current) {
       return;
     }
 
     const elapsed = Date.now() - mountedAtRef.current;
     const delay = Math.max(0, MIN_DISPLAY_MS - elapsed);
 
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       setIsExiting(true);
-
-      const fadeTimer = setTimeout(() => {
-        if (!hasFiredDone.current) {
-          hasFiredDone.current = true;
-          onDone?.();
-        }
-      }, FADE_OUT_MS);
-
-      return () => clearTimeout(fadeTimer);
     }, delay);
 
-    return () => clearTimeout(timer);
-  }, [progress, isExiting, onDone]);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [canExit, progress, isExiting]);
+
+  useEffect(() => {
+    if (!isExiting || hasFiredDone.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      if (!hasFiredDone.current) {
+        hasFiredDone.current = true;
+        onDone?.();
+      }
+    }, FADE_OUT_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [isExiting, onDone]);
 
   const overlayClass = useMemo(
-    () => `vela-title-overlay ${isExiting ? "is-exiting" : "is-entering"}`,
+    () => `vela-title-overlay${isExiting ? " is-exiting" : ""}`,
     [isExiting]
   );
 

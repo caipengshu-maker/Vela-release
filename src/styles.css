@@ -51,19 +51,14 @@ textarea {
   display: grid;
   place-items: center;
   background: #ffffff;
-  opacity: 0;
-  animation-timing-function: ease;
-  animation-fill-mode: forwards;
-}
-
-.splash-screen-overlay.is-entering {
-  animation-name: splash-fade-in;
-  animation-duration: 600ms;
+  opacity: 1;
 }
 
 .splash-screen-overlay.is-exiting {
   animation-name: splash-fade-out;
   animation-duration: 800ms;
+  animation-timing-function: ease;
+  animation-fill-mode: forwards;
 }
 
 .splash-screen-logo {
@@ -71,11 +66,16 @@ textarea {
   max-width: 1200px;
   height: auto;
   display: block;
+  opacity: 1;
   user-select: none;
   pointer-events: none;
 }
 
-@keyframes splash-fade-in {
+.splash-screen-logo.is-entering {
+  animation: splash-logo-in 600ms ease both;
+}
+
+@keyframes splash-logo-in {
   from {
     opacity: 0;
   }
@@ -106,24 +106,14 @@ textarea {
   align-items: center;
   justify-content: center;
   background: #000000;
-  opacity: 0;
-  animation-timing-function: ease;
-  animation-fill-mode: forwards;
-}
-
-.vela-title-overlay.is-entering {
-  animation-name: vela-title-in;
-  animation-duration: 800ms;
+  opacity: 1;
 }
 
 .vela-title-overlay.is-exiting {
   animation-name: vela-title-out;
   animation-duration: 900ms;
-}
-
-@keyframes vela-title-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  animation-timing-function: ease;
+  animation-fill-mode: forwards;
 }
 
 @keyframes vela-title-out {
@@ -191,10 +181,6 @@ textarea {
 }
 
 /* Keep black bg while title screen overlay is visible */
-.app-shell.is-title-active {
-  --app-bg: #000000;
-}
-
 .app-shell.relationship-reserved {
   --app-bg: #f4ebe6;
 }
@@ -214,6 +200,15 @@ textarea {
     radial-gradient(circle at top left, rgba(250, 241, 225, 0.82), transparent 32%),
     radial-gradient(circle at 88% 12%, rgba(208, 234, 231, 0.46), transparent 24%),
     linear-gradient(145deg, #eef4f0 0%, #e8eeeb 52%, #e4e8e5 100%);
+}
+
+.app-shell.is-title-active,
+.app-shell.is-title-active.relationship-reserved,
+.app-shell.is-title-active.relationship-warm,
+.app-shell.is-title-active.relationship-close,
+.app-shell.is-title-active.is-fullscreen {
+  --app-bg: #000000;
+  background: #000000;
 }
 
 .ambient {
@@ -1692,13 +1687,13 @@ textarea {
 }
 
 .startup-error-screen {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f4ebe6;
-  z-index: 9999;
+  position: relative;
+  inset: auto;
+  display: grid;
+  place-items: center;
+  min-height: calc(100vh - 48px);
+  background: transparent;
+  z-index: 1;
 }
 
 .startup-error-card {
