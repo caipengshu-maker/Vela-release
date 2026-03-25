@@ -1,29 +1,21 @@
 # SESSION-STATE
 
 ## 当前任务
-Vela M5.5 施工中 → 下一刀：T11 背景插画接入
+M5.5 + AX 板子校准收口 — 真相源已对齐
 
 ## 状态
-DONE: ASR + composer 双模态 + 模型切换 + TTS 修复（speech-2.8-hd）已 commit `0e1fc43` 并推送
+DONE：TASKS.md / CURRENT-ROUTE.md 已全部校准到代码真实状态
 
-## 三阶段计划（CTO 视角）
-
-### Phase 1 — 产品感补全（本周）
-1. T11 背景插画接入（bg-day.png / bg-night.png 已在 D:/Vela/assets/backgrounds/）
-2. T10 开屏动画（k-studio-logo.png 已在 D:/Vela/assets/splash/）
-3. T3 错误处理（TTS/ASR/网络静默失败 → 补提示）
-4. UI 小打磨
-
-### Phase 2 — 可交付化（下周）
-- T2 设置界面 / T4 首次引导 / T7 持久化健壮性 / T12 BGM
-
-### Phase 3 — 打包 + 开源（第三周）
-- M6 Electron Builder / T6 全屏 / README + 架构文档 / 社区准备
+## 变更摘要
+- M5.5 Phase 5-7 中 7 项从 TODO/IN-PROGRESS 校正为 DONE（T7/T6/C2/T8/T9/P1/P2 代码已存在）
+- AX L1/L2/L3 全部从 TODO 校正为 DONE + commit 引用
+- 待处理池清理：T8/T9 重复条目删除
+- C1 P键 demo 仍真 TODO（代码还在 vrm-avatar-stage.jsx）
+- DEEP-01 relationship intimate 枚举分裂确认为真 bug
+- DEEP-03 summarizer 确认已有 raw fallback 兜底，不再列为待修
 
 ## 下一步
-- Owner: Codex CLI
-- Task: T11 背景插画接入（日/夜背景根据时间段切换，VRM 模型叠加在背景上）
-- 验收：冷启动能看到背景插画，不影响 VRM 渲染
-
-## Blocker
-无
+等用户决定：
+1. 清掉 C1 P键 + DEEP-01 relationship（小活，直接做）
+2. 推 M6 产品化打包
+3. 或者先做 P3/P4/P5 体验打磨

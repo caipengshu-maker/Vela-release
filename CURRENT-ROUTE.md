@@ -6,90 +6,71 @@
 
 ## 当前主线
 
-### AX：Avatar eXperience 体验优化
+### M5.5 + AX 已全部收口（2026-03-25）
 
-M5.5 已收口（2026-03-24）。在 M6 打包前插入 **AX 体验优化**，专门解决 avatar 交互的疏离感。
+所有 M5.5 产品补全项 + AX 体验优化项均已完成或确认无需修复。
 
-**核心目标：从"能动"变成"像活的"。**
+**M5.5 完成清单：**
+- T1 ASR ✅ · T10 开屏 ✅ · T5 UI 打磨 ✅
+- T11 场景背景 ✅ · T12 BGM ✅
+- T3 错误处理 ✅ · T2 设置界面 ✅ · T4 首次引导 ✅
+- T7 桥接摘要 ✅ · T6 全屏沉浸 ✅
+- T8 窗口状态 ✅ · T9 Lip Sync ✅
+- C2 summarizer ✅（已有 raw fallback，不需要额外修）
+- P1 告别微表情 ✅ · P2 思考动画联动 ✅
 
-**详细方案**：`docs/AX-AVATAR-EXPERIENCE-PLAN.md`
+**AX 完成清单：**
+- L1 V2 表情 + 镜头 + morph audit ✅
+- L2 情绪联动（TTS + 表情过渡 + 动画扩展 + intensity）✅
+- L3 HeadAudio viseme lip sync ✅
 
-**执行顺序（已锁定）：**
+### 剩余尾单（不阻塞主线推进）
 
-1. **AX-L1 开启已有能力**（配置层，1-2 天）
-   - 开启 V2 表情系统
-   - 放开镜头限制
-   - Lip sync 增益
-   - 全量验证 + 修复
-2. **AX-L2 情绪联动**（3-5 天）
-   - 情绪驱动镜头
-   - TTS 语速/语调联动
-   - 表情过渡平滑
-   - 扩展动画库
-   - emotion intensity
-3. **AX-L3 Lip Sync 升级**（5-7 天）
-   - HeadAudio viseme 集成
-   - Fallback 链
-4. **AX-L4 长期升级**（归入 M6-M7）
-
-**施工规则**：全部走 Codex CLI `--yolo`，不用 subagent。
+| 项 | 状态 | 备注 |
+|---|---|---|
+| C1 P键 demo 剥离 | TODO | vrm-avatar-stage.jsx 里的 P 键 toggle，发布前必须删 |
+| P3 消息时间戳 | TODO | P2，体验打磨 |
+| P4 关系阶段视觉暗示 | TODO | P2，体验打磨 |
+| P5 空聊天氛围文案 | TODO | P2，体验打磨 |
+| DEEP-01 relationship intimate 枚举 | TODO | memory-store.js 的 evaluateRelationship 仍可产出 intimate，relationship.js 不认 |
+| BGM 音乐源 | BLOCKED | 等用户定路线 |
 
 ---
 
-### M5.5：产品补全（已收口 2026-03-24）
+## 下一站：M6 产品化打包
 
-M5 已收口（2026-03-22）。M6（Electron Builder 打包）延后。
-在 M5 和 M6 之间插入 **M5.5 产品补全**，专门清理产品层缺口 + 提升首次体验质感。
-
-**核心目标：从 demo 变成产品。**
-
-**施工顺序（已锁定）：**
-
-1. **T1 ASR 语音识别接入** — 解除断腿，语音交互闭环
-2. **T10 开屏动画（K Studio Splash）** — 首次体验门面
-3. **T5 UI 打磨** — M3/M4 遗留 UI 问题集合清理
-4. **T11 Avatar 场景背景** — 视觉冲击最大的一刀（日/夜切换 + 轻粒子点缀）
-5. **T12 环境 BGM** — 配合背景，体验翻倍
-6. **T3 错误处理 UI** — 防止用户懵逼
-7. **T2 设置界面 + T4 首次体验引导** — 连做
-8. **T7 聊天记录持久化**
-9. **T6 全屏沉浸模式**
-10. **C1 P键剥离 + C2 summarizer 修复**
-11. **T8 窗口状态记忆**
-12. **T9 Lip Sync**
-
-**图片资产生成方案：** Gemini 3.1 Pro Preview（lemonapi）生图 — K Studio logo 高清版 + avatar 场景背景插画。
+- Electron Builder 打包
+- 首次体验打磨
+- 稳定性加固
+- 发布流程
 
 ---
 
 ## 已完成里程碑
 
+### AX closure（2026-03-25）
+- L1 V2 表情 + 镜头 + morph audit（`976cda8` `761bbbb`）
+- L2 情绪联动 TTS/表情/动画/intensity（`b160ed6` `2b52177` `9d335c7`）
+- L2 补充：P3 体验层四件套（`c4c6350` `39cb4ee` `4634576`）
+- L3 HeadAudio viseme lip sync（`d925664`）
+
+### M5.5 closure（2026-03-24 施工，2026-03-25 确认收口）
+- Phase 1-7 全部完成（详见 TASKS.md）
+
 ### M5 closure（2026-03-22）
-- T1 表情-动画-镜头预设系统（12 情绪 × blend shape 配方 + 动画绑定 + 镜头偏好 + 骨骼 overlay）
-- T2 关系弧线系统（reserved→warm→close 三阶段 + 退阶机制 + 持久化）
-- T4 情绪驱动动画切换（11 个 Mixamo FBX，情绪变化 crossfade 切换）
-- 最终 commit：`04e2952`
+- 表情-动画-镜头预设 / 关系弧线 / 情绪驱动动画
 
 ### M4 closure（2026-03-22）
-- T5 记忆收窄三件套
-- T6b 手指 curl + idle 微动
-- T6c Mixamo 动画系统（6→11 FBX，替换手写四元数）
-- T7 UX 清理（chat header 删除 / 空状态标签 / grid 修复）
-- T8 轻主动机制（动态定位 + 天气触发 + 随机问候 + 每日上限 3 次）
-- docs 清理 + 分支清理
-- 最终 commit：`a466890`
+- 记忆收窄 / 手指动画 / Mixamo 系统 / UX 清理 / 轻主动机制
 
 ### M3 closure（2026-03-21）
-- TTS 流式开口（MiniMax WebSocket MSE）
-- VRM 骨骼全链路激活 + 自动轴向探测
-- LLM 自主表演协议（结构化 JSON 前缀，12 种 emotion）
-- wide/close 镜头（close 对焦脸部中心）
+- TTS 流式 / VRM 骨骼 / LLM 表演协议 / 镜头切换
 
 ### M2 closure（2026-03-20）
-- 流式文本 + 状态机 + thinking + 基础 fallback
+- 流式文本 / 状态机 / thinking / fallback
 
 ### M1 closure（2026-03-20）
-- 连续人格 + 连续记忆 + 初始化流 + 真实 LLM 验证
+- 连续人格 + 连续记忆
 
 ---
 
@@ -107,17 +88,12 @@ M5 已收口（2026-03-22）。M6（Electron Builder 打包）延后。
 ## 当前不做（碰了就算跑偏）
 
 - 文件权限 / 桌面整理 / 系统权限 / 编码助手
-- 重型主动推送系统
-- 复杂关系数值系统
-- Live2D / VRM 重资产路线
-- 多角色平台
-- 成人向主线
-- 完整 gateway / 插件平台
-- 向量数据库 / embedding 模型
-- 重型记忆平台
+- 重型主动推送系统 / 复杂关系数值 / 重型记忆平台
+- Live2D 重资产路线 / 多角色平台 / 成人向主线
+- 完整 gateway / 插件平台 / 向量数据库
 
 ---
 
 ## 一句话钉死
 
-**M5.5 = 从 demo 变产品。已收口。下一站 AX 体验优化。**
+**M5.5 + AX 全部收口。下一站 M6 产品化打包。**

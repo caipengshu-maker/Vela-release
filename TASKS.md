@@ -2,10 +2,10 @@
 
 ## 项目信息
 - 项目名称：Vela
-- 当前阶段：AX（Avatar eXperience 体验优化）
+- 当前阶段：M5.5 收口确认 + 下一站规划
 - 项目责任人：小新
 - 默认编码施工位：Codex CLI（GPT-5.4 xhigh `--yolo`）
-- 最后更新：2026-03-24
+- 最后更新：2026-03-25
 
 ## 状态枚举
 - TODO / IN-PROGRESS / BLOCKED / IN-REVIEW / DONE
@@ -73,45 +73,44 @@
 ### Phase 5：持久化 + 沉浸
 
 #### M5.5-T7 启动桥接摘要（日记体）
-- 状态：IN-PROGRESS
+- 状态：DONE — bridge-diary.js + loadBridgeDiary() IPC 已接通，App.jsx 启动时异步加载
 - 优先级：P1
 - Owner：Codex
-- 说明：启动时独立调 LLM 生成 Vela 视角的日记体回忆，不污染主对话上下文
+- 验收：启动时独立调 LLM 生成 Vela 视角日记体回忆，不污染主对话上下文
 
 #### M5.5-T6 全屏沉浸模式
-- 状态：TODO
+- 状态：DONE — App.jsx + electron/main.js 完整 fullscreen 链路（F11 / Ctrl+F / Esc / 按钮 / IPC）
 - 优先级：P1
 - Owner：Codex
+- 验收：F11 / Ctrl+F 切换，Esc 退出，按钮状态同步，CSS is-fullscreen 样式完整
 
 ### Phase 6：清理 + 打磨
 
 #### M5.5-C1 P 键 demo 剥离
-- 状态：TODO
+- 状态：TODO — P 键 preset demo toggle 仍在 vrm-avatar-stage.jsx:158-177，需移除
 - 优先级：P1
 
 #### M5.5-C2 summarizer 修复
-- 状态：TODO
+- 状态：DONE（已有 raw fallback） — memory-summarizer.js 已有 extractJsonObject + raw fallback path，审计后判定不需要额外修复
 - 优先级：P2
 
 #### M5.5-T8 窗口状态记忆
-- 状态：TODO
+- 状态：DONE — electron/main.js 完整实现（window-state.json 持久化 + 防抖 + display 校验 + 启动恢复）
 - 优先级：P2
 
 #### M5.5-T9 Lip Sync
-- 状态：TODO
+- 状态：DONE — commit `d925664`（HeadAudio viseme + amplitude fallback）
 - 优先级：P2
 
 ### Phase 7：体验打磨（新增 2026-03-23）
 
 #### M5.5-P1 关窗告别微表情
-- 状态：TODO
+- 状态：DONE — electron/main.js 发送 farewell event + App.jsx triggerFarewell() 挥手+表情+0.5s 延迟关闭
 - 优先级：P2
-- 说明：关 app 时 Vela 挥手/微表情 0.5s，不直接黑屏
 
 #### M5.5-P2 思考状态动画联动
-- 状态：TODO
+- 状态：DONE — vrm-avatar-controller.js presence=thinking 时切 Thinking.fbx 动画 + 表情微变
 - 优先级：P2
-- 说明：思考中切到 Mixamo Thinking 动画 + 表情微变
 
 #### M5.5-P3 消息时间戳
 - 状态：TODO
@@ -203,40 +202,23 @@
 
 ---
 
-## AX - Avatar eXperience 体验优化（当前阶段）
+## AX - Avatar eXperience 体验优化（已收口 2026-03-25）
 
 > 详细方案：docs/AX-AVATAR-EXPERIENCE-PLAN.md
-> 施工方式：全部 Codex CLI `--yolo`，不用 subagent
 
-### AX-L1：开启已有能力（配置层）
+### AX-L1：开启已有能力 ✅
+- 状态：DONE — commits `976cda8` `761bbbb`
+- V2 表情系统开启 + 镜头限制放开 + lip sync 增益 + morph audit 12/12 全通过
 
-#### AX-L1-1 开启 V2 表情系统
-- 状态：TODO
-- 优先级：P0
-- 说明：EMOTION_PRESETS_V2 = true + raw morph → expressionManager 链路贯通
+### AX-L2：情绪-动画-镜头-语音联动 ✅
+- 状态：DONE — commits `b160ed6` `2b52177` `9d335c7`
+- TTS 情绪联动（speed/pitch/emotion 12 preset）
+- 表情过渡平滑 + Yawn.fbx 扩展
+- emotion intensity 全联动（表情 + TTS + 动画）
 
-#### AX-L1-2 放开镜头限制
-- 状态：TODO
-- 优先级：P0
-- 说明：去掉 normalizeAvatarState() camera 强制 wide 逻辑
-
-#### AX-L1-3 Lip Sync 增益
-- 状态：TODO
-- 优先级：P1
-- 说明：振幅放大 ×1.5~2，lerp 响应加快到 0.4
-
-#### AX-L1-4 全量验证 + 修复
-- 状态：TODO
-- 优先级：P0
-- 说明：12 个 emotion 逐一测试，修复 blend shape 名称不匹配
-
-### AX-L2：情绪-动画-镜头-语音联动（AX-L1 验收后）
-- 状态：TODO
-- 子项：情绪驱动镜头 / TTS语速语调联动 / 表情过渡平滑 / 扩展动画库 / emotion intensity
-
-### AX-L3：Lip Sync 升级（AX-L2 验收后）
-- 状态：TODO
-- 子项：HeadAudio 评估 / viseme lip sync 集成 / fallback 链
+### AX-L3：Lip Sync 升级 ✅
+- 状态：DONE — commit `d925664`
+- HeadAudio viseme lip sync + amplitude fallback
 
 ### AX-L4：长期体验升级（归入 M6-M7）
 - VRM 模型升级 / 动作编排系统 / 关系阶段表情风格 / 微动联动
@@ -245,17 +227,16 @@
 
 ## 待处理池
 
-### T8 窗口状态记忆
-- 状态：IN-PROGRESS（Codex CLI 施工中）
-- 优先级：P2
-
-### T9 Lip Sync（振幅驱动）
-- 状态：IN-PROGRESS（Codex CLI 施工中，与 T8 合并）
-- 优先级：P2
-
 ### 存量 Bug 池
 - docs/DEEP-AUDIT-2026-03-23.md（11 个 DEEP + 12 个 UX）
 - 状态：待 triage
+- 已确认真 bug：DEEP-01 relationship intimate 枚举分裂（memory-store.js evaluateRelationship 仍可产出 intimate，relationship.js 只认 reserved/warm/close）
+- 已确认已修或假 bug：DEEP-03 summarizer 已有 raw fallback 兜底
 
 ### BGM 音乐源
 - 状态：BLOCKED — 等用户选定路线（免费版权 / AI 生成 / 自购）
+
+### M5.5-C1 P 键 demo 剥离
+- 状态：TODO — vrm-avatar-stage.jsx P 键 toggle 仍存在，需移除后才能发布
+
+### 最后更新：2026-03-25
