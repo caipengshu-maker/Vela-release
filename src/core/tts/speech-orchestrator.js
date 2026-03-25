@@ -203,10 +203,20 @@ export class SpeechOrchestrator {
       status: this.capabilities.available ? "queued" : "placeholder",
       pendingSegments: this.state.pendingSegments + 1
     });
-    await this.session.pushText(segment, {
-      segmentId: this.segmentIndex,
-      presetMeta: this.currentPresetMeta
-    });
+    try {
+      await this.session.pushText(segment, {
+        segmentId: this.segmentIndex,
+        presetMeta: this.currentPresetMeta
+      });
+    } catch (error) {
+      console.warn("[speech-orchestrator] dispatchSegment failed:", error?.message || error);
+      this.emitState({
+        status: "idle",
+        pendingSegments: 0,
+        lastError: error?.message || String(error)
+      });
+      this.session = null;
+    }
   }
 
   async finish() {
@@ -236,7 +246,17 @@ export class SpeechOrchestrator {
         return;
       }
 
-      await this.session.finish();
+      try {
+        await this.session.finish();
+      } catch (error) {
+        console.warn("[speech-orchestrator] finish failed:", error?.message || error);
+        this.emitState({
+          status: "idle",
+          pendingSegments: 0,
+          lastError: error?.message || String(error)
+        });
+        this.session = null;
+      }
     });
 
     return this.work;
