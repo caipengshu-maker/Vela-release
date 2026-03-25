@@ -73,17 +73,31 @@ export class SpeechOrchestrator {
     }
 
     this.currentPresetMeta = presetMeta || this.currentPresetMeta;
-    this.session = createTtsSession({
+    const session = createTtsSession({
       config: this.config,
       onEvent: (event) => {
+        // Guard: ignore events from stale/replaced sessions
+        if (this.session !== session) return;
         this.handleProviderEvent(event);
       },
       webSocketFactory: this.webSocketFactory
     });
 
-    await this.session.start({
-      presetMeta: this.currentPresetMeta
-    });
+    try {
+      await session.start({
+        presetMeta: this.currentPresetMeta
+      });
+      this.session = session;
+    } catch (error) {
+      console.warn("[speech-orchestrator] ensureSession start failed:", error?.message || error);
+      try { session.cancel?.(); } catch (_) { /* best-effort cleanup */ }
+      this.emitState({
+        status: "idle",
+        pendingSegments: 0,
+        lastError: error?.message || String(error)
+      });
+      throw error;
+    }
   }
 
   handleProviderEvent(event) {
@@ -210,12 +224,14 @@ export class SpeechOrchestrator {
       });
     } catch (error) {
       console.warn("[speech-orchestrator] dispatchSegment failed:", error?.message || error);
+      const deadSession = this.session;
+      this.session = null;
+      try { deadSession?.cancel?.(); } catch (_) { /* best-effort cleanup */ }
       this.emitState({
         status: "idle",
         pendingSegments: 0,
         lastError: error?.message || String(error)
       });
-      this.session = null;
     }
   }
 
@@ -250,12 +266,14 @@ export class SpeechOrchestrator {
         await this.session.finish();
       } catch (error) {
         console.warn("[speech-orchestrator] finish failed:", error?.message || error);
+        const deadSession = this.session;
+        this.session = null;
+        try { deadSession?.cancel?.(); } catch (_) { /* best-effort cleanup */ }
         this.emitState({
           status: "idle",
           pendingSegments: 0,
           lastError: error?.message || String(error)
         });
-        this.session = null;
       }
     });
 
