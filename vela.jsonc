@@ -1,5 +1,4 @@
 {
-  // Single user-facing source of truth for the Vela MVP.
   "app": {
     "name": "Vela",
     "tagline": "克制而持续地在场",
@@ -24,7 +23,8 @@
   "user": {
     "location": {
       "city": "Shanghai"
-    }
+    },
+    "name": "测试用户"
   },
   "llm": {
     "provider": "minimax-messages",
@@ -90,5 +90,9 @@
     "defaultPresence": "listening",
     "defaultEmotion": "calm",
     "assetPath": "D:/Vela/assets/avatars/eku/Eku_VRM_v1_0_0.vrm"
+  },
+  "audio": {
+    "bgmVolume": 42,
+    "ttsVolume": 100
   }
 }

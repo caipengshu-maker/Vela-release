@@ -17,6 +17,7 @@
     "verify:m2": "node scripts/verify-m2.mjs"
   },
   "dependencies": {
+    "@met4citizen/headaudio": "^0.1.0",
     "@pixiv/three-vrm": "^3.5.1",
     "jsonc-parser": "^3.3.1",
     "react": "^19.2.4",

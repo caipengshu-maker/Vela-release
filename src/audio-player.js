@@ -3,6 +3,8 @@
  * It also keeps a replayable blob per completed TTS session.
  */
 
+import { VisemeDriver } from "./core/viseme-driver.js";
+
 function decodeBase64ToUint8Array(input) {
   const normalized = String(input || "")
     .trim()
@@ -85,6 +87,11 @@ export class AudioPlayerService {
     this.currentChunkBytes = [];
     this.currentMimeType = MSE_MIME;
     this.replayCache = new Map();
+    this.visemeDriver = new VisemeDriver();
+    this.playbackEndedHandler = null;
+    this.audioEndedHandler = () => {
+      this.playbackEndedHandler?.();
+    };
   }
 
   _createElements() {
@@ -94,7 +101,22 @@ export class AudioPlayerService {
 
     this.audio = document.createElement("audio");
     this.audio.style.display = "none";
+    this.audio.addEventListener("ended", this.audioEndedHandler);
     document.body.appendChild(this.audio);
+    void this._ensureVisemeDriver();
+  }
+
+  async _ensureVisemeDriver() {
+    if (!this.audio) {
+      return false;
+    }
+
+    return this.visemeDriver.attach(this.audio).catch((error) => {
+      console.warn(
+        `[AudioPlayer] Lip-sync graph disabled: ${error?.message || "initialization failed"}`
+      );
+      return false;
+    });
   }
 
   _initMediaSource() {
@@ -210,6 +232,8 @@ export class AudioPlayerService {
     this.currentMimeType = mimeType || MSE_MIME;
     this.currentChunkBytes = [];
     this._initMediaSource();
+    this.resetLipSync();
+    void this._ensureVisemeDriver();
   }
 
   appendChunk(chunk) {
@@ -293,12 +317,30 @@ export class AudioPlayerService {
     return this.audio;
   }
 
+  setPlaybackEndedHandler(handler) {
+    this.playbackEndedHandler =
+      typeof handler === "function" ? handler : null;
+  }
+
+  update(deltaMs) {
+    return this.visemeDriver?.update(deltaMs) || {
+      amplitude: 0,
+      visemeActive: false,
+      visemeWeights: {}
+    };
+  }
+
+  resetLipSync() {
+    this.visemeDriver?.resetState?.();
+  }
+
   playReplay(replay) {
     if (!replay?.url) {
       return;
     }
 
     this._createElements();
+    void this._ensureVisemeDriver();
     this.audio.pause();
     this.audio.src = replay.url;
     this.audio.currentTime = 0;
@@ -307,6 +349,7 @@ export class AudioPlayerService {
 
   reset() {
     this.playbackToken += 1;
+    this.resetLipSync();
     this._cleanupCurrentStream();
   }
 
@@ -321,8 +364,11 @@ export class AudioPlayerService {
     this.replayCache.clear();
 
     if (this.audio) {
+      this.audio.removeEventListener("ended", this.audioEndedHandler);
       this.audio.remove();
       this.audio = null;
     }
+
+    await this.visemeDriver.dispose();
   }
 }

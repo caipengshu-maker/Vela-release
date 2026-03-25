@@ -118,7 +118,12 @@ export function VrmAvatarStage({ avatar, avatarAsset }) {
       controllerRef.current?.setMouthOpenness?.(value);
     };
 
+    const setVisemeWeights = (visemeMap) => {
+      controllerRef.current?.setVisemeWeights?.(visemeMap);
+    };
+
     window.__velaSetMouthOpenness = setMouthOpenness;
+    window.__velaSetVisemeWeights = setVisemeWeights;
 
     const resize = () => {
       const stageNode = stageRef.current;
@@ -173,6 +178,9 @@ export function VrmAvatarStage({ avatar, avatarAsset }) {
 
       if (window.__velaSetMouthOpenness === setMouthOpenness) {
         delete window.__velaSetMouthOpenness;
+      }
+      if (window.__velaSetVisemeWeights === setVisemeWeights) {
+        delete window.__velaSetVisemeWeights;
       }
 
       controller.dispose();

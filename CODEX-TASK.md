@@ -1,76 +1,116 @@
-# Vela T8 + T9: Window State Persistence + Lip Sync
+# AX-L3: HeadAudio Viseme Lip Sync Integration
 
-Project root: C:\Users\caipe\.openclaw\workspace\Vela
-This is an Electron + React + Three.js/VRM app.
+## Goal
+Replace the current amplitude-only lip sync with HeadAudio viseme detection. The avatar's mouth should form different shapes (aa/oh/ee/ou) matching the actual speech audio, not just open/close based on volume.
 
-## CRITICAL RULES
-- Windows PowerShell. Do NOT use && to chain commands.
-- Do NOT assign to or modify `window.vela` — it is created by Electron's contextBridge and is READ-ONLY. Any attempt to set properties on it will crash the app.
-- For exposing new globals from renderer-side code, use a separate global like `window.__velaXxx`.
-- All source files must be UTF-8 without BOM. Do NOT use PowerShell `Set-Content` to modify JS/JSX files.
+## Background
+- HeadAudio: `npm install headaudio` (MIT, by met4citizen)
+- It's an AudioWorklet node that analyzes audio waveform and outputs Oculus viseme blend shape values in real time
+- Pre-trained model: `model-en-mixed` (English-trained but basic vowel shapes are cross-language)
+- Latency: 50-100ms (compensated with DelayNode)
+- Our audio comes from MiniMax TTS via WebSocket as hex-encoded MP3 chunks, decoded and played in the renderer process
 
-## Architecture Context
-- `electron/main.js` — Electron main process, IPC handlers, BrowserWindow creation
-- `electron/preload.js` — contextBridge.exposeInMainWorld("vela", {...}) — READ-ONLY after creation
-- `src/App.jsx` — Main React app, manages state, renders UI
-- `src/vrm-avatar-stage.jsx` — Three.js canvas, VRM model loading, avatar controller
-- `src/core/vrm-avatar-controller.js` — Controls VRM model (animations, expressions, morph targets)
-- `src/core/audio-player.js` or `src/audio-player.js` — TTS audio playback via <audio> element
-- `src/styles.css` — All CSS
+## Architecture
 
-## Task 1: T8 — Window State Persistence
-
-Remember window size and position across app restarts.
-
-1. In `electron/main.js`:
-   - Define a helper to read/write window state from `.vela-data/window-state.json`
-   - On startup, read saved state and use it for BrowserWindow bounds (x, y, width, height)
-   - Fall back to config defaults if file missing or bounds invalid
-   - Validate bounds are within screen using `electron.screen.getDisplayMatching()`
-   - Listen for window `resize` and `move` events (debounce 500ms), save state
-   - Also save on window close (before-quit)
-
-2. No new dependencies. Use Node `fs` module.
-
-## Task 2: T9 — Amplitude-Based Lip Sync
-
-When TTS audio plays through the <audio> element, the VRM avatar's mouth should move.
-
-1. Create `src/core/lip-sync.js`:
-   - Export class `LipSyncAnalyser`
-   - Constructor takes AudioContext
-   - `connectSource(mediaElement)` — creates MediaElementSource + AnalyserNode
-   - `getAmplitude()` — reads frequency data, returns normalized 0-1 float
-   - `disconnect()` — cleanup
-   - Handle the case where the same media element is connected twice (store and reuse MediaElementSource)
-
-2. In `src/core/vrm-avatar-controller.js`:
-   - Add method `setMouthOpenness(value)` where value is 0-1
-   - Find the right blend shape: look for "mouth_open", "aa", "oh" in the VRM's expressionManager
-   - Set it via `vrm.expressionManager.setValue(name, value)`
-
-3. In `src/vrm-avatar-stage.jsx`:
-   - Expose the avatar controller's setMouthOpenness via `window.__velaSetMouthOpenness = (v) => controller?.setMouthOpenness?.(v)`
-   - Do NOT touch `window.vela` — it is read-only from contextBridge
-
-4. In `src/App.jsx` (or wherever TTS audio playback is managed):
-   - When TTS audio starts playing, create LipSyncAnalyser, connect to audio element
-   - Start a requestAnimationFrame loop:
-     - Get amplitude from analyser
-     - Smooth it: `smoothed = lerp(previous, amplitude, 0.3)`
-     - Call `window.__velaSetMouthOpenness(smoothed)`
-   - When TTS stops/finishes/errors, cancel the RAF loop and fade mouth to 0
-   - Store refs to avoid re-creating AudioContext on every TTS play
-
-5. CSS: No changes needed for lip sync.
-
-## Verification
-- Run `npm run build` and confirm it passes
-- Check that the app starts without errors
-
-## Commit
-After ALL changes are verified:
+### Current audio flow
 ```
-git add -A
-git commit -m "feat(t8+t9): window state persistence + amplitude-based lip sync"
+MiniMax WebSocket → hex MP3 chunks → audio-player.js → HTML5 Audio element → speakers
 ```
+
+### Target audio flow
+```
+MiniMax WebSocket → hex MP3 chunks → AudioContext + MediaElementSource
+  ├→ speakers (via destination)
+  └→ HeadAudio AudioWorklet → viseme values → VRM mouth morphs
+```
+
+## What To Do
+
+### 1. Install HeadAudio
+```
+npm install headaudio
+```
+
+### 2. Set up AudioWorklet in the renderer
+
+In `src/audio-player.js` (or a new `src/core/viseme-driver.js`):
+
+- Create an AudioContext when TTS playback starts
+- Register the HeadAudio worklet processor
+- Create a HeadAudioNode
+- Load the pre-trained model (ship `model-en-mixed.bin` in `public/assets/` or use CDN)
+- Connect the audio source → HeadAudio node (for analysis, no audio output from this node)
+- Connect the audio source → AudioContext.destination (for actual playback)
+
+Important: The current audio playback uses HTML5 `<audio>` element with blob URLs. To tap into the audio for HeadAudio, you need:
+```javascript
+const audioCtx = new AudioContext();
+const source = audioCtx.createMediaElementSource(audioElement);
+// HeadAudio node connects to source for analysis
+// source also connects to destination for playback
+source.connect(headAudioNode); // viseme analysis
+source.connect(audioCtx.destination); // actual playback
+```
+
+### 3. Map Oculus visemes to VRM morph targets
+
+HeadAudio outputs Oculus viseme names. Map them to our VRM model's mouth morph targets:
+
+```javascript
+const VISEME_TO_VRM_MORPH = {
+  viseme_sil: null,              // silence, no morph
+  viseme_PP: "mouth_straight",   // bilabial (p, b, m)
+  viseme_FF: "mouth_narrow",     // labiodental (f, v)
+  viseme_TH: "mouth_straight",   // dental (th)
+  viseme_DD: "mouth_a_1",        // alveolar (d, t, n)
+  viseme_kk: "mouth_narrow",     // velar (k, g)
+  viseme_CH: "mouth_narrow",     // postalveolar (ch, j, sh)
+  viseme_SS: "mouth_straight",   // sibilant (s, z)
+  viseme_nn: "mouth_straight",   // nasal (n, ng)
+  viseme_RR: "mouth_o_1",        // approximant (r)
+  viseme_aa: "mouth_a_1",        // open vowel (a, ah)
+  viseme_E:  "mouth_wide",       // front vowel (e, eh)
+  viseme_ih: "mouth_straight",   // near-close (i, ih)
+  viseme_oh: "mouth_o_1",        // mid-back (o, oh)
+  viseme_ou: "mouth_u_1",        // close-back (u, oo)
+};
+```
+
+### 4. Apply viseme values to VRM controller
+
+In `vrm-avatar-controller.js`:
+
+- Add a method `setVisemeWeights(visemeMap)` that receives a map of morph target names → weights
+- In the render loop, when viseme data is active, use viseme-driven mouth morphs INSTEAD of the current amplitude-driven `mouth_open` approach
+- When viseme data is NOT active (no audio playing), fall back to current amplitude behavior
+- Viseme weights should be smoothed (lerp/damp, ~8-10 strength) to avoid jittery transitions
+
+### 5. Wire it together
+
+- When TTS starts playing → activate HeadAudio pipeline
+- HeadAudio `onvalue` callback → update viseme weights on the controller
+- When TTS stops → deactivate, revert to idle mouth state
+- Call `headaudio.update(deltaMs)` in the animation loop
+
+### 6. Ship the model file
+
+- Copy `node_modules/headaudio/dist/model-en-mixed.bin` to `public/assets/headaudio/model-en-mixed.bin`
+- Load from `/assets/headaudio/model-en-mixed.bin` at runtime
+
+### 7. Fallback
+
+If HeadAudio fails to initialize (AudioWorklet not supported, model load fails), fall back to the current amplitude-based lip sync silently. Log a warning but don't crash.
+
+## Constraints
+- Do NOT remove the existing amplitude lip sync code — keep it as fallback
+- Do NOT change TTS WebSocket or API logic
+- Do NOT change emotion presets
+- HeadAudio model file should be in `public/assets/headaudio/`, NOT bundled by Vite
+- `npm run build` must pass
+- Add console logs for viseme activity: `[VRM][viseme] active=true/false` when lip sync mode switches
+
+## Files to create/modify
+1. `src/core/viseme-driver.js` (NEW) — HeadAudio setup, model loading, viseme mapping
+2. `src/audio-player.js` — wire AudioContext + HeadAudio into playback pipeline
+3. `src/core/vrm-avatar-controller.js` — add `setVisemeWeights()`, integrate into render loop
+4. `public/assets/headaudio/model-en-mixed.bin` — copy from node_modules after install

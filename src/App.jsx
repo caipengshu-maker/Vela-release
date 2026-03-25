@@ -11,7 +11,6 @@ import { SplashScreen } from "./SplashScreen.jsx";
 import { BgmController } from "./core/bgm-controller.js";
 import { SettingsModal } from "./SettingsModal.jsx";
 import { OnboardingFlow } from "./OnboardingFlow.jsx";
-import { LipSyncAnalyser } from "./core/lip-sync.js";
 
 const initialState = {
   app: null,
@@ -798,10 +797,65 @@ export default function App() {
   const bgmControllerRef = useRef(null);
   const asrHintTimerRef = useRef(null);
   const ttsHintTimerRef = useRef(null);
-  const lipSyncContextRef = useRef(null);
   const lipSyncFrameRef = useRef(null);
+  const lipSyncActiveRef = useRef(false);
+  const lipSyncLastFrameAtRef = useRef(0);
   const lipSyncSmoothedRef = useRef(0);
   const proactiveBusyRef = useRef(false);
+
+  const stopLipSync = useEffectEvent(() => {
+    lipSyncActiveRef.current = false;
+
+    if (lipSyncFrameRef.current) {
+      window.cancelAnimationFrame(lipSyncFrameRef.current);
+      lipSyncFrameRef.current = null;
+    }
+
+    lipSyncLastFrameAtRef.current = 0;
+    lipSyncSmoothedRef.current = 0;
+    audioPlayerRef.current?.resetLipSync?.();
+    window.__velaSetMouthOpenness?.(0);
+    window.__velaSetVisemeWeights?.(null);
+  });
+
+  const tickLipSync = useEffectEvent((frameAt) => {
+    if (!lipSyncActiveRef.current) {
+      lipSyncFrameRef.current = null;
+      return;
+    }
+
+    const lastFrameAt = lipSyncLastFrameAtRef.current || frameAt;
+    lipSyncLastFrameAtRef.current = frameAt;
+
+    const frame = audioPlayerRef.current?.update(frameAt - lastFrameAt) || {
+      amplitude: 0,
+      visemeActive: false,
+      visemeWeights: {}
+    };
+    const amplitude = Number(frame.amplitude || 0);
+    const previous = lipSyncSmoothedRef.current;
+    const smoothed = frame.visemeActive
+      ? 0
+      : previous + (amplitude - previous) * 0.3;
+
+    lipSyncSmoothedRef.current = smoothed;
+    window.__velaSetMouthOpenness?.(smoothed);
+    window.__velaSetVisemeWeights?.(
+      frame.visemeActive ? frame.visemeWeights : null
+    );
+
+    lipSyncFrameRef.current = window.requestAnimationFrame(tickLipSync);
+  });
+
+  const startLipSync = useEffectEvent(() => {
+    if (lipSyncActiveRef.current || !audioPlayerRef.current) {
+      return;
+    }
+
+    lipSyncActiveRef.current = true;
+    lipSyncLastFrameAtRef.current = performance.now();
+    lipSyncFrameRef.current = window.requestAnimationFrame(tickLipSync);
+  });
 
   useEffect(() => {
     const bgm = new BgmController();
@@ -815,9 +869,15 @@ export default function App() {
 
   useEffect(() => {
     const player = new AudioPlayerService();
+    player.setPlaybackEndedHandler(() => {
+      bgmControllerRef.current?.unduck();
+      stopLipSync();
+    });
     audioPlayerRef.current = player;
 
     return () => {
+      player.setPlaybackEndedHandler(null);
+      stopLipSync();
       void player.dispose();
     };
   }, []);
@@ -935,28 +995,7 @@ export default function App() {
       if (event.type === "speech-audio-chunk") {
         audioPlayerRef.current?.appendChunk(event.chunk);
         bgmControllerRef.current?.duck();
-
-        // Start lip sync RAF loop if not already running
-        if (!lipSyncFrameRef.current && audioPlayerRef.current) {
-          const mediaEl = audioPlayerRef.current.getMediaElement?.();
-          if (mediaEl) {
-            if (!lipSyncContextRef.current) {
-              const ctx = new AudioContext();
-              const analyser = new LipSyncAnalyser(ctx);
-              analyser.connectSource(mediaEl);
-              lipSyncContextRef.current = { ctx, analyser };
-            }
-            const tick = () => {
-              const amp = lipSyncContextRef.current?.analyser?.getAmplitude() || 0;
-              const prev = lipSyncSmoothedRef.current;
-              const smoothed = prev + (amp - prev) * 0.3;
-              lipSyncSmoothedRef.current = smoothed;
-              window.__velaSetMouthOpenness?.(smoothed);
-              lipSyncFrameRef.current = window.requestAnimationFrame(tick);
-            };
-            lipSyncFrameRef.current = window.requestAnimationFrame(tick);
-          }
-        }
+        startLipSync();
       }
 
       if (event.type === "farewell") {
@@ -972,24 +1011,13 @@ export default function App() {
       if (event.type === "speech-finished" && event.cancelled) {
         audioPlayerRef.current?.reset();
         bgmControllerRef.current?.unduck();
-        if (lipSyncFrameRef.current) { window.cancelAnimationFrame(lipSyncFrameRef.current); lipSyncFrameRef.current = null; }
-        lipSyncSmoothedRef.current = 0;
-        window.__velaSetMouthOpenness?.(0);
-      }
-
-      if (event.type === "speech-finished" && !event.cancelled) {
-        bgmControllerRef.current?.unduck();
-        if (lipSyncFrameRef.current) { window.cancelAnimationFrame(lipSyncFrameRef.current); lipSyncFrameRef.current = null; }
-        lipSyncSmoothedRef.current = 0;
-        window.__velaSetMouthOpenness?.(0);
+        stopLipSync();
       }
 
       if (event.type === "speech-error") {
         audioPlayerRef.current?.reset();
         bgmControllerRef.current?.unduck();
-        if (lipSyncFrameRef.current) { window.cancelAnimationFrame(lipSyncFrameRef.current); lipSyncFrameRef.current = null; }
-        lipSyncSmoothedRef.current = 0;
-        window.__velaSetMouthOpenness?.(0);
+        stopLipSync();
         flashTtsHint("语音暂时不可用");
       }
 
@@ -1008,6 +1036,7 @@ export default function App() {
     });
 
     return () => {
+      stopLipSync();
       unsubscribe();
     };
   }, []);
@@ -1653,6 +1682,8 @@ export default function App() {
 
   function handleReplay(replayAudio) {
     audioPlayerRef.current?.playReplay(replayAudio);
+    bgmControllerRef.current?.duck();
+    startLipSync();
   }
 
   function triggerFarewell() {

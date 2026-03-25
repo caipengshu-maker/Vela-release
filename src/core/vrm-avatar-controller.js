@@ -100,9 +100,18 @@ const EXPRESSION_KEYS = [
 ];
 const PRESET_DEMO_STEP_MS = 5000;
 const RAW_MORPH_DAMP_STRENGTH = 14;
+const VISEME_MORPH_DAMP_STRENGTH = 9;
 const EMOTION_BLEND_DAMP_STRENGTH = 6;
 const EMOTION_CROSSFADE_DURATION = 1.0;
 const DEFAULT_INTENSITY = 0.6;
+const VISEME_MORPH_TARGETS = [
+  "mouth_straight",
+  "mouth_narrow",
+  "mouth_a_1",
+  "mouth_o_1",
+  "mouth_wide",
+  "mouth_u_1"
+];
 const CORE_POSE_BONES = [
   VRMHumanBoneName.Hips,
   VRMHumanBoneName.Spine,
@@ -506,6 +515,10 @@ export class VrmAvatarController {
       expressionName: "",
       value: 0
     };
+    this.visemeControl = {
+      active: false,
+      targets: new Map()
+    };
     this.presetDemoState = {
       enabled: false,
       emotion: "calm",
@@ -690,6 +703,17 @@ export class VrmAvatarController {
     return THREE.MathUtils.clamp(Math.min(fadeInWeight, fadeOutWeight), 0, 1);
   }
 
+  _setVisemeActive(active) {
+    const nextActive = Boolean(active);
+
+    if (this.visemeControl.active === nextActive) {
+      return;
+    }
+
+    this.visemeControl.active = nextActive;
+    console.log(`[VRM][viseme] active=${nextActive}`);
+  }
+
   setMouthOpenness(value) {
     const nextValue = THREE.MathUtils.clamp(Number(value) || 0, 0, 1);
     const expressionName = this._resolveMouthExpressionName();
@@ -703,6 +727,34 @@ export class VrmAvatarController {
     if (expressionName && this.vrm?.expressionManager) {
       this.vrm.expressionManager.setValue(expressionName, nextValue);
     }
+  }
+
+  setVisemeWeights(visemeMap) {
+    const nextTargets = new Map();
+
+    Object.entries(visemeMap || {}).forEach(([name, value]) => {
+      const nextValue = THREE.MathUtils.clamp(Number(value) || 0, 0, 1);
+      if (!name || nextValue <= 0.001) {
+        return;
+      }
+
+      nextTargets.set(name, nextValue);
+    });
+
+    this.visemeControl.targets.clear();
+    nextTargets.forEach((value, name) => {
+      this.visemeControl.targets.set(name, value);
+    });
+
+    if (nextTargets.size > 0) {
+      this.externalMouthControl = {
+        ...this.externalMouthControl,
+        active: false,
+        value: 0
+      };
+    }
+
+    this._setVisemeActive(nextTargets.size > 0);
   }
 
   setPresetDemo(demoState) {
@@ -799,7 +851,7 @@ export class VrmAvatarController {
       this._applyRelaxedHands(delta);
       this.vrm.update(delta);
 
-      if (this._isPresetModeEnabled()) {
+      if (this._isPresetModeEnabled() || this.visemeControl.active) {
         this._applyPresetMorphTargets(preset, blinkWeight, delta, presentation.intensity);
       } else {
         this._clearPresetMorphTargets(delta);
@@ -1211,6 +1263,10 @@ export class VrmAvatarController {
       expressionName: "",
       value: 0
     };
+    this.visemeControl = {
+      active: false,
+      targets: new Map()
+    };
     this._resetExpressions();
   }
 
@@ -1498,7 +1554,13 @@ export class VrmAvatarController {
       targetWeights.set(blinkName, Math.max(baseBlink, blinkWeight));
     }
 
-    const dampStrength = transitionMsToStrength(
+    if (this.visemeControl.active) {
+      VISEME_MORPH_TARGETS.forEach((name) => {
+        targetWeights.set(name, Number(this.visemeControl.targets.get(name) || 0));
+      });
+    }
+
+    const presetDampStrength = transitionMsToStrength(
       preset?.transitionMs,
       EMOTION_BLEND_DAMP_STRENGTH
     );
@@ -1507,6 +1569,10 @@ export class VrmAvatarController {
     this.rawMorphTargetDictionary.forEach((index, name) => {
       const target = Number(targetWeights.get(name) || 0);
       const current = Number(this.rawMorphTargetWeights.get(name) || 0);
+      const dampStrength =
+        this.visemeControl.active && VISEME_MORPH_TARGETS.includes(name)
+          ? VISEME_MORPH_DAMP_STRENGTH
+          : presetDampStrength;
       const next = dampNumber(current, target, dampStrength, delta);
       this.rawMorphTargetWeights.set(name, next);
 
@@ -1595,10 +1661,11 @@ export class VrmAvatarController {
     }
 
     const targets = Object.fromEntries(EXPRESSION_KEYS.map((key) => [key, 0]));
-    const mouthExpressionName = this.externalMouthControl.active
+    const hasVisemeControl = this.visemeControl.active;
+    const mouthExpressionName = !hasVisemeControl && this.externalMouthControl.active
       ? this._resolveMouthExpressionName()
       : "";
-    const hasExternalMouthControl = Boolean(mouthExpressionName);
+    const hasExternalMouthControl = !hasVisemeControl && Boolean(mouthExpressionName);
 
     if (this._isPresetModeEnabled()) {
       if (!hasExternalMouthControl && presentation.presence === "speaking") {
