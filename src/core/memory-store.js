@@ -305,8 +305,6 @@ function downgradeRelationshipStage(stage) {
       return "close";
     case "close":
       return "warm";
-    case "warm":
-      return "warm";
     default:
       return stage;
   }
@@ -319,9 +317,8 @@ function getFallbackRelationshipNote(stage) {
     case "warm":
       return "熟悉感在积累，靠近时依然克制而自然。";
     case "close":
-      return "彼此更容易接上话，也更懂对方话里的重量。";
     case "intimate":
-      return "默契已经很深，很多情绪不必说满也能被接住。";
+      return "彼此更容易接上话，也更懂对方话里的重量。";
     default:
       return defaultRelationship().note;
   }
@@ -667,12 +664,6 @@ export class MemoryStore {
         nextStage = "warm";
       } else if (currentStage === "warm" && totalTurns > 100 && recent10Emotional >= 3) {
         nextStage = "close";
-      } else if (
-        currentStage === "close" &&
-        totalTurns > 300 &&
-        recent30Emotional >= 10
-      ) {
-        nextStage = "intimate";
       }
 
       if (nextStage === currentStage) {

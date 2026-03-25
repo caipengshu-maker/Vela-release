@@ -154,27 +154,9 @@ export function VrmAvatarStage({ avatar, avatarAsset }) {
 
     animationFrameId = window.requestAnimationFrame(tick);
 
-    // Press 'P' to toggle preset demo mode
-    const onKeyDown = (e) => {
-      if (e.key === "p" || e.key === "P") {
-        const ctrl = controllerRef.current;
-        if (!ctrl) return;
-        const isOn = ctrl.presetDemoState?.enabled;
-        ctrl.setPresetDemo({
-          enabled: !isOn,
-          index: 0,
-          emotion: "calm",
-          label: "calm"
-        });
-        console.log(`[VRM] Preset demo ${!isOn ? "ON" : "OFF"} (press P to toggle)`);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-
     return () => {
       window.cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
-      window.removeEventListener("keydown", onKeyDown);
 
       if (window.__velaSetMouthOpenness === setMouthOpenness) {
         delete window.__velaSetMouthOpenness;
