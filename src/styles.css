@@ -190,6 +190,11 @@ textarea {
   transition: padding 180ms ease, background 180ms ease;
 }
 
+/* Keep black bg while title screen overlay is visible */
+.app-shell.is-title-active {
+  --app-bg: #000000;
+}
+
 .app-shell.relationship-reserved {
   --app-bg: #f4ebe6;
 }

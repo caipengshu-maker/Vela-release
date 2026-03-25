@@ -769,6 +769,7 @@ export default function App() {
   const [state, setState] = useState(initialState);
   const [draft, setDraft] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isSettled, setIsSettled] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
   const [titleDone, setTitleDone] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -957,6 +958,10 @@ export default function App() {
       } finally {
         if (isMounted) {
           setIsLoading(false);
+          // Give VRM a moment to render first frame + settle hair physics
+          setTimeout(() => {
+            if (isMounted) setIsSettled(true);
+          }, 600);
         }
       }
     }
@@ -1744,23 +1749,24 @@ export default function App() {
   }, [isFullscreen]);
 
   return (
-    <main className={`app-shell ${relationshipClass} ${isFullscreen ? "is-fullscreen" : ""} ${isFarewelling ? "is-farewelling" : ""}`}>
-      {!splashDone ? (
-        <SplashScreen onDone={() => setSplashDone(true)} />
-      ) : !titleDone ? (
-        <VelaTitleScreen isReady={!isLoading} onDone={() => setTitleDone(true)} />
-      ) : (
-        <>
-          <div className="ambient ambient-a" />
-          <div className="ambient ambient-b" />
+    <main className={`app-shell ${relationshipClass} ${isFullscreen ? "is-fullscreen" : ""} ${isFarewelling ? "is-farewelling" : ""} ${!titleDone ? "is-title-active" : ""}`}>
+      {/* Overlay layers: splash/title cover content until ready */}
+      {!splashDone && <SplashScreen onDone={() => setSplashDone(true)} />}
+      {splashDone && !titleDone && (
+        <VelaTitleScreen isReady={isSettled} onDone={() => setTitleDone(true)} />
+      )}
 
-          {error && !state.app ? (
-            <StartupErrorScreen
-              message={error}
-              onRetry={() => {
-                window.location.reload();
-              }}
-            />
+      {/* Content always renders (behind overlays) so VRM loads early */}
+      <div className="ambient ambient-a" />
+      <div className="ambient ambient-b" />
+
+      {error && !state.app ? (
+        <StartupErrorScreen
+          message={error}
+          onRetry={() => {
+            window.location.reload();
+          }}
+        />
           ) : (
             <div className={`surface ${isFullscreen ? "is-fullscreen" : ""} ${isChatMinimized ? "is-chat-minimized" : ""}`}>
               <AvatarPanel
@@ -1943,8 +1949,6 @@ export default function App() {
               )}
             </div>
           )}
-        </>
-      )}
 
       <SettingsModal
         isOpen={isSettingsOpen}
