@@ -67,32 +67,21 @@ export class BgmController {
 
     this.stopAllStaleTracks();
 
-    const now = this.audioContext.currentTime;
-    const target = clampVolume(targetVolume);
-    this.masterGain.gain.cancelScheduledValues(now);
-
-    if (target <= 0) {
-      // Nuclear mute: force gain zero + disconnect from destination
-      this.masterGain.gain.setValueAtTime(0, now);
-      this.masterGain.gain.value = 0;
-      try { this.masterGain.disconnect(); } catch { /* already disconnected */ }
-      this._muted = true;
-      return;
-    }
-
-    // Reconnect if previously disconnected
-    if (this._muted) {
-      try {
-        this.masterGain.connect(this.audioContext.destination);
-      } catch { /* already connected */ }
-      this._muted = false;
-    }
-
-    // Resume if context was suspended
+    // Resume context if suspended
     if (this.audioContext.state === "suspended" && this.unlocked) {
       void this.audioContext.resume();
     }
 
+    // Ensure masterGain is connected
+    try {
+      this.masterGain.connect(this.audioContext.destination);
+    } catch {
+      // already connected — this is fine
+    }
+
+    const now = this.audioContext.currentTime;
+    const target = clampVolume(targetVolume);
+    this.masterGain.gain.cancelScheduledValues(now);
     this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
 
     if (fadeMs > 0) {
