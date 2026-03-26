@@ -954,7 +954,7 @@ textarea {
 
 .composer.is-voice-mode {
   gap: 10px;
-  padding-bottom: 28px;
+  padding-bottom: 32px;
 }
 
 .composer-field {
@@ -1164,7 +1164,7 @@ textarea {
 }
 
 .composer.is-voice-mode .composer-actions {
-  padding-bottom: 6px;
+  padding-bottom: 12px;
 }
 
 .composer-meta {

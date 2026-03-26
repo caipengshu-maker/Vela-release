@@ -1206,7 +1206,7 @@ export default function App() {
 
     const syncTrack = async () => {
       const assetPath = getBundledBgmAssetPath();
-      if (bgm.activeTrackUrl === assetPath && bgm.current) {
+      if (bgm.isCurrentTrack?.(assetPath)) {
         return;
       }
 
@@ -1234,6 +1234,12 @@ export default function App() {
 
     return () => {
       window.clearInterval(intervalId);
+      try {
+        bgm.current?.source?.stop?.();
+      } catch {
+        // noop
+      }
+      bgm.current = null;
     };
   }, [bgmEnabled, isLoading, state.onboarding?.required]);
 

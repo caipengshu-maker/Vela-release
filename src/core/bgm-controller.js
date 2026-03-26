@@ -26,6 +26,7 @@ export class BgmController {
     this.unlockHandler = null;
     this.activeTrackUrl = "";
     this._muted = false;
+    this._loadingPromise = null;
   }
 
   ensureContext() {
@@ -142,6 +143,44 @@ export class BgmController {
     });
   }
 
+  normalizeTrackLabel(label = "") {
+    return String(label || "").trim();
+  }
+
+  isCurrentTrack(label) {
+    const nextLabel = this.normalizeTrackLabel(label);
+    return Boolean(nextLabel) && this.activeTrackUrl === nextLabel && this.current?.label === nextLabel;
+  }
+
+  async runSerializedLoad(label, loadOperation) {
+    const nextLabel = this.normalizeTrackLabel(label);
+    if (this.isCurrentTrack(nextLabel)) {
+      return true;
+    }
+
+    if (nextLabel) {
+      this.activeTrackUrl = nextLabel;
+    }
+
+    if (this._loadingPromise) {
+      await this._loadingPromise;
+      if (this.isCurrentTrack(nextLabel)) {
+        return true;
+      }
+    }
+
+    const pendingLoad = Promise.resolve().then(loadOperation);
+    this._loadingPromise = pendingLoad;
+
+    try {
+      return await pendingLoad;
+    } finally {
+      if (this._loadingPromise === pendingLoad) {
+        this._loadingPromise = null;
+      }
+    }
+  }
+
   async fetchBuffer(trackUrl) {
     const context = this.ensureContext();
     if (!context || !trackUrl) {
@@ -165,7 +204,7 @@ export class BgmController {
     }
   }
 
-  createTrackNode(buffer) {
+  createTrackNode(buffer, label = "") {
     if (!this.audioContext || !this.masterGain || !buffer) {
       return null;
     }
@@ -180,58 +219,28 @@ export class BgmController {
     gainNode.connect(this.masterGain);
     source.start();
 
-    return { source, gainNode };
+    return {
+      source,
+      gainNode,
+      label: this.normalizeTrackLabel(label)
+    };
   }
 
-  async loadAndPlay(trackUrl) {
-    this.activeTrackUrl = String(trackUrl || "").trim();
-    if (!this.activeTrackUrl) {
-      return false;
-    }
-
-    this.ensureContext();
-    this.bindFirstUserGesture();
-    await this.unlock();
-
-    const buffer = await this.fetchBuffer(this.activeTrackUrl);
-    if (!buffer) {
-      return false;
-    }
-
-    const track = this.createTrackNode(buffer);
-    if (!track) {
-      return false;
-    }
-
-    this.current?.source?.stop();
-    this.current = track;
-    this.applyGain(this.getCurrentTargetVolume(), 0);
-    return true;
-  }
-
-  async loadFromBuffer(arrayBuffer, label = "") {
-    this.ensureContext();
-    this.bindFirstUserGesture();
-    await this.unlock();
-
-    if (!this.audioContext || !arrayBuffer?.byteLength) {
-      return false;
-    }
-
-    let audioBuffer;
+  stopTrackSource(track) {
     try {
-      audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer.slice(0));
+      track?.source?.stop();
     } catch {
-      return false;
+      // noop
     }
+  }
 
-    const nextTrack = this.createTrackNode(audioBuffer);
+  activateTrack(nextTrack, { crossfade = true } = {}) {
     if (!nextTrack) {
       return false;
     }
 
     const previous = this.current;
-    if (previous?.gainNode && this.audioContext) {
+    if (crossfade && previous?.gainNode && this.audioContext) {
       const now = this.audioContext.currentTime;
       nextTrack.gainNode.gain.setValueAtTime(0, now);
       nextTrack.gainNode.gain.linearRampToValueAtTime(1, now + CROSSFADE_MS / 1000);
@@ -239,64 +248,83 @@ export class BgmController {
       previous.gainNode.gain.setValueAtTime(previous.gainNode.gain.value, now);
       previous.gainNode.gain.linearRampToValueAtTime(0, now + CROSSFADE_MS / 1000);
       window.setTimeout(() => {
-        try { previous.source.stop(); } catch { /* noop */ }
+        this.stopTrackSource(previous);
       }, CROSSFADE_MS + 80);
     } else {
-      this.current?.source?.stop();
+      this.stopTrackSource(previous);
     }
 
     this.current = nextTrack;
-    this.activeTrackUrl = label;
+    if (nextTrack.label) {
+      this.activeTrackUrl = nextTrack.label;
+    }
     this.applyGain(this.getCurrentTargetVolume(), 0);
     return true;
   }
 
-  async switchTrack(newUrl) {
-    const nextUrl = String(newUrl || "").trim();
+  async loadAndPlay(trackUrl) {
+    const nextUrl = this.normalizeTrackLabel(trackUrl);
     if (!nextUrl) {
       return false;
     }
 
-    if (nextUrl === this.activeTrackUrl && this.current) {
-      return true;
-    }
+    return this.runSerializedLoad(nextUrl, async () => {
+      this.ensureContext();
+      this.bindFirstUserGesture();
+      await this.unlock();
 
-    this.activeTrackUrl = nextUrl;
-    this.ensureContext();
-    this.bindFirstUserGesture();
-    await this.unlock();
+      const buffer = await this.fetchBuffer(nextUrl);
+      if (!buffer) {
+        return false;
+      }
 
-    const buffer = await this.fetchBuffer(nextUrl);
-    if (!buffer) {
+      const track = this.createTrackNode(buffer, nextUrl);
+      return this.activateTrack(track, { crossfade: false });
+    });
+  }
+
+  async loadFromBuffer(arrayBuffer, label = "") {
+    const nextLabel = this.normalizeTrackLabel(label);
+    return this.runSerializedLoad(nextLabel, async () => {
+      this.ensureContext();
+      this.bindFirstUserGesture();
+      await this.unlock();
+
+      if (!this.audioContext || !arrayBuffer?.byteLength) {
+        return false;
+      }
+
+      let audioBuffer;
+      try {
+        audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer.slice(0));
+      } catch {
+        return false;
+      }
+
+      const nextTrack = this.createTrackNode(audioBuffer, nextLabel);
+      return this.activateTrack(nextTrack);
+    });
+  }
+
+  async switchTrack(newUrl) {
+    const nextUrl = this.normalizeTrackLabel(newUrl);
+    if (!nextUrl) {
       return false;
     }
 
-    const nextTrack = this.createTrackNode(buffer);
-    if (!nextTrack || !this.audioContext) {
-      return false;
-    }
+    return this.runSerializedLoad(nextUrl, async () => {
+      this.ensureContext();
+      this.bindFirstUserGesture();
+      await this.unlock();
 
-    const now = this.audioContext.currentTime;
-    nextTrack.gainNode.gain.setValueAtTime(0, now);
-    nextTrack.gainNode.gain.linearRampToValueAtTime(1, now + CROSSFADE_MS / 1000);
+      const buffer = await this.fetchBuffer(nextUrl);
+      if (!buffer) {
+        return false;
+      }
 
-    const previous = this.current;
-    if (previous?.gainNode) {
-      previous.gainNode.gain.cancelScheduledValues(now);
-      previous.gainNode.gain.setValueAtTime(previous.gainNode.gain.value, now);
-      previous.gainNode.gain.linearRampToValueAtTime(0, now + CROSSFADE_MS / 1000);
-      window.setTimeout(() => {
-        try {
-          previous.source.stop();
-        } catch {
-          // noop
-        }
-      }, CROSSFADE_MS + 80);
-    }
-
-    this.current = nextTrack;
-    this.applyGain(this.getCurrentTargetVolume(), 0);
-    return true;
+      const nextTrack = this.createTrackNode(buffer, nextUrl);
+      return this.activateTrack(nextTrack);
+    });
   }
 
   pause() {
