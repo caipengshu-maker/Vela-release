@@ -520,7 +520,27 @@ export function SettingsModal({
             description="Adjust the background mix and reply volume."
           >
             <label className="field-block settings-slider-block">
-              <span>BGM Volume {percentLabel(bgmVolume)}</span>
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>BGM Volume {percentLabel(bgmVolume)}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = bgmVolume > 0 ? 0 : 42;
+                    setBgmVolume(next);
+                    onBgmPreview?.(next);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: bgmVolume > 0 ? "var(--ink-soft)" : "var(--danger, #c44)",
+                    cursor: "pointer",
+                    fontSize: "12px",
+                    padding: "2px 6px"
+                  }}
+                >
+                  {bgmVolume > 0 ? "Mute" : "Unmute"}
+                </button>
+              </span>
               <input
                 type="range"
                 min="0"
@@ -528,8 +548,7 @@ export function SettingsModal({
                 step="1"
                 value={bgmVolume}
                 onChange={(event) => {
-                  const rawValue = Number(event.target.value);
-                  const nextValue = rawValue <= 5 ? 0 : rawValue;
+                  const nextValue = Number(event.target.value);
                   setBgmVolume(nextValue);
                   onBgmPreview?.(nextValue);
                 }}

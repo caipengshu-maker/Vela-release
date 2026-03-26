@@ -111,7 +111,9 @@ export class BgmController {
   /** Apply current computed volume to the audio element. */
   _syncVolume() {
     if (!this._audio) return;
-    this._audio.volume = this._computeVolume();
+    const vol = this._computeVolume();
+    this._audio.volume = vol;
+    this._audio.muted = vol <= 0;
   }
 
   // ---------------------------------------------------------------------------
