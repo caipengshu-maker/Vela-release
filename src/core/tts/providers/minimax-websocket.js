@@ -44,7 +44,6 @@ function resolveVoiceSetting(ttsConfig, presetMeta = {}) {
   );
   const emotion =
     requestedEmotionMode === "force" ? presetMeta.providerEmotion || null : null;
-  const emotionMode = emotion ? "force" : "auto";
   let resolvedEmotion = emotion;
 
   if (resolvedEmotion && !supportsMiniMaxProviderEmotion(ttsConfig.model, resolvedEmotion)) {
@@ -58,7 +57,6 @@ function resolveVoiceSetting(ttsConfig, presetMeta = {}) {
 
   const voiceSetting = {
     voice_id: ttsConfig.voiceId,
-    emotion_mode: emotionMode,
     speed: clampNumber(baseSpeed * speedMultiplier, 0.5, 2),
     vol: ttsConfig.voiceSettings.volume,
     pitch: clampNumber(basePitch + pitchOffset, -12, 12),

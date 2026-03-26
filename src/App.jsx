@@ -1716,6 +1716,7 @@ export default function App() {
 
   function handleBgmPreview(nextValue) {
     bgmControllerRef.current?.setVolume(Number(nextValue) / 100);
+    void bgmControllerRef.current?.resume?.();
   }
 
   function handleTtsPreview(nextValue) {
@@ -1725,6 +1726,7 @@ export default function App() {
   async function handleSettingsSave(nextState, payload) {
     if (payload && bgmControllerRef.current) {
       bgmControllerRef.current.setVolume(Number(payload.bgmVolume) / 100);
+      void bgmControllerRef.current.resume?.();
     }
 
     if (payload && audioPlayerRef.current) {

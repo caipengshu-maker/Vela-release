@@ -343,7 +343,7 @@ textarea {
 }
 
 .avatar-shell.is-fullscreen {
-  padding: 18px;
+  padding: 18px 18px 28px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(241, 247, 244, 0.76));
 }
 
@@ -368,6 +368,8 @@ textarea {
 
 .avatar-panel {
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
   height: 100%;
   gap: 18px;
 }
@@ -385,7 +387,8 @@ textarea {
 }
 
 .avatar-stage.is-fullscreen {
-  min-height: calc(100vh - 132px);
+  min-height: 0;
+  height: 100%;
   border-radius: 26px;
 }
 
@@ -574,6 +577,7 @@ textarea {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  padding-bottom: 8px;
 }
 
 .panel-copy {
@@ -950,6 +954,7 @@ textarea {
 
 .composer.is-voice-mode {
   gap: 10px;
+  padding-bottom: 28px;
 }
 
 .composer-field {
@@ -1156,6 +1161,7 @@ textarea {
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
+  padding-bottom: 6px;
 }
 
 .composer-meta {
