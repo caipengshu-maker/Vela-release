@@ -387,7 +387,7 @@ textarea {
 }
 
 .avatar-stage.is-fullscreen {
-  min-height: 0;
+  min-height: calc(100vh - 160px);
   height: 100%;
   border-radius: 26px;
 }
@@ -1161,6 +1161,9 @@ textarea {
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
+}
+
+.composer.is-voice-mode .composer-actions {
   padding-bottom: 6px;
 }
 

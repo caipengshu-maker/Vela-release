@@ -37,7 +37,7 @@ function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function resolveVoiceSetting(ttsConfig, presetMeta = {}) {
+function resolveVoiceSetting(ttsConfig = {}, presetMeta = {}) {
   const requestedEmotionMode = normalizeTtsEmotionMode(
     presetMeta.emotionMode,
     presetMeta.providerEmotion
@@ -56,12 +56,12 @@ function resolveVoiceSetting(ttsConfig, presetMeta = {}) {
   const pitchOffset = normalizeFiniteNumber(presetMeta.pitchOffset, 0);
 
   const voiceSetting = {
-    voice_id: ttsConfig.voiceId,
-    speed: clampNumber(baseSpeed * speedMultiplier, 0.5, 2),
-    vol: ttsConfig.voiceSettings.volume,
-    pitch: clampNumber(basePitch + pitchOffset, -12, 12),
+    voice_id: String(ttsConfig.voiceId || "Chinese (Mandarin)_Sweet_Lady").trim(),
+    speed: clampNumber(baseSpeed * speedMultiplier, 0.5, 2) || 1,
+    vol: normalizeFiniteNumber(ttsConfig.voiceSettings?.volume, 1),
+    pitch: clampNumber(basePitch + pitchOffset, -12, 12) || 0,
     english_normalization: Boolean(
-      ttsConfig.voiceSettings.englishNormalization
+      ttsConfig.voiceSettings?.englishNormalization
     )
   };
 
@@ -72,7 +72,7 @@ function resolveVoiceSetting(ttsConfig, presetMeta = {}) {
   return voiceSetting;
 }
 
-export function resolveMiniMaxTaskStartModel(ttsConfig, presetMeta = {}) {
+export function resolveMiniMaxTaskStartModel(ttsConfig = {}, presetMeta = {}) {
   const configuredModel = String(ttsConfig.model || "speech-2.8-turbo").trim();
   const emotionMode = normalizeTtsEmotionMode(
     presetMeta.emotionMode,
@@ -80,17 +80,18 @@ export function resolveMiniMaxTaskStartModel(ttsConfig, presetMeta = {}) {
   );
 
   if (emotionMode !== "force" || !presetMeta.providerEmotion) {
-    return configuredModel;
+    return configuredModel || "speech-2.8-turbo";
   }
 
   return resolveMiniMaxSpeechModelForEmotion(
-    configuredModel,
+    configuredModel || "speech-2.8-turbo",
     presetMeta.providerEmotion || null
   );
 }
 
-export function buildMiniMaxTaskStartPayload(ttsConfig, presetMeta = {}) {
-  const taskStartModel = resolveMiniMaxTaskStartModel(ttsConfig, presetMeta);
+export function buildMiniMaxTaskStartPayload(ttsConfig = {}, presetMeta = {}) {
+  const taskStartModel =
+    resolveMiniMaxTaskStartModel(ttsConfig, presetMeta) || "speech-2.8-turbo";
   const taskStartConfig = {
     ...ttsConfig,
     model: taskStartModel
@@ -99,18 +100,18 @@ export function buildMiniMaxTaskStartPayload(ttsConfig, presetMeta = {}) {
   return {
     event: "task_start",
     model: taskStartModel,
-    language_boost: taskStartConfig.languageBoost,
+    language_boost: String(taskStartConfig.languageBoost || "Chinese").trim() || "Chinese",
     voice_setting: resolveVoiceSetting(taskStartConfig, presetMeta),
     audio_setting: resolveAudioSetting(taskStartConfig)
   };
 }
 
-function resolveAudioSetting(ttsConfig) {
+function resolveAudioSetting(ttsConfig = {}) {
   return {
-    sample_rate: ttsConfig.audioSettings.sampleRate,
-    bitrate: ttsConfig.audioSettings.bitrate,
-    format: ttsConfig.audioSettings.format,
-    channel: ttsConfig.audioSettings.channel
+    sample_rate: normalizeFiniteNumber(ttsConfig.audioSettings?.sampleRate, 32000),
+    bitrate: normalizeFiniteNumber(ttsConfig.audioSettings?.bitrate, 128000),
+    format: String(ttsConfig.audioSettings?.format || "mp3").trim().toLowerCase() || "mp3",
+    channel: normalizeFiniteNumber(ttsConfig.audioSettings?.channel, 1)
   };
 }
 
@@ -343,9 +344,9 @@ export class MiniMaxWebSocketTtsSession {
   }
 
   sendTaskStart() {
-    this.socket?.send(
-      JSON.stringify(buildMiniMaxTaskStartPayload(this.config.tts, this.startPresetMeta))
-    );
+    const payload = buildMiniMaxTaskStartPayload(this.config.tts, this.startPresetMeta);
+    console.log("[vela-tts] task_start payload:", JSON.stringify(payload));
+    this.socket?.send(JSON.stringify(payload));
   }
 
   async start(meta = {}) {

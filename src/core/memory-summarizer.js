@@ -37,7 +37,15 @@ const MEMORY_SUMMARIZER_PROMPT = `你在为一个陪伴型聊天系统生成一�
 - emotionalMoment 如果不明显也要输出对象，detected=false 时 emotion 写 "calm"，intensity 写 0。
 - topicLabel 用 2 到 8 个字概括话题。
 - 使用输入里的 id、createdAt、turnIndex 原样写回。
+- 重要：你的回复必须只包含一个 JSON 对象，不要添加任何前缀文字、解释或 markdown 代码块标记。直接输出 { 开头的 JSON。
 `;
+
+const MEMORY_SUMMARIZER_RETRY_PROMPT = `请把输入总结成一个 JSON 对象。
+只输出 JSON，不要解释，不要代码块，不要额外文本。
+JSON 必须包含这些字段：id、createdAt、turnIndex、summary、bridgeSummary、openFollowUps、facts、emotionalMoment、topicLabel。
+facts 必须是数组；emotionalMoment 必须是包含 detected、emotion、intensity 的对象。
+summary 和 bridgeSummary 用简洁中文；使用输入里的 id、createdAt、turnIndex 原样写回。
+直接输出 { 开头的 JSON。`;
 
 function buildSummarizerConfig(config) {
   return {
@@ -75,20 +83,24 @@ function normalizeStringList(values, limit = 3) {
 }
 
 function extractJsonObject(text) {
-  const source = String(text || "").trim();
-  const fenced = source.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
-  const start = fenced.indexOf("{");
+  const source = String(text || "")
+    .replace(/^\uFEFF/, "")
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  const start = source.indexOf("{");
 
   if (start < 0) {
     return null;
   }
 
+  const jsonCandidate = source.slice(start);
   let depth = 0;
   let inString = false;
   let escaped = false;
 
-  for (let index = start; index < fenced.length; index += 1) {
-    const char = fenced[index];
+  for (let index = 0; index < jsonCandidate.length; index += 1) {
+    const char = jsonCandidate[index];
 
     if (inString) {
       if (escaped) {
@@ -121,12 +133,58 @@ function extractJsonObject(text) {
     if (char === "}") {
       depth -= 1;
       if (depth === 0) {
-        return fenced.slice(start, index + 1);
+        return jsonCandidate.slice(0, index + 1).trim();
       }
     }
   }
 
   return null;
+}
+
+function buildSummarizerContext(payload, systemPrompt) {
+  return {
+    systemPrompt,
+    messages: [
+      {
+        role: "user",
+        content: JSON.stringify(payload, null, 2)
+      }
+    ],
+    memory: {
+      recentSummaries: []
+    },
+    session: {
+      launchTurnCount: 0,
+      lifetimeTurnCount: Number(payload?.turnIndex) || 0
+    }
+  };
+}
+
+function parseEpisodeFromResponse(response, defaults) {
+  const responseText = String(response?.text || "");
+  const jsonText = extractJsonObject(responseText);
+
+  if (!jsonText) {
+    console.warn("[memory-summarizer] Raw LLM response:", responseText.slice(0, 500));
+    throw new Error("summarizer did not return JSON");
+  }
+
+  let parsed;
+
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (error) {
+    console.warn("[memory-summarizer] Raw LLM response:", responseText.slice(0, 500));
+    throw new Error(error?.message || "summarizer returned invalid JSON");
+  }
+
+  const episode = normalizeEpisode(parsed, defaults);
+
+  if (!episode) {
+    throw new Error("summarizer JSON missing summary or topicLabel");
+  }
+
+  return episode;
 }
 
 function normalizeFact(fact, episode) {
@@ -241,52 +299,36 @@ export class MemorySummarizer {
     };
 
     try {
-      const context = {
-        systemPrompt: MEMORY_SUMMARIZER_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: JSON.stringify(
-              {
-                ...defaults,
-                userMessage,
-                assistantReply,
-                emotion: String(emotion || "calm").trim() || "calm",
-                action: String(action || "none").trim() || "none",
-                triggerReasons: Array.isArray(triggerReasons) ? triggerReasons : [],
-                lastActiveAt
-              },
-              null,
-              2
-            )
-          }
-        ],
-        memory: {
-          recentSummaries: []
-        },
-        session: {
-          launchTurnCount: 0,
-          lifetimeTurnCount: defaults.turnIndex
-        }
+      const payload = {
+        ...defaults,
+        userMessage,
+        assistantReply,
+        emotion: String(emotion || "calm").trim() || "calm",
+        action: String(action || "none").trim() || "none",
+        triggerReasons: Array.isArray(triggerReasons) ? triggerReasons : [],
+        lastActiveAt
       };
+      const summarizerConfig = buildSummarizerConfig(this.config);
       const response = await generateReply(
-        context,
-        buildSummarizerConfig(this.config),
+        buildSummarizerContext(payload, MEMORY_SUMMARIZER_PROMPT),
+        summarizerConfig,
         {
           thinkingMode: "balanced"
         }
       );
-      const jsonText = extractJsonObject(response?.text);
+      let episode;
 
-      if (!jsonText) {
-        throw new Error("summarizer did not return JSON");
-      }
-
-      const parsed = JSON.parse(jsonText);
-      const episode = normalizeEpisode(parsed, defaults);
-
-      if (!episode) {
-        throw new Error("summarizer JSON missing summary or topicLabel");
+      try {
+        episode = parseEpisodeFromResponse(response, defaults);
+      } catch {
+        const retryResponse = await generateReply(
+          buildSummarizerContext(payload, MEMORY_SUMMARIZER_RETRY_PROMPT),
+          summarizerConfig,
+          {
+            thinkingMode: "balanced"
+          }
+        );
+        episode = parseEpisodeFromResponse(retryResponse, defaults);
       }
 
       const facts = episode.facts
