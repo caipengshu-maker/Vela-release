@@ -1141,13 +1141,90 @@ export class VelaCore {
   }
 
   async updateSettings(payload = {}) {
+    const hasOwnField = (key) =>
+      Object.prototype.hasOwnProperty.call(payload || {}, key);
+    const llmDefaultsByProvider = {
+      "openai-compatible": {
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        apiKeyEnv: "OPENAI_API_KEY"
+      },
+      "anthropic-messages": {
+        baseUrl: "https://api.anthropic.com",
+        model: "claude-sonnet-4-20250514",
+        apiKeyEnv: "ANTHROPIC_API_KEY"
+      },
+      "minimax-messages": {
+        baseUrl: "https://api.minimaxi.com/anthropic",
+        model: "MiniMax-M2.7",
+        apiKeyEnv: "MINIMAX_API_KEY"
+      }
+    };
     const userName = String(payload?.userName || "").trim();
-    const bgmVolume = sanitizeVolumePercent(payload?.bgmVolume, this.config?.audio?.bgmVolume ?? 42);
-    const ttsVolume = sanitizeVolumePercent(payload?.ttsVolume, this.config?.audio?.ttsVolume ?? 100);
+    const bgmVolume = sanitizeVolumePercent(
+      payload?.bgmVolume,
+      this.config?.audio?.bgmVolume ?? 42
+    );
+    const ttsVolume = sanitizeVolumePercent(
+      payload?.ttsVolume,
+      this.config?.audio?.ttsVolume ?? 100
+    );
+    const llmProvider = String(
+      payload?.llmProvider || this.config?.llm?.provider || "openai-compatible"
+    )
+      .trim()
+      .toLowerCase();
+    const llmDefaults =
+      llmDefaultsByProvider[llmProvider] ||
+      llmDefaultsByProvider["openai-compatible"];
+    const llmBaseUrl = String(
+      payload?.llmBaseUrl || this.config?.llm?.baseUrl || llmDefaults.baseUrl
+    ).trim();
+    const llmModel = String(
+      payload?.llmModel || this.config?.llm?.model || llmDefaults.model
+    ).trim();
+    const llmApiKey = hasOwnField("llmApiKey")
+      ? String(payload?.llmApiKey || "").trim()
+      : String(this.config?.llm?.apiKey || "").trim();
+    const ttsSelection = String(
+      payload?.ttsProvider ||
+        (this.config?.tts?.enabled
+          ? this.config?.tts?.provider || "minimax-websocket"
+          : "off")
+    )
+      .trim()
+      .toLowerCase();
+    const ttsProvider =
+      ttsSelection === "webspeech"
+        ? "webspeech"
+        : ttsSelection === "minimax-websocket"
+          ? "minimax-websocket"
+          : "placeholder";
+    const ttsEnabled = ttsSelection !== "off";
+    const ttsApiKey = hasOwnField("ttsApiKey")
+      ? String(payload?.ttsApiKey || "").trim()
+      : String(this.config?.tts?.apiKey || "").trim();
+    const voiceId = String(
+      payload?.voiceId || this.config?.tts?.voiceId || ""
+    ).trim();
 
     await this.persistConfigPatch({
       user: {
         name: userName
+      },
+      llm: {
+        provider: llmProvider,
+        baseUrl: llmBaseUrl,
+        model: llmModel,
+        apiKey: llmApiKey,
+        apiKeyEnv: llmDefaults.apiKeyEnv
+      },
+      tts: {
+        enabled: ttsEnabled,
+        provider: ttsProvider,
+        apiKey: ttsProvider === "minimax-websocket" ? ttsApiKey : "",
+        apiKeyEnv: ttsProvider === "minimax-websocket" ? "MINIMAX_API_KEY" : "",
+        voiceId: voiceId || this.config?.tts?.voiceId || ""
       },
       audio: {
         bgmVolume,
@@ -1166,24 +1243,101 @@ export class VelaCore {
   }
 
   async completeOnboardingV2(payload = {}) {
+    const hasOwnField = (key) =>
+      Object.prototype.hasOwnProperty.call(payload || {}, key);
+    const llmDefaultsByProvider = {
+      "openai-compatible": {
+        baseUrl: "https://api.openai.com/v1",
+        model: "gpt-4.1-mini",
+        apiKeyEnv: "OPENAI_API_KEY"
+      },
+      "anthropic-messages": {
+        baseUrl: "https://api.anthropic.com",
+        model: "claude-sonnet-4-20250514",
+        apiKeyEnv: "ANTHROPIC_API_KEY"
+      },
+      "minimax-messages": {
+        baseUrl: "https://api.minimaxi.com/anthropic",
+        model: "MiniMax-M2.7",
+        apiKeyEnv: "MINIMAX_API_KEY"
+      }
+    };
     const userName = String(payload?.userName || "").trim();
-    const llmApiKey = String(payload?.llmApiKey || "").trim();
-    const asrEnabled = Boolean(payload?.asrEnabled);
-    const ttsEnabled = Boolean(payload?.ttsEnabled);
-    const voiceId = String(payload?.voiceId || this.config?.tts?.voiceId || "").trim();
-    const effectiveApiKey =
+    const llmProvider = String(
+      payload?.llmProvider || this.config?.llm?.provider || "openai-compatible"
+    )
+      .trim()
+      .toLowerCase();
+    const llmDefaults =
+      llmDefaultsByProvider[llmProvider] ||
+      llmDefaultsByProvider["openai-compatible"];
+    const llmBaseUrl = String(
+      payload?.llmBaseUrl || this.config?.llm?.baseUrl || llmDefaults.baseUrl
+    ).trim();
+    const llmModel = String(
+      payload?.llmModel || this.config?.llm?.model || llmDefaults.model
+    ).trim();
+    const llmApiKey = hasOwnField("llmApiKey")
+      ? String(payload?.llmApiKey || "").trim()
+      : String(this.config?.llm?.apiKey || "").trim();
+    const asrEnabled = hasOwnField("asrEnabled")
+      ? Boolean(payload?.asrEnabled)
+      : Boolean(this.config?.asr?.enabled);
+    const ttsSelection = String(payload?.ttsProvider || "off")
+      .trim()
+      .toLowerCase();
+    const ttsProvider =
+      ttsSelection === "webspeech"
+        ? "webspeech"
+        : ttsSelection === "minimax-websocket"
+          ? "minimax-websocket"
+          : "placeholder";
+    const ttsEnabled = ttsSelection !== "off";
+    const ttsApiKey = hasOwnField("ttsApiKey")
+      ? String(payload?.ttsApiKey || "").trim()
+      : String(this.config?.tts?.apiKey || "").trim();
+    const voiceId = String(
+      payload?.voiceId || this.config?.tts?.voiceId || ""
+    ).trim();
+    let isLocalOpenAiWithoutKey = false;
+
+    if (llmProvider === "openai-compatible") {
+      try {
+        const parsedBaseUrl = new URL(llmBaseUrl);
+        const hostname = String(parsedBaseUrl.hostname || "")
+          .trim()
+          .toLowerCase();
+        isLocalOpenAiWithoutKey = [
+          "localhost",
+          "127.0.0.1",
+          "0.0.0.0",
+          "::1"
+        ].includes(hostname);
+      } catch {
+        isLocalOpenAiWithoutKey = false;
+      }
+    }
+
+    const effectiveLlmApiKey =
       llmApiKey ||
-      this.config.llm.apiKey ||
-      (this.config.llm.apiKeyEnv
-        ? process.env[this.config.llm.apiKeyEnv] || ""
-        : "");
+      (llmDefaults.apiKeyEnv ? process.env[llmDefaults.apiKeyEnv] || "" : "");
+    const effectiveTtsApiKey =
+      ttsProvider === "minimax-websocket"
+        ? ttsApiKey ||
+          (llmProvider === "minimax-messages" ? effectiveLlmApiKey : "") ||
+          (process.env.MINIMAX_API_KEY || "")
+        : "";
 
     if (!userName) {
       throw new Error("User name is required");
     }
 
-    if (!effectiveApiKey) {
+    if (!isLocalOpenAiWithoutKey && !effectiveLlmApiKey) {
       throw new Error("LLM API key is required");
+    }
+
+    if (ttsProvider === "minimax-websocket" && !effectiveTtsApiKey) {
+      throw new Error("MiniMax Voice requires an API key");
     }
 
     await this.persistConfigPatch({
@@ -1191,7 +1345,11 @@ export class VelaCore {
         name: userName
       },
       llm: {
-        apiKey: effectiveApiKey
+        provider: llmProvider,
+        baseUrl: llmBaseUrl,
+        model: llmModel,
+        apiKey: llmApiKey,
+        apiKeyEnv: llmDefaults.apiKeyEnv
       },
       asr: {
         enabled: asrEnabled,
@@ -1199,7 +1357,9 @@ export class VelaCore {
       },
       tts: {
         enabled: ttsEnabled,
-        apiKey: effectiveApiKey,
+        provider: ttsProvider,
+        apiKey: ttsProvider === "minimax-websocket" ? effectiveTtsApiKey : "",
+        apiKeyEnv: ttsProvider === "minimax-websocket" ? "MINIMAX_API_KEY" : "",
         voiceId: voiceId || this.config.tts.voiceId
       }
     });

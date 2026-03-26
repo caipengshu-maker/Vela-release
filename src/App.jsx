@@ -12,6 +12,11 @@ import { VelaTitleScreen } from "./VelaTitleScreen.jsx";
 import { BgmController } from "./core/bgm-controller.js";
 import { SettingsModal } from "./SettingsModal.jsx";
 import { OnboardingFlow } from "./OnboardingFlow.jsx";
+import {
+  DEFAULT_MINIMAX_TTS_VOICE_ID,
+  getLlmProviderDefaults,
+  getTtsModeFromSettings
+} from "./settings-schema.js";
 
 const initialState = {
   app: null,
@@ -200,18 +205,12 @@ function buildComposerModelOptions(availableModels) {
         .filter((model) => model.id && model.label)
     : [];
 
-  if (normalizedModels.length > 1) {
+  if (normalizedModels.length > 0) {
     const hasAuto = normalizedModels.some((model) => model.id === "auto");
-    return hasAuto
-      ? normalizedModels
-      : [...normalizedModels, { id: "auto", label: "自动" }];
+    return hasAuto ? normalizedModels : [...normalizedModels, { id: "auto", label: "自动" }];
   }
 
-  return [
-    { id: "minimax", label: "MiniMax (主)" },
-    { id: "k2p5", label: "Kimi (备)" },
-    { id: "auto", label: "自动" }
-  ];
+  return [{ id: "auto", label: "自动" }];
 }
 
 function upsertAssistantMessage(messages, messageId, content, streaming, patch = {}) {
@@ -801,7 +800,14 @@ export default function App() {
   const [isMicEnabled, setIsMicEnabled] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState({
-    userAlias: "",
+    userName: "",
+    llmProvider: "openai-compatible",
+    llmBaseUrl: "https://api.openai.com/v1",
+    llmModel: "gpt-4.1-mini",
+    llmApiKey: "",
+    ttsProvider: "off",
+    ttsApiKey: "",
+    voiceId: DEFAULT_MINIMAX_TTS_VOICE_ID,
     bgmVolume: 42,
     ttsVolume: 100
   });
@@ -826,6 +832,36 @@ export default function App() {
   const lipSyncLastFrameAtRef = useRef(0);
   const lipSyncSmoothedRef = useRef(0);
   const proactiveBusyRef = useRef(false);
+
+  const applySettingsSnapshot = useEffectEvent((snapshot) => {
+    if (!snapshot) {
+      return;
+    }
+
+    const llmProvider = String(
+      snapshot.llm?.provider || "openai-compatible"
+    ).trim().toLowerCase() || "openai-compatible";
+    const llmDefaults = getLlmProviderDefaults(llmProvider);
+
+    setSettingsDraft({
+      userName: snapshot.userName || "",
+      llmProvider,
+      llmBaseUrl: snapshot.llm?.baseUrl || llmDefaults.baseUrl,
+      llmModel: snapshot.llm?.model || llmDefaults.model,
+      llmApiKey: snapshot.llm?.apiKey || "",
+      ttsProvider: getTtsModeFromSettings(snapshot.tts),
+      ttsApiKey: snapshot.tts?.apiKey || "",
+      voiceId: snapshot.tts?.voiceId || DEFAULT_MINIMAX_TTS_VOICE_ID,
+      bgmVolume: Number(snapshot.audio?.bgmVolume ?? 42),
+      ttsVolume: Number(snapshot.audio?.ttsVolume ?? 100)
+    });
+  });
+
+  const refreshSettingsDraft = useEffectEvent(async () => {
+    const snapshot = await window.vela.getSettings();
+    applySettingsSnapshot(snapshot);
+    return snapshot;
+  });
 
   const stopLipSync = useEffectEvent(() => {
     lipSyncActiveRef.current = false;
@@ -925,18 +961,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!state) {
-      return;
-    }
-
-    setSettingsDraft({
-      userAlias: state.persona?.userName || "",
-      bgmVolume: Number(state.audio?.bgmVolume ?? 42),
-      ttsVolume: Number(state.audio?.ttsVolume ?? Math.round((state.tts?.volume ?? 1) * 100))
-    });
-  }, [state.audio?.bgmVolume, state.audio?.ttsVolume, state.persona?.userName, state.tts?.volume]);
-
-  useEffect(() => {
     const bgm = bgmControllerRef.current;
     if (!bgm) {
       return;
@@ -956,8 +980,9 @@ export default function App() {
 
     async function bootstrap() {
       try {
-        const [nextState, windowState, fullscreenValue] = await Promise.all([
+        const [nextState, settingsSnapshot, windowState, fullscreenValue] = await Promise.all([
           window.vela.bootstrap(),
+          window.vela.getSettings().catch(() => null),
           window.vela.getWindowState().catch(() => ({ fullscreen: false })),
           window.vela.isFullscreen().catch(() => false)
         ]);
@@ -974,6 +999,7 @@ export default function App() {
               )
             }
           });
+          applySettingsSnapshot(settingsSnapshot);
           setIsMainEntering(false);
 
           void window.vela.loadBridgeDiary().then((diaryState) => {
@@ -1692,18 +1718,13 @@ export default function App() {
     bgmControllerRef.current?.setVolume(Number(nextValue) / 100);
   }
 
+  function handleTtsPreview(nextValue) {
+    audioPlayerRef.current?.setVolume(Number(nextValue) / 100);
+  }
+
   async function handleSettingsSave(nextState, payload) {
     if (payload && bgmControllerRef.current) {
       bgmControllerRef.current.setVolume(Number(payload.bgmVolume) / 100);
-    }
-
-    if (payload) {
-      setSettingsDraft((current) => ({
-        ...current,
-        bgmVolume: Number(payload.bgmVolume),
-        ttsVolume: Number(payload.ttsVolume),
-        userAlias: payload.userName ?? current.userAlias
-      }));
     }
 
     if (payload && audioPlayerRef.current) {
@@ -1713,6 +1734,8 @@ export default function App() {
     if (nextState) {
       setState(nextState);
     }
+
+    await refreshSettingsDraft().catch(() => {});
   }
 
   async function handleFullscreenToggle(nextValue) {
@@ -1837,14 +1860,18 @@ export default function App() {
               {state.onboarding?.required ? (
                 <OnboardingFlow
                   initialValues={{
-                    userName: state.persona?.userName || "",
-                    llmApiKey: state.llm?.apiKey || "",
-                    asrEnabled: state.asr?.enabled,
-                    ttsEnabled: state.tts?.enabled,
-                    voiceId: state.tts?.voiceId || ""
+                    userName: settingsDraft.userName || state.persona?.userName || "",
+                    llmProvider: settingsDraft.llmProvider,
+                    llmBaseUrl: settingsDraft.llmBaseUrl,
+                    llmModel: settingsDraft.llmModel,
+                    llmApiKey: settingsDraft.llmApiKey,
+                    ttsProvider: settingsDraft.ttsProvider,
+                    ttsApiKey: settingsDraft.ttsApiKey,
+                    voiceId: settingsDraft.voiceId || state.tts?.voiceId || ""
                   }}
                   onComplete={async (payload) => {
                     const nextState = await handleOnboarding(payload);
+                    await refreshSettingsDraft().catch(() => {});
                     handleOnboardingComplete(nextState);
                     return nextState;
                   }}
@@ -2008,6 +2035,7 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         onSaved={handleSettingsSave}
         onBgmPreview={handleBgmPreview}
+        onTtsPreview={handleTtsPreview}
         models={composerModelOptions}
         selectedModel={state.modelStatus?.selectedModel || "auto"}
         onModelSwitch={handleModelSwitch}

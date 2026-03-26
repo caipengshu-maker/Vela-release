@@ -4,6 +4,8 @@ import https from "node:https";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, ipcMain, screen } from "electron";
 import { VelaCore } from "../src/core/vela-core.js";
+import { requestAdapterResponse } from "../src/core/providers/http-client.js";
+import { getProviderAdapter, getProviderDefaults } from "../src/core/providers/registry.js";
 
 function fetchIpLocation() {
   return new Promise((resolve) => {
@@ -86,6 +88,102 @@ function resolveBundledAssetPath(relativePath) {
   }
 
   return resolvedPath;
+}
+
+function toTrimmedString(value) {
+  return String(value || "").trim();
+}
+
+function buildSettingsSnapshot(config = {}) {
+  return {
+    userName: config.user?.name || "",
+    audio: {
+      bgmVolume: Number(config.audio?.bgmVolume ?? 42),
+      ttsVolume: Number(config.audio?.ttsVolume ?? 100)
+    },
+    llm: {
+      provider: config.llm?.provider || "openai-compatible",
+      baseUrl: config.llm?.baseUrl || "",
+      model: config.llm?.model || "",
+      apiKey: config.llm?.apiKey || ""
+    },
+    tts: {
+      enabled: Boolean(config.tts?.enabled),
+      provider: config.tts?.provider || "placeholder",
+      apiKey: config.tts?.apiKey || "",
+      voiceId: config.tts?.voiceId || ""
+    }
+  };
+}
+
+function buildLlmConnectionTestConfig(baseConfig, payload = {}) {
+  const provider = toTrimmedString(
+    payload.llmProvider || payload.provider || baseConfig?.llm?.provider
+  ).toLowerCase() || "openai-compatible";
+  const providerDefaults = getProviderDefaults(provider) || {};
+  const directApiKey = toTrimmedString(payload.llmApiKey || payload.apiKey);
+
+  return {
+    ...baseConfig,
+    llm: {
+      ...(baseConfig?.llm || {}),
+      provider,
+      mode: provider,
+      baseUrl:
+        toTrimmedString(payload.llmBaseUrl || payload.baseUrl) ||
+        providerDefaults.baseUrl ||
+        baseConfig?.llm?.baseUrl ||
+        "",
+      model:
+        toTrimmedString(payload.llmModel || payload.model) ||
+        baseConfig?.llm?.model ||
+        "",
+      apiKey: directApiKey,
+      apiKeyEnv:
+        directApiKey
+          ? ""
+          : toTrimmedString(payload.llmApiKeyEnv || providerDefaults.apiKeyEnv),
+      anthropicVersion:
+        toTrimmedString(payload.llmAnthropicVersion) ||
+        baseConfig?.llm?.anthropicVersion ||
+        providerDefaults.anthropicVersion ||
+        "2023-06-01",
+      headers: baseConfig?.llm?.headers || {},
+      temperature: 0,
+      maxTokens: 24
+    }
+  };
+}
+
+async function testLlmConnection(payload = {}) {
+  const baseConfig = core.getConfig();
+  const testConfig = buildLlmConnectionTestConfig(baseConfig, payload);
+  const adapter = getProviderAdapter(testConfig.llm.provider);
+
+  if (!adapter) {
+    throw new Error(`Unsupported LLM provider: ${testConfig.llm.provider}`);
+  }
+
+  const response = await requestAdapterResponse({
+    adapter,
+    context: {
+      systemPrompt: "You are a connection test. Reply with OK.",
+      messages: [
+        {
+          role: "user",
+          content: "Reply with OK."
+        }
+      ]
+    },
+    config: testConfig
+  });
+
+  return {
+    ok: true,
+    provider: testConfig.llm.provider,
+    model: response.providerMeta?.model || testConfig.llm.model,
+    endpoint: response.providerMeta?.endpoint || null
+  };
 }
 
 function toRoundedInteger(value) {
@@ -401,6 +499,10 @@ ipcMain.handle("vela:bootstrap", async () => {
   return core.getBootstrapState();
 });
 
+ipcMain.handle("vela:get-settings", async () => {
+  return buildSettingsSnapshot(core.getConfig());
+});
+
 ipcMain.handle("vela:read-binary-file", async (_event, filePath) => {
   const targetPath = String(filePath || "").trim();
 
@@ -463,6 +565,10 @@ ipcMain.handle("vela:complete-onboarding-v2", async (_event, payload) => {
 
 ipcMain.handle("vela:update-settings", async (_event, payload) => {
   return core.updateSettings(payload);
+});
+
+ipcMain.handle("vela:test-llm-connection", async (_event, payload) => {
+  return testLlmConnection(payload);
 });
 
 ipcMain.handle("vela:set-voice-mode", async (_event, enabled) => {

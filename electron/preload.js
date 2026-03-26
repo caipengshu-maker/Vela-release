@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("vela", {
     ipcRenderer.invoke("vela:read-binary-file", filePath),
   readBundledAsset: (relativePath) =>
     ipcRenderer.invoke("vela:read-bundled-asset", relativePath),
+  getSettings: () => ipcRenderer.invoke("vela:get-settings"),
   sendMessage: (message) => ipcRenderer.invoke("vela:send-message", message),
   switchModel: (modelId) => ipcRenderer.invoke("vela:switch-model", modelId),
   cacheLocation: (location) => ipcRenderer.invoke("vela:cache-location", location),
@@ -16,6 +17,8 @@ contextBridge.exposeInMainWorld("vela", {
   proactiveTrigger: () => ipcRenderer.invoke("vela:proactive-trigger"),
   completeOnboarding: (payload) =>
     ipcRenderer.invoke("vela:complete-onboarding", payload),
+  testLlmConnection: (payload) =>
+    ipcRenderer.invoke("vela:test-llm-connection", payload),
   setVoiceMode: (enabled) => ipcRenderer.invoke("vela:set-voice-mode", enabled),
   setThinkingMode: (mode) => ipcRenderer.invoke("vela:set-thinking-mode", mode),
   interruptOutput: () => ipcRenderer.invoke("vela:interrupt-output"),

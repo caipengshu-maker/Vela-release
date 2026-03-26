@@ -1,8 +1,9 @@
 import { placeholderTtsProvider } from "./providers/placeholder.js";
 import { minimaxWebSocketTtsProvider } from "./providers/minimax-websocket.js";
+import { webSpeechTtsProvider } from "./providers/webspeech.js";
 
 const providers = new Map(
-  [placeholderTtsProvider, minimaxWebSocketTtsProvider].map((provider) => [
+  [placeholderTtsProvider, minimaxWebSocketTtsProvider, webSpeechTtsProvider].map((provider) => [
     provider.id,
     provider
   ])

@@ -64,7 +64,7 @@ const defaultConfig = {
   },
   tts: {
     enabled: false,
-    provider: "minimax-websocket",
+    provider: "placeholder",
     apiKey: "",
     apiKeyEnv: "MINIMAX_API_KEY",
     model: "speech-2.8-turbo",
@@ -292,12 +292,18 @@ function normalizeTtsConfig(ttsConfig = {}, llmConfig = {}) {
   const audioSettings = isPlainObject(ttsConfig.audioSettings)
     ? ttsConfig.audioSettings
     : {};
+  const requestedProvider = String(ttsConfig.provider || "placeholder")
+    .trim()
+    .toLowerCase();
+  const provider = ["placeholder", "minimax-websocket", "webspeech"].includes(
+    requestedProvider
+  )
+    ? requestedProvider
+    : "placeholder";
 
   return {
     enabled: Boolean(ttsConfig.enabled),
-    provider: String(ttsConfig.provider || "minimax-websocket")
-      .trim()
-      .toLowerCase(),
+    provider,
     apiKey: String(ttsConfig.apiKey || llmConfig.apiKey || "").trim(),
     apiKeyEnv: String(
       ttsConfig.apiKeyEnv || llmConfig.apiKeyEnv || "MINIMAX_API_KEY"

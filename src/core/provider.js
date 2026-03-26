@@ -123,6 +123,27 @@ function hasApiKey(llmConfig) {
   return Boolean(resolveApiKey(llmConfig));
 }
 
+function isLocalOpenAiWithoutKey(llmConfig) {
+  const providerId = String(
+    llmConfig?.provider || llmConfig?.mode || ""
+  )
+    .trim()
+    .toLowerCase();
+  const baseUrl = String(llmConfig?.baseUrl || "").trim();
+
+  if (providerId !== "openai-compatible" || !baseUrl) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(baseUrl);
+    const hostname = String(parsed.hostname || "").trim().toLowerCase();
+    return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(hostname);
+  } catch {
+    return false;
+  }
+}
+
 function ensureTextResponse(response) {
   if (response.text) {
     return response;
@@ -335,7 +356,10 @@ async function executeAttempt({
     return ensureTextResponse(response);
   }
 
-  if (!hasApiKey(attempt.config.llm)) {
+  if (
+    !hasApiKey(attempt.config.llm) &&
+    !isLocalOpenAiWithoutKey(attempt.config.llm)
+  ) {
     throw new Error("missing-api-key");
   }
 

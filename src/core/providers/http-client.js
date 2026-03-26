@@ -13,11 +13,22 @@ function mergeHeaders(...headerSets) {
     }
 
     for (const [key, value] of Object.entries(headerSet)) {
-      if (value === null || value === undefined || value === "") {
+      const normalizedValue = Array.isArray(value)
+        ? value.join(",")
+        : value === null || value === undefined
+          ? ""
+          : String(value);
+
+      const trimmedValue = normalizedValue.trim();
+      const isBlankBearerHeader =
+        String(key).trim().toLowerCase() === "authorization" &&
+        /^bearer$/i.test(trimmedValue);
+
+      if (!trimmedValue || isBlankBearerHeader) {
         continue;
       }
 
-      headers[key] = Array.isArray(value) ? value.join(",") : String(value);
+      headers[key] = normalizedValue;
     }
   }
 
