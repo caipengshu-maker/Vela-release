@@ -528,7 +528,8 @@ export function SettingsModal({
                 step="1"
                 value={bgmVolume}
                 onChange={(event) => {
-                  const nextValue = Number(event.target.value);
+                  const rawValue = Number(event.target.value);
+                  const nextValue = rawValue <= 5 ? 0 : rawValue;
                   setBgmVolume(nextValue);
                   onBgmPreview?.(nextValue);
                 }}

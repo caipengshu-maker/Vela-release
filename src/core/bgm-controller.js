@@ -103,8 +103,8 @@ export class BgmController {
   /** Compute the effective volume (0..1) given user slider + duck state. */
   _computeVolume() {
     if (!this._enabled) return 0;
-    // Apply perceptual (sqrt) curve, same as old mapUserVolumeToGain
-    const gain = this._userVolume <= 0 ? 0 : Math.sqrt(this._userVolume);
+    // Keep BGM volume honest and predictable: slider value == audio volume.
+    const gain = clampUnit(this._userVolume, 0);
     return this._ducked ? gain * DUCK_RATIO : gain;
   }
 
