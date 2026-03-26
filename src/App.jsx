@@ -328,6 +328,27 @@ function getLatestAssistantProviderMeta(messages) {
   return null;
 }
 
+function toArrayBuffer(binaryPayload) {
+  if (binaryPayload instanceof ArrayBuffer) {
+    return binaryPayload;
+  }
+
+  if (ArrayBuffer.isView(binaryPayload)) {
+    return binaryPayload.buffer.slice(
+      binaryPayload.byteOffset,
+      binaryPayload.byteOffset + binaryPayload.byteLength
+    );
+  }
+
+  return null;
+}
+
+function getBundledBgmAssetPath() {
+  const hour = new Date().getHours();
+  const sceneType = hour >= 6 && hour < 18 ? "day" : "night";
+  return `assets/bgm/${sceneType}.mp3`;
+}
+
 async function getBrowserLocation() {
   if (!navigator?.geolocation?.getCurrentPosition) {
     return null;
@@ -916,6 +937,15 @@ export default function App() {
   }, [state.audio?.bgmVolume, state.audio?.ttsVolume, state.persona?.userName, state.tts?.volume]);
 
   useEffect(() => {
+    const bgm = bgmControllerRef.current;
+    if (!bgm) {
+      return;
+    }
+
+    bgm.setVolume(Number(state.audio?.bgmVolume ?? 42) / 100);
+  }, [state.audio?.bgmVolume]);
+
+  useEffect(() => {
     let isMounted = true;
 
     async function bootstrap() {
@@ -1142,27 +1172,23 @@ export default function App() {
       return undefined;
     }
 
-    const getSceneTrack = () => {
-      const hour = new Date().getHours();
-      const sceneType = hour >= 6 && hour < 18 ? "day" : "night";
-      return `D:\\Vela\\assets\\bgm\\bgm-${sceneType}-minimax${sceneType === "night" ? "-v2" : ""}.mp3`;
-    };
-
     const syncTrack = async () => {
-      const trackPath = getSceneTrack();
-      if (bgm.activeTrackUrl === trackPath && bgm.current) {
+      const assetPath = getBundledBgmAssetPath();
+      if (bgm.activeTrackUrl === assetPath && bgm.current) {
         return;
       }
 
       try {
-        const buffer = await window.vela.readBinaryFile(trackPath);
-        if (!buffer) return;
-        const arrayBuffer = buffer instanceof ArrayBuffer
-          ? buffer
-          : buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-        await bgm.loadFromBuffer(arrayBuffer, trackPath);
+        const payload = await window.vela.readBundledAsset(assetPath);
+        const arrayBuffer = toArrayBuffer(payload);
+
+        if (!arrayBuffer) {
+          return;
+        }
+
+        await bgm.loadFromBuffer(arrayBuffer, assetPath);
       } catch (err) {
-        console.warn("[bgm] failed to load:", trackPath, err?.message);
+        console.warn("[bgm] failed to load:", assetPath, err?.message);
       }
     };
 

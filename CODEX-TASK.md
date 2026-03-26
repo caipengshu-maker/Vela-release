@@ -1,116 +1,75 @@
-# AX-L3: HeadAudio Viseme Lip Sync Integration
+# CODEX-TASK: Fix Vela Splash → Title → Main UI Loading Sequence
 
-## Goal
-Replace the current amplitude-only lip sync with HeadAudio viseme detection. The avatar's mouth should form different shapes (aa/oh/ee/ou) matching the actual speech audio, not just open/close based on volume.
+## Context
 
-## Background
-- HeadAudio: `npm install headaudio` (MIT, by met4citizen)
-- It's an AudioWorklet node that analyzes audio waveform and outputs Oculus viseme blend shape values in real time
-- Pre-trained model: `model-en-mixed` (English-trained but basic vowel shapes are cross-language)
-- Latency: 50-100ms (compensated with DelayNode)
-- Our audio comes from MiniMax TTS via WebSocket as hex-encoded MP3 chunks, decoded and played in the renderer process
+The app has three loading phases:
+1. **K Studio splash** (`SplashScreen.jsx`) — white bg, shows K Studio logo, timed 2.5s + fade out
+2. **Vela title screen** (`VelaTitleScreen.jsx`) — black bg, shows Vela wordmark logo + thin progress line
+3. **Main UI** — app-shell with VRM avatar + chat panel
 
-## Architecture
+## Current Bugs (all visual)
 
-### Current audio flow
+1. **Flash between K Studio → Vela title**: When K Studio splash fades out, the main app background (`#f4ebe6` warm beige) flashes briefly before Vela title screen's fade-in animation reaches full opacity. Looks jarring.
+
+2. **App background visible during transitions**: The `app-shell` background color bleeds through during overlay transitions because both overlays use fade animations (opacity 0→1 and 1→0).
+
+3. **VRM "hair dropping from sky"**: When the main UI first appears, the VRM character's hair visually drops from above as hair physics initialize. The title screen should fully cover this.
+
+## Desired Behavior
+
+- K Studio logo fades in on white bg, holds, fades out
+- Vela title screen is ALREADY fully visible underneath (no gap, no flash)
+- While Vela title shows, VRM + bootstrap load behind it (invisible to user)
+- After VRM is loaded AND settled (hair physics stable), Vela title fades out
+- Main UI appears fully ready — no flash, no falling hair, no background color bleed
+
+## Architecture Direction
+
+The key insight: **both overlay screens should be pre-rendered and layered by z-index, not conditionally mounted/unmounted.** The Vela title screen should be at full opacity from the start, hidden behind the K Studio splash (higher z-index). When K Studio fades out, Vela title is already there.
+
+Suggested z-index stack:
+- K Studio splash: z-index 9999 (white bg, covers everything)
+- Vela title screen: z-index 9998 (black bg, covers content)
+- Main content: z-index 1 (always renders, loads VRM behind overlays)
+
+## Files to Modify
+
+- `src/App.jsx` — restructure the return JSX: render all layers simultaneously, not ternary/conditional
+- `src/SplashScreen.jsx` — ensure it overlays properly and only fades OUT (starts at full opacity)
+- `src/VelaTitleScreen.jsx` — should be rendered from mount at full opacity (no fade-in needed since it's behind K Studio), only fades out when ready
+- `src/styles.css` — ensure `.app-shell.is-title-active` keeps black bg; fix any z-index/opacity issues
+
+## State Machine
+
 ```
-MiniMax WebSocket → hex MP3 chunks → audio-player.js → HTML5 Audio element → speakers
+splashDone=false, titleDone=false, isSettled=false
+  → K Studio splash visible (z:9999), Vela title visible behind (z:9998), content loading behind (z:1)
+
+splashDone=true, titleDone=false, isSettled=false
+  → K Studio unmounts (faded out), Vela title now visible, content still loading
+
+splashDone=true, titleDone=false, isSettled=true
+  → Vela title progress fills to 100%, begins fade-out
+
+splashDone=true, titleDone=true
+  → Vela title unmounts, content fully visible
+  → Remove is-title-active class from app-shell
 ```
-
-### Target audio flow
-```
-MiniMax WebSocket → hex MP3 chunks → AudioContext + MediaElementSource
-  ├→ speakers (via destination)
-  └→ HeadAudio AudioWorklet → viseme values → VRM mouth morphs
-```
-
-## What To Do
-
-### 1. Install HeadAudio
-```
-npm install headaudio
-```
-
-### 2. Set up AudioWorklet in the renderer
-
-In `src/audio-player.js` (or a new `src/core/viseme-driver.js`):
-
-- Create an AudioContext when TTS playback starts
-- Register the HeadAudio worklet processor
-- Create a HeadAudioNode
-- Load the pre-trained model (ship `model-en-mixed.bin` in `public/assets/` or use CDN)
-- Connect the audio source → HeadAudio node (for analysis, no audio output from this node)
-- Connect the audio source → AudioContext.destination (for actual playback)
-
-Important: The current audio playback uses HTML5 `<audio>` element with blob URLs. To tap into the audio for HeadAudio, you need:
-```javascript
-const audioCtx = new AudioContext();
-const source = audioCtx.createMediaElementSource(audioElement);
-// HeadAudio node connects to source for analysis
-// source also connects to destination for playback
-source.connect(headAudioNode); // viseme analysis
-source.connect(audioCtx.destination); // actual playback
-```
-
-### 3. Map Oculus visemes to VRM morph targets
-
-HeadAudio outputs Oculus viseme names. Map them to our VRM model's mouth morph targets:
-
-```javascript
-const VISEME_TO_VRM_MORPH = {
-  viseme_sil: null,              // silence, no morph
-  viseme_PP: "mouth_straight",   // bilabial (p, b, m)
-  viseme_FF: "mouth_narrow",     // labiodental (f, v)
-  viseme_TH: "mouth_straight",   // dental (th)
-  viseme_DD: "mouth_a_1",        // alveolar (d, t, n)
-  viseme_kk: "mouth_narrow",     // velar (k, g)
-  viseme_CH: "mouth_narrow",     // postalveolar (ch, j, sh)
-  viseme_SS: "mouth_straight",   // sibilant (s, z)
-  viseme_nn: "mouth_straight",   // nasal (n, ng)
-  viseme_RR: "mouth_o_1",        // approximant (r)
-  viseme_aa: "mouth_a_1",        // open vowel (a, ah)
-  viseme_E:  "mouth_wide",       // front vowel (e, eh)
-  viseme_ih: "mouth_straight",   // near-close (i, ih)
-  viseme_oh: "mouth_o_1",        // mid-back (o, oh)
-  viseme_ou: "mouth_u_1",        // close-back (u, oo)
-};
-```
-
-### 4. Apply viseme values to VRM controller
-
-In `vrm-avatar-controller.js`:
-
-- Add a method `setVisemeWeights(visemeMap)` that receives a map of morph target names → weights
-- In the render loop, when viseme data is active, use viseme-driven mouth morphs INSTEAD of the current amplitude-driven `mouth_open` approach
-- When viseme data is NOT active (no audio playing), fall back to current amplitude behavior
-- Viseme weights should be smoothed (lerp/damp, ~8-10 strength) to avoid jittery transitions
-
-### 5. Wire it together
-
-- When TTS starts playing → activate HeadAudio pipeline
-- HeadAudio `onvalue` callback → update viseme weights on the controller
-- When TTS stops → deactivate, revert to idle mouth state
-- Call `headaudio.update(deltaMs)` in the animation loop
-
-### 6. Ship the model file
-
-- Copy `node_modules/headaudio/dist/model-en-mixed.bin` to `public/assets/headaudio/model-en-mixed.bin`
-- Load from `/assets/headaudio/model-en-mixed.bin` at runtime
-
-### 7. Fallback
-
-If HeadAudio fails to initialize (AudioWorklet not supported, model load fails), fall back to the current amplitude-based lip sync silently. Log a warning but don't crash.
 
 ## Constraints
-- Do NOT remove the existing amplitude lip sync code — keep it as fallback
-- Do NOT change TTS WebSocket or API logic
-- Do NOT change emotion presets
-- HeadAudio model file should be in `public/assets/headaudio/`, NOT bundled by Vite
-- `npm run build` must pass
-- Add console logs for viseme activity: `[VRM][viseme] active=true/false` when lip sync mode switches
 
-## Files to create/modify
-1. `src/core/viseme-driver.js` (NEW) — HeadAudio setup, model loading, viseme mapping
-2. `src/audio-player.js` — wire AudioContext + HeadAudio into playback pipeline
-3. `src/core/vrm-avatar-controller.js` — add `setVisemeWeights()`, integrate into render loop
-4. `public/assets/headaudio/model-en-mixed.bin` — copy from node_modules after install
+- `isSettled` should be set ~600ms AFTER `setIsLoading(false)` to let VRM render first frame + hair physics settle
+- K Studio splash timing: fade-in 600ms, hold 2500ms, fade-out 800ms (keep existing)
+- Vela title: NO fade-in animation needed (it's pre-rendered behind splash). Only needs fade-out when done.
+- Title logo path: `D:\Vela\assets\splash\vela-title-logo.png` (loaded via `window.vela.readBinaryFile`)
+- Progress line behavior: crawls toward 70% while loading, rushes to 100% when `isReady` becomes true
+- Build must pass: `npx vite build`
+
+## Verification
+
+After changes:
+1. `npx vite build` succeeds
+2. No conditional rendering of overlays that could cause mount/unmount flash
+3. Vela title screen starts at opacity 1 (no is-entering fade-in)
+4. K Studio splash z-index > Vela title z-index > content z-index
+5. `app-shell` bg is black while title is active, transitions to normal after

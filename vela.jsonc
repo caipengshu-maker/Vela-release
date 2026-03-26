@@ -92,7 +92,7 @@
     "assetPath": "D:/Vela/assets/avatars/eku/Eku_VRM_v1_0_0.vrm"
   },
   "audio": {
-    "bgmVolume": 42,
+    "bgmVolume": 0,
     "ttsVolume": 100
   }
 }

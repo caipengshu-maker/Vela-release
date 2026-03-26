@@ -1,0 +1,1 @@
+Read CODEX-TASK.md and fix the splash/title/loading sequence as described. Modify src/App.jsx, src/SplashScreen.jsx, src/VelaTitleScreen.jsx, and src/styles.css. The core fix: render ALL overlay layers from mount simultaneously, use z-index layering, Vela title starts at opacity 1 with no fade-in animation. After fixing, run: npx vite build to verify.

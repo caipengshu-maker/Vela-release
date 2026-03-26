@@ -35,10 +35,15 @@ function fetchIpLocation() {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
+const isRendererDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const isSmokeTest = process.argv.includes("--smoke-test");
-const windowStatePath = path.join(rootDir, ".vela-data", "window-state.json");
-const electronDataDir = path.join(rootDir, ".vela-data", "electron");
+const electronDataDir = isRendererDev
+  ? path.join(rootDir, ".vela-data", "electron")
+  : app.getPath("userData");
 const electronSessionDir = path.join(electronDataDir, "session");
+const windowStatePath = isRendererDev
+  ? path.join(rootDir, ".vela-data", "window-state.json")
+  : path.join(electronDataDir, "window-state.json");
 const WINDOW_STATE_DEBOUNCE_MS = 500;
 
 let mainWindow;
@@ -50,6 +55,33 @@ let windowStateSaveTimer = null;
 fs.mkdirSync(electronSessionDir, { recursive: true });
 app.setPath("userData", electronDataDir);
 app.setPath("sessionData", electronSessionDir);
+
+function resolveBundledAssetPath(relativePath) {
+  const normalizedRelativePath = String(relativePath || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+
+  if (!normalizedRelativePath) {
+    throw new Error("bundled asset path is required");
+  }
+
+  const assetBaseDir = isRendererDev
+    ? path.join(rootDir, "public")
+    : path.join(rootDir, "dist");
+  const resolvedPath = path.resolve(assetBaseDir, normalizedRelativePath);
+  const relativeToBase = path.relative(assetBaseDir, resolvedPath);
+
+  if (
+    !relativeToBase ||
+    relativeToBase.startsWith("..") ||
+    path.isAbsolute(relativeToBase)
+  ) {
+    throw new Error("invalid bundled asset path");
+  }
+
+  return resolvedPath;
+}
 
 function toRoundedInteger(value) {
   const numericValue = Number(value);
@@ -364,6 +396,10 @@ ipcMain.handle("vela:read-binary-file", async (_event, filePath) => {
   }
 
   return fs.promises.readFile(targetPath);
+});
+
+ipcMain.handle("vela:read-bundled-asset", async (_event, relativePath) => {
+  return fs.promises.readFile(resolveBundledAssetPath(relativePath));
 });
 
 ipcMain.handle("vela:send-message", async (_event, message) => {
