@@ -182,6 +182,48 @@ export class BgmController {
     return true;
   }
 
+  async loadFromBuffer(arrayBuffer, label = "") {
+    this.ensureContext();
+    this.bindFirstUserGesture();
+    await this.unlock();
+
+    if (!this.audioContext || !arrayBuffer?.byteLength) {
+      return false;
+    }
+
+    let audioBuffer;
+    try {
+      audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer.slice(0));
+    } catch {
+      return false;
+    }
+
+    const nextTrack = this.createTrackNode(audioBuffer);
+    if (!nextTrack) {
+      return false;
+    }
+
+    const previous = this.current;
+    if (previous?.gainNode && this.audioContext) {
+      const now = this.audioContext.currentTime;
+      nextTrack.gainNode.gain.setValueAtTime(0, now);
+      nextTrack.gainNode.gain.linearRampToValueAtTime(1, now + CROSSFADE_MS / 1000);
+      previous.gainNode.gain.cancelScheduledValues(now);
+      previous.gainNode.gain.setValueAtTime(previous.gainNode.gain.value, now);
+      previous.gainNode.gain.linearRampToValueAtTime(0, now + CROSSFADE_MS / 1000);
+      window.setTimeout(() => {
+        try { previous.source.stop(); } catch { /* noop */ }
+      }, CROSSFADE_MS + 80);
+    } else {
+      this.current?.source?.stop();
+    }
+
+    this.current = nextTrack;
+    this.activeTrackUrl = label;
+    this.applyGain(this.getCurrentTargetVolume(), 0);
+    return true;
+  }
+
   async switchTrack(newUrl) {
     const nextUrl = String(newUrl || "").trim();
     if (!nextUrl) {

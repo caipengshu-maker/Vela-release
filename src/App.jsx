@@ -1145,17 +1145,25 @@ export default function App() {
     const getSceneTrack = () => {
       const hour = new Date().getHours();
       const sceneType = hour >= 6 && hour < 18 ? "day" : "night";
-      return `./assets/bgm/${sceneType}.mp3`;
+      return `D:\\Vela\\assets\\bgm\\bgm-${sceneType}-minimax${sceneType === "night" ? "-v2" : ""}.mp3`;
     };
 
-    const syncTrack = () => {
-      const track = getSceneTrack();
-      if (!bgm.activeTrackUrl) {
-        void bgm.loadAndPlay(track);
+    const syncTrack = async () => {
+      const trackPath = getSceneTrack();
+      if (bgm.activeTrackUrl === trackPath && bgm.current) {
         return;
       }
 
-      void bgm.switchTrack(track);
+      try {
+        const buffer = await window.vela.readBinaryFile(trackPath);
+        if (!buffer) return;
+        const arrayBuffer = buffer instanceof ArrayBuffer
+          ? buffer
+          : buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+        await bgm.loadFromBuffer(arrayBuffer, trackPath);
+      } catch (err) {
+        console.warn("[bgm] failed to load:", trackPath, err?.message);
+      }
     };
 
     void bgm.resume().then(() => {
