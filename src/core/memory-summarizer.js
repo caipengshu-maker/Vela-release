@@ -195,14 +195,27 @@ function truncateText(value, maxLength) {
   return `${text.slice(0, maxLength)}...`;
 }
 
-function createRawFallback(defaults, { userMessage, assistantReply }) {
+function createStructuredFallback(defaults, { userMessage, assistantReply, emotion }) {
+  const trimmedUser = String(userMessage || "").trim();
+  const trimmedAssistant = String(assistantReply || "").trim();
+  const summary = trimmedUser
+    ? `聊到“${truncateText(trimmedUser, 24)}”，这轮话题已经接住。`
+    : truncateText(trimmedAssistant, 48) || "这轮对话已经接住。";
+
   return {
     id: defaults.id,
-    type: "raw-fallback",
-    userMessage: String(userMessage || "").trim(),
-    assistantReply: truncateText(assistantReply, 200),
     createdAt: defaults.createdAt,
-    reason: "parse-error"
+    turnIndex: defaults.turnIndex,
+    summary,
+    bridgeSummary: summary,
+    openFollowUps: [],
+    facts: [],
+    emotionalMoment: {
+      detected: Boolean(emotion && emotion !== "calm"),
+      emotion: String(emotion || "calm").trim() || "calm",
+      intensity: emotion && emotion !== "calm" ? 0.35 : 0
+    },
+    topicLabel: truncateText(trimmedUser || trimmedAssistant || "近况", 8)
   };
 }
 
@@ -297,12 +310,13 @@ export class MemorySummarizer {
       await this.memoryStore.autoUpdateProfile(facts);
       return finalEpisode;
     } catch (error) {
-      console.warn("[memory-summarizer] Parse failed, using raw fallback");
+      console.warn("[memory-summarizer] Parse failed, using structured fallback");
       console.warn("memory summarizer failed:", error?.message || error);
 
-      const fallbackEpisode = createRawFallback(defaults, {
+      const fallbackEpisode = createStructuredFallback(defaults, {
         userMessage,
-        assistantReply
+        assistantReply,
+        emotion
       });
 
       await this.memoryStore.appendEpisode(fallbackEpisode);

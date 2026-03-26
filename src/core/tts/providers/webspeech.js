@@ -1,4 +1,6 @@
-import { BrowserWindow } from "electron";
+import electron from "electron";
+
+const { BrowserWindow } = electron;
 
 const RENDERER_BRIDGE_KEY = "__velaWebSpeechBridge";
 const VOICE_FALLBACK_PATTERN = /chinese|mandarin|putonghua|cantonese/i;
