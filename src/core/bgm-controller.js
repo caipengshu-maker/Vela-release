@@ -52,7 +52,8 @@ export class BgmController {
       return 0;
     }
 
-    return this.ducked ? this.userVolume * DUCK_RATIO : this.userVolume;
+    const gain = mapUserVolumeToGain(this.userVolume);
+    return this.ducked ? gain * DUCK_RATIO : gain;
   }
 
   applyGain(targetVolume, fadeMs = 0) {
@@ -297,9 +298,9 @@ export class BgmController {
     }
   }
 
-  setVolume(volume) {
-    this.userVolume = mapUserVolumeToGain(clampVolume(volume));
-    this.applyGain(this.getCurrentTargetVolume(), 160);
+  setVolume(volume, fadeMs = 0) {
+    this.userVolume = clampVolume(volume);
+    this.applyGain(this.getCurrentTargetVolume(), fadeMs);
   }
 
   duck() {
