@@ -2,6 +2,8 @@
 
 > A local-first AI companion with a living anime avatar, continuous memory, and a relationship that grows with you.
 
+🌏 [中文文档](README.zh-CN.md)
+
 ![Vela hero placeholder](docs/screenshots/hero.svg)
 
 ![Electron](https://img.shields.io/badge/Electron-41-1f1f1f?logo=electron&logoColor=white)
