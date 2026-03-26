@@ -44,8 +44,8 @@ function buildSummarizerConfig(config) {
     ...config,
     llm: {
       ...config.llm,
-      temperature: 0.3,
-      maxTokens: 300,
+      temperature: 0.2,
+      maxTokens: 420,
       thinking: {
         ...config.llm.thinking,
         enabled: false
@@ -154,13 +154,13 @@ function normalizeFact(fact, episode) {
 }
 
 function normalizeEpisode(payload, defaults) {
-  const summary = String(payload?.summary || "").trim();
+  const summary = String(payload?.summary || payload?.bridgeSummary || "").trim();
   const bridgeSummary = String(
     payload?.bridgeSummary || payload?.summary || ""
   ).trim();
-  const topicLabel = String(payload?.topicLabel || "").trim();
+  const topicLabel = String(payload?.topicLabel || payload?.label || "").trim();
 
-  if (!summary || !topicLabel) {
+  if (!summary) {
     return null;
   }
 
@@ -174,7 +174,7 @@ function normalizeEpisode(payload, defaults) {
     createdAt: defaults.createdAt,
     turnIndex: defaults.turnIndex,
     summary,
-    bridgeSummary,
+    bridgeSummary: bridgeSummary || summary,
     openFollowUps: normalizeStringList(payload?.openFollowUps, 3),
     facts: Array.isArray(payload?.facts) ? payload.facts : [],
     emotionalMoment: {
@@ -182,7 +182,7 @@ function normalizeEpisode(payload, defaults) {
       emotion: String(emotionalMoment.emotion || "calm").trim() || "calm",
       intensity: normalizeConfidence(emotionalMoment.intensity, 0)
     },
-    topicLabel
+    topicLabel: topicLabel || truncateText(summary, 8)
   };
 }
 

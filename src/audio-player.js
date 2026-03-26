@@ -352,6 +352,7 @@ export class AudioPlayerService {
     this._createElements();
     void this._ensureVisemeDriver();
     this.audio.pause();
+    this.audio.volume = this.userVolume;
     this.audio.src = replay.url;
     this.audio.currentTime = 0;
     void this.audio.play().catch(() => {});

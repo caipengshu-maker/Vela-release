@@ -1239,7 +1239,11 @@ export class VelaCore {
         provider: ttsProvider,
         apiKey: ttsProvider === "minimax-websocket" ? ttsApiKey : "",
         apiKeyEnv: ttsProvider === "minimax-websocket" ? "MINIMAX_API_KEY" : "",
-        voiceId: voiceId || this.config?.tts?.voiceId || ""
+        voiceId: voiceId || this.config?.tts?.voiceId || "",
+        voiceSettings: {
+          ...(this.config?.tts?.voiceSettings || {}),
+          volume: ttsVolume / 100
+        }
       },
       audio: {
         bgmVolume,
@@ -1696,7 +1700,7 @@ export class VelaCore {
       relevantMemories,
       userFacts: memory.userFacts || [],
       runtimeSession: this.runtimeSession,
-      recentTranscriptBudget: this.config.runtime.recentTranscriptBudget || 3600,
+      recentTranscriptBudget: this.config.runtime.recentTranscriptBudget || 6000,
       awarenessPacket,
       relationshipUnlockHints,
       isInRegressionMood: relationship.isInRegressionMood
@@ -1916,7 +1920,7 @@ export class VelaCore {
       relevantMemories,
       userFacts: memory.userFacts || [],
       runtimeSession: this.runtimeSession,
-      recentTranscriptBudget: this.config.runtime.recentTranscriptBudget || 3600,
+      recentTranscriptBudget: this.config.runtime.recentTranscriptBudget || 6000,
       awarenessPacket,
       relationshipUnlockHints,
       isInRegressionMood: relationship.isInRegressionMood
