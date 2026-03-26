@@ -1191,6 +1191,8 @@ export default function App() {
     };
   }, [isLoading, state.onboarding?.required]);
 
+  const bgmLoadedTrackRef = useRef("");
+
   useEffect(() => {
     const bgm = bgmControllerRef.current;
     if (!bgm) {
@@ -1206,7 +1208,9 @@ export default function App() {
 
     const syncTrack = async () => {
       const assetPath = getBundledBgmAssetPath();
-      if (bgm.isCurrentTrack?.(assetPath)) {
+
+      // Hard ref guard: if we already loaded this exact track, do nothing
+      if (bgmLoadedTrackRef.current === assetPath) {
         return;
       }
 
@@ -1218,9 +1222,16 @@ export default function App() {
           return;
         }
 
+        // Double-check ref before actually loading (async gap protection)
+        if (bgmLoadedTrackRef.current === assetPath) {
+          return;
+        }
+
+        bgmLoadedTrackRef.current = assetPath;
         await bgm.loadFromBuffer(arrayBuffer, assetPath);
       } catch (err) {
         console.warn("[bgm] failed to load:", assetPath, err?.message);
+        bgmLoadedTrackRef.current = "";
       }
     };
 
@@ -1228,13 +1239,7 @@ export default function App() {
       syncTrack();
     });
 
-    const intervalId = window.setInterval(() => {
-      syncTrack();
-    }, 5 * 60 * 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
+    return undefined;
   }, [bgmEnabled, isLoading, state.onboarding?.required]);
 
   useEffect(() => {
