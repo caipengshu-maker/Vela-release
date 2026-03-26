@@ -1,0 +1,101 @@
+{
+  "app": {
+    "name": "Vela",
+    "tagline": "克制而持续地在场",
+    "onboarding": {
+      "completed": false
+    },
+    "window": {
+      "width": 1320,
+      "height": 860,
+      "minWidth": 1120,
+      "minHeight": 720
+    }
+  },
+  "runtime": {
+    "storageRoot": "./.vela-data",
+    "cacheRoot": "./.vela-data/cache",
+    "assetRoot": "assets",
+    "recentSummaryLimit": 2,
+    "summaryIndexLimit": 8,
+    "sessionMessageLimit": 40,
+    "recentTranscriptBudget": 6000,
+    "relevantMemoryLimit": 3,
+    "behaviorPatternRefreshTurns": 24
+  },
+  "user": {
+    "location": {
+      "city": "Shanghai"
+    },
+    "name": ""
+  },
+  "llm": {
+    "provider": "minimax-messages",
+    "baseUrl": "https://api.minimaxi.com/anthropic",
+    "model": "MiniMax-M2.7",
+    "apiKey": "",
+    "apiKeyEnv": "MINIMAX_API_KEY",
+    "temperature": 0.9,
+    "maxTokens": 512,
+    "thinkingMode": "balanced",
+    "endpointPath": "",
+    "headers": {},
+    "anthropicVersion": "2023-06-01",
+    "thinking": {
+      "enabled": false,
+      "budgetTokens": 512
+    },
+    "fallback": {
+      "provider": "anthropic-messages",
+      "model": "k2p5",
+      "apiKey": "",
+      "apiKeyEnv": "KIMI_CODING_API_KEY",
+      "baseUrl": "https://api.kimi.com/coding"
+    }
+  },
+  "asr": {
+    "enabled": true,
+    "provider": "webspeech"
+  },
+  "tts": {
+    "enabled": true,
+    "provider": "minimax-websocket",
+    "apiKey": "",
+    "apiKeyEnv": "MINIMAX_API_KEY",
+    "model": "speech-2.8-hd",
+    "wsUrl": "wss://api.minimaxi.com/ws/v1/t2a_v2",
+    "languageBoost": "Chinese",
+    "voiceId": "Chinese (Mandarin)_Sweet_Lady",
+    "voiceSettings": {
+      "speed": 1,
+      "volume": 1,
+      "pitch": 0,
+      "englishNormalization": false
+    },
+    "audioSettings": {
+      "format": "mp3",
+      "sampleRate": 32000,
+      "bitrate": 128000,
+      "channel": 1
+    }
+  },
+  "permissions": {
+    "filesystem": false,
+    "system": false,
+    "codingAssistant": false,
+    "toolCalls": false
+  },
+  "proactivity": {
+    "enabled": false,
+    "welcomeBack": true
+  },
+  "avatar": {
+    "defaultPresence": "listening",
+    "defaultEmotion": "calm",
+    "assetPath": "avatars/eku/Eku_VRM_v1_0_0.vrm"
+  },
+  "audio": {
+    "bgmVolume": 42,
+    "ttsVolume": 100
+  }
+}

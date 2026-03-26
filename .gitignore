@@ -1,0 +1,10 @@
+node_modules/
+dist/
+release/
+.vela-data/
+npm-debug.log*
+*.user.jsonc
+CODEX-*.md
+SESSION-STATE.md
+.env
+.env.*

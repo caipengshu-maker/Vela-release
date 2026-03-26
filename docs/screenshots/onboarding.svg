@@ -1,0 +1,15 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="720" fill="#F5ECE7"/>
+  <rect x="140" y="60" width="1000" height="600" rx="34" fill="#FFF9F5" stroke="#DDCBC1" stroke-width="2"/>
+  <text x="220" y="156" fill="#352D2A" font-family="Segoe UI, Arial, sans-serif" font-size="52" font-weight="700">Onboarding Placeholder</text>
+  <text x="220" y="208" fill="#6D5952" font-family="Segoe UI, Arial, sans-serif" font-size="24">First-run setup for alias, API key, and voice options</text>
+  <rect x="220" y="268" width="700" height="76" rx="20" fill="#FFFFFF" stroke="#E7D8D0"/>
+  <rect x="220" y="376" width="700" height="76" rx="20" fill="#FFFFFF" stroke="#E7D8D0"/>
+  <rect x="220" y="484" width="330" height="74" rx="22" fill="#2F2A28"/>
+  <rect x="590" y="484" width="330" height="74" rx="22" fill="#ECD8CF"/>
+  <circle cx="1010" cy="360" r="88" fill="#F8E2D9"/>
+  <text x="258" y="316" fill="#6C5A53" font-family="Segoe UI, Arial, sans-serif" font-size="24">Alias / user name field</text>
+  <text x="258" y="424" fill="#6C5A53" font-family="Segoe UI, Arial, sans-serif" font-size="24">MiniMax API key field</text>
+  <text x="320" y="530" fill="#FFF8F4" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="600">Next Step</text>
+  <text x="672" y="530" fill="#4D403B" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="600">Advanced Setup</text>
+</svg>
