@@ -1,430 +1,340 @@
-import { mapUserVolumeToGain } from "./audio-volume.js";
+/**
+ * BGM Controller — simplified rewrite (2024-03).
+ *
+ * Previous version used Web Audio API (AudioContext + BufferSourceNode + GainNode
+ * graph) with a serialized-load queue, per-track gain nodes, crossfade, and a
+ * track registry. Over 8 patch rounds this grew into ~430 lines of overlapping
+ * guards that still allowed double-play under React Strict Mode and broke volume
+ * control (applyGain called stopAllStaleTracks, reconnecting masterGain, etc.).
+ *
+ * This rewrite uses a single <audio> HTML element:
+ *   • One element = one source. Double-play is structurally impossible.
+ *   • volume property = real-time slider. No gain nodes to manage.
+ *   • loop attribute = native. No source-restart bookkeeping.
+ *   • Ducking = just lower the volume temporarily.
+ *
+ * Trade-offs accepted:
+ *   • No crossfade between day/night tracks (hard cut instead). This is cosmetic
+ *     and not worth the complexity.
+ *   • Ducking uses a simple multiplier on volume rather than Web Audio ramps.
+ *     Perceptually equivalent for BGM.
+ */
 
 const DUCK_RATIO = 0.2;
-const DUCK_FADE_MS = 300;
-const UNDUCK_FADE_MS = 500;
-const CROSSFADE_MS = 800;
 
-function clampVolume(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return 1;
+function clampUnit(value, fallback = 1) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(1, n));
+}
+
+/**
+ * Attempt to convert various binary payloads into an Object URL suitable for
+ * <audio src="…">. We accept ArrayBuffer, TypedArray, Blob, or a plain URL
+ * string. Returns { url, revoke } where revoke() frees the blob URL (no-op for
+ * plain URLs).
+ */
+function toPlayableUrl(source, label = "") {
+  // Already a URL string (http/https/relative path)
+  if (typeof source === "string" && source.length > 0) {
+    return { url: source, revoke() {} };
   }
 
-  return Math.min(1, Math.max(0, numeric));
+  let blob;
+  if (source instanceof Blob) {
+    blob = source;
+  } else if (source instanceof ArrayBuffer) {
+    blob = new Blob([source], { type: "audio/mpeg" });
+  } else if (ArrayBuffer.isView(source)) {
+    blob = new Blob([source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength)], { type: "audio/mpeg" });
+  }
+
+  if (!blob) return null;
+
+  const url = URL.createObjectURL(blob);
+  return {
+    url,
+    revoke() {
+      try { URL.revokeObjectURL(url); } catch { /* noop */ }
+    }
+  };
 }
 
 export class BgmController {
   constructor() {
-    this.audioContext = null;
-    this.masterGain = null;
-    this.current = null;
-    this.userVolume = 0.42;
-    this.ducked = false;
-    this.enabled = true;
-    this.unlocked = false;
-    this.unlockHandler = null;
-    this.activeTrackUrl = "";
-    this._muted = false;
-    this._loadingPromise = null;
-    this._tracks = new Set();
-    this._pendingStopTimers = new Set();
+    /** @type {HTMLAudioElement | null} */
+    this._audio = null;
+    /** Label/path of the currently loaded track (used for dedup) */
+    this._currentLabel = "";
+    /** Revoke function for the current blob URL */
+    this._revokeUrl = null;
+
+    // Volume state
+    this._userVolume = 0.42;  // 0..1 (linear slider value)
+    this._ducked = false;
+    this._enabled = true;
+
+    // Gesture-unlock state
+    this._unlocked = false;
+    this._unlockHandler = null;
+
+    // Loading lock — only one load at a time
+    this._loadId = 0;
   }
 
-  ensureContext() {
-    if (typeof window === "undefined") {
-      return null;
-    }
+  // ---------------------------------------------------------------------------
+  // Internal: audio element lifecycle
+  // ---------------------------------------------------------------------------
 
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) {
-      return null;
-    }
+  /** Lazily create the singleton <audio> element. */
+  _ensureAudio() {
+    if (this._audio) return this._audio;
+    if (typeof document === "undefined") return null;
 
-    if (!this.audioContext) {
-      this.audioContext = new AudioContextClass();
-      this.masterGain = this.audioContext.createGain();
-      this.masterGain.gain.value = this.enabled ? this.userVolume : 0;
-      this.masterGain.connect(this.audioContext.destination);
-    }
-
-    return this.audioContext;
+    const el = document.createElement("audio");
+    el.loop = true;
+    el.preload = "auto";
+    // Start with correct volume
+    el.volume = this._computeVolume();
+    this._audio = el;
+    return el;
   }
 
-  getCurrentTargetVolume() {
-    if (!this.enabled) {
-      return 0;
-    }
-
-    const gain = mapUserVolumeToGain(this.userVolume);
-    return this.ducked ? gain * DUCK_RATIO : gain;
+  /** Compute the effective volume (0..1) given user slider + duck state. */
+  _computeVolume() {
+    if (!this._enabled) return 0;
+    // Apply perceptual (sqrt) curve, same as old mapUserVolumeToGain
+    const gain = this._userVolume <= 0 ? 0 : Math.sqrt(this._userVolume);
+    return this._ducked ? gain * DUCK_RATIO : gain;
   }
 
-  applyGain(targetVolume, fadeMs = 0) {
-    if (!this.masterGain || !this.audioContext) {
-      return;
-    }
-
-    this.stopAllStaleTracks();
-
-    // Resume context if suspended
-    if (this.audioContext.state === "suspended" && this.unlocked) {
-      void this.audioContext.resume();
-    }
-
-    // Ensure masterGain is connected
-    try {
-      this.masterGain.connect(this.audioContext.destination);
-    } catch {
-      // already connected — this is fine
-    }
-
-    const now = this.audioContext.currentTime;
-    const target = clampVolume(targetVolume);
-    this.masterGain.gain.cancelScheduledValues(now);
-    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-
-    if (fadeMs > 0) {
-      this.masterGain.gain.linearRampToValueAtTime(target, now + fadeMs / 1000);
-      return;
-    }
-
-    this.masterGain.gain.setValueAtTime(target, now);
+  /** Apply current computed volume to the audio element. */
+  _syncVolume() {
+    if (!this._audio) return;
+    this._audio.volume = this._computeVolume();
   }
 
-  async unlock() {
-    const context = this.ensureContext();
-    if (!context) {
-      return false;
-    }
-
-    if (context.state === "suspended") {
-      try {
-        await context.resume();
-      } catch {
-        return false;
-      }
-    }
-
-    this.unlocked = context.state === "running";
-    if (this.unlocked) {
-      this.applyGain(this.getCurrentTargetVolume(), 0);
-    }
-    return this.unlocked;
-  }
+  // ---------------------------------------------------------------------------
+  // Gesture unlock — browsers require user interaction before audio can play
+  // ---------------------------------------------------------------------------
 
   bindFirstUserGesture() {
-    if (typeof window === "undefined" || this.unlockHandler) {
-      return;
-    }
+    if (typeof window === "undefined" || this._unlockHandler) return;
 
-    this.unlockHandler = () => {
-      void this.unlock().finally(() => {
-        if (!this.unlocked) {
-          return;
-        }
-
-        ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
-          window.removeEventListener(eventName, this.unlockHandler);
-        });
-        this.unlockHandler = null;
+    this._unlockHandler = () => {
+      this._unlocked = true;
+      // Try to play if we have a source ready
+      if (this._audio && this._audio.src && this._audio.paused && this._enabled) {
+        this._audio.play().catch(() => {});
+      }
+      // Clean up listeners
+      ["pointerdown", "keydown", "touchstart"].forEach((evt) => {
+        window.removeEventListener(evt, this._unlockHandler);
       });
+      this._unlockHandler = null;
     };
 
-    ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
-      window.addEventListener(eventName, this.unlockHandler, { passive: true });
+    ["pointerdown", "keydown", "touchstart"].forEach((evt) => {
+      window.addEventListener(evt, this._unlockHandler, { passive: true });
     });
   }
 
-  normalizeTrackLabel(label = "") {
-    return String(label || "").trim();
-  }
+  // ---------------------------------------------------------------------------
+  // Public API: loading tracks
+  // ---------------------------------------------------------------------------
 
+  /**
+   * Check if the given label is already the active track.
+   * This is the ONLY dedup guard needed — no refs, no registries.
+   */
   isCurrentTrack(label) {
-    const nextLabel = this.normalizeTrackLabel(label);
-    return Boolean(nextLabel) && this.activeTrackUrl === nextLabel && this.current?.label === nextLabel;
+    const normalized = String(label || "").trim();
+    return Boolean(normalized) && normalized === this._currentLabel;
   }
 
-  async runSerializedLoad(label, loadOperation) {
-    const nextLabel = this.normalizeTrackLabel(label);
-    if (this.isCurrentTrack(nextLabel)) {
-      return true;
-    }
+  /**
+   * Load a track from an ArrayBuffer (the primary path used by the app).
+   * Returns true if playback started, false otherwise.
+   *
+   * Key invariant: if this method is called multiple times (React Strict Mode,
+   * effect re-runs, etc.) with the same label, it no-ops. If called with a
+   * different label, the previous track is replaced — not duplicated.
+   */
+  async loadFromBuffer(arrayBuffer, label = "") {
+    const normalized = String(label || "").trim();
 
-    if (nextLabel) {
-      this.activeTrackUrl = nextLabel;
-    }
+    // Dedup: same track already playing
+    if (this.isCurrentTrack(normalized)) return true;
 
-    if (this._loadingPromise) {
-      await this._loadingPromise;
-      if (this.isCurrentTrack(nextLabel)) {
-        return true;
-      }
-    }
+    // Acquire a load ID so concurrent loads can be cancelled
+    const myLoadId = ++this._loadId;
 
-    const pendingLoad = Promise.resolve().then(loadOperation);
-    this._loadingPromise = pendingLoad;
+    const playable = toPlayableUrl(arrayBuffer, normalized);
+    if (!playable) return false;
 
-    try {
-      return await pendingLoad;
-    } finally {
-      if (this._loadingPromise === pendingLoad) {
-        this._loadingPromise = null;
-      }
-    }
-  }
-
-  async fetchBuffer(trackUrl) {
-    const context = this.ensureContext();
-    if (!context || !trackUrl) {
-      return null;
-    }
-
-    try {
-      const response = await fetch(trackUrl, { cache: "force-cache" });
-      if (!response.ok) {
-        return null;
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      if (!arrayBuffer.byteLength) {
-        return null;
-      }
-
-      return await context.decodeAudioData(arrayBuffer.slice(0));
-    } catch {
-      return null;
-    }
-  }
-
-  createTrackNode(buffer, label = "") {
-    if (!this.audioContext || !this.masterGain || !buffer) {
-      return null;
-    }
-
-    const source = this.audioContext.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-
-    const gainNode = this.audioContext.createGain();
-    gainNode.gain.value = 1;
-    source.connect(gainNode);
-    gainNode.connect(this.masterGain);
-
-    const track = {
-      source,
-      gainNode,
-      label: this.normalizeTrackLabel(label)
-    };
-
-    source.addEventListener?.("ended", () => {
-      this._tracks.delete(track);
-    });
-
-    this._tracks.add(track);
-    source.start();
-    return track;
-  }
-
-  stopTrackSource(track) {
-    if (!track) {
-      return;
-    }
-
-    try {
-      track.gainNode?.disconnect?.();
-    } catch {
-      // noop
-    }
-
-    try {
-      track.source?.disconnect?.();
-    } catch {
-      // noop
-    }
-
-    try {
-      track.source?.stop();
-    } catch {
-      // noop
-    }
-
-    this._tracks.delete(track);
-  }
-
-  stopAllStaleTracks() {
-    for (const track of Array.from(this._tracks)) {
-      if (track !== this.current) {
-        this.stopTrackSource(track);
-      }
-    }
-  }
-
-  activateTrack(nextTrack, { crossfade = true } = {}) {
-    if (!nextTrack) {
+    // Check if a newer load has started while we were converting
+    if (this._loadId !== myLoadId) {
+      playable.revoke();
       return false;
     }
 
-    const previous = this.current;
-    if (crossfade && previous?.gainNode && this.audioContext) {
-      const now = this.audioContext.currentTime;
-      nextTrack.gainNode.gain.setValueAtTime(0, now);
-      nextTrack.gainNode.gain.linearRampToValueAtTime(1, now + CROSSFADE_MS / 1000);
-      previous.gainNode.gain.cancelScheduledValues(now);
-      previous.gainNode.gain.setValueAtTime(previous.gainNode.gain.value, now);
-      previous.gainNode.gain.linearRampToValueAtTime(0, now + CROSSFADE_MS / 1000);
-      window.setTimeout(() => {
-        this.stopTrackSource(previous);
-      }, CROSSFADE_MS + 80);
-    } else {
-      this.stopTrackSource(previous);
+    // Revoke previous blob URL if any
+    this._revokeUrl?.();
+
+    const audio = this._ensureAudio();
+    if (!audio) {
+      playable.revoke();
+      return false;
     }
 
-    this.current = nextTrack;
-    if (nextTrack.label) {
-      this.activeTrackUrl = nextTrack.label;
+    this._currentLabel = normalized;
+    this._revokeUrl = playable.revoke;
+    audio.src = playable.url;
+    this._syncVolume();
+
+    if (this._enabled) {
+      try {
+        await audio.play();
+      } catch {
+        // Autoplay blocked — bindFirstUserGesture will retry on interaction
+      }
     }
-    this.stopAllStaleTracks();
-    this.applyGain(this.getCurrentTargetVolume(), 0);
+
     return true;
   }
 
+  /**
+   * Load a track from a URL (alternative path, kept for API compat).
+   */
   async loadAndPlay(trackUrl) {
-    const nextUrl = this.normalizeTrackLabel(trackUrl);
-    if (!nextUrl) {
-      return false;
-    }
+    const normalized = String(trackUrl || "").trim();
+    if (!normalized) return false;
+    if (this.isCurrentTrack(normalized)) return true;
 
-    return this.runSerializedLoad(nextUrl, async () => {
-      this.ensureContext();
-      this.bindFirstUserGesture();
-      await this.unlock();
+    const myLoadId = ++this._loadId;
 
-      const buffer = await this.fetchBuffer(nextUrl);
-      if (!buffer) {
-        return false;
-      }
+    const audio = this._ensureAudio();
+    if (!audio) return false;
 
-      const track = this.createTrackNode(buffer, nextUrl);
-      return this.activateTrack(track, { crossfade: false });
-    });
-  }
+    // Revoke previous blob URL if any
+    this._revokeUrl?.();
+    this._revokeUrl = null;
 
-  async loadFromBuffer(arrayBuffer, label = "") {
-    const nextLabel = this.normalizeTrackLabel(label);
-    return this.runSerializedLoad(nextLabel, async () => {
-      this.ensureContext();
-      this.bindFirstUserGesture();
-      await this.unlock();
+    if (this._loadId !== myLoadId) return false;
 
-      if (!this.audioContext || !arrayBuffer?.byteLength) {
-        return false;
-      }
+    this._currentLabel = normalized;
+    audio.src = normalized;
+    this._syncVolume();
 
-      let audioBuffer;
+    if (this._enabled) {
       try {
-        audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer.slice(0));
+        await audio.play();
       } catch {
-        return false;
+        // Autoplay blocked
       }
-
-      const nextTrack = this.createTrackNode(audioBuffer, nextLabel);
-      return this.activateTrack(nextTrack);
-    });
-  }
-
-  async switchTrack(newUrl) {
-    const nextUrl = this.normalizeTrackLabel(newUrl);
-    if (!nextUrl) {
-      return false;
     }
 
-    return this.runSerializedLoad(nextUrl, async () => {
-      this.ensureContext();
-      this.bindFirstUserGesture();
-      await this.unlock();
-
-      const buffer = await this.fetchBuffer(nextUrl);
-      if (!buffer) {
-        return false;
-      }
-
-      const nextTrack = this.createTrackNode(buffer, nextUrl);
-      return this.activateTrack(nextTrack);
-    });
+    return true;
   }
+
+  /**
+   * Switch to a different track (alias for loadAndPlay, kept for API compat).
+   */
+  async switchTrack(newUrl) {
+    return this.loadAndPlay(newUrl);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API: playback control
+  // ---------------------------------------------------------------------------
 
   pause() {
-    if (!this.audioContext) {
-      return;
-    }
-
-    void this.audioContext.suspend();
+    this._audio?.pause();
   }
 
   async resume() {
-    if (!this.audioContext) {
-      return false;
+    if (!this._audio) return false;
+    this._syncVolume();
+    if (this._audio.src && this._enabled) {
+      try {
+        await this._audio.play();
+        return true;
+      } catch {
+        return false;
+      }
     }
-
-    try {
-      await this.audioContext.resume();
-      this.unlocked = this.audioContext.state === "running";
-      this.applyGain(this.getCurrentTargetVolume(), 0);
-      return this.unlocked;
-    } catch {
-      return false;
-    }
+    return false;
   }
 
-  setVolume(volume, fadeMs = 0) {
-    this.userVolume = clampVolume(volume);
-    this.applyGain(this.getCurrentTargetVolume(), fadeMs);
+  // ---------------------------------------------------------------------------
+  // Public API: volume
+  // ---------------------------------------------------------------------------
+
+  setVolume(volume, _fadeMs = 0) {
+    this._userVolume = clampUnit(volume);
+    this._syncVolume();
   }
 
   duck() {
-    this.ducked = true;
-    this.applyGain(this.getCurrentTargetVolume(), DUCK_FADE_MS);
+    this._ducked = true;
+    this._syncVolume();
   }
 
   unduck() {
-    this.ducked = false;
-    this.applyGain(this.getCurrentTargetVolume(), UNDUCK_FADE_MS);
+    this._ducked = false;
+    this._syncVolume();
   }
 
   setEnabled(enabled) {
-    this.enabled = Boolean(enabled);
-    this.applyGain(this.getCurrentTargetVolume(), 220);
+    this._enabled = Boolean(enabled);
+    this._syncVolume();
+    if (!this._enabled) {
+      this._audio?.pause();
+    }
   }
 
+  // ---------------------------------------------------------------------------
+  // Public API: unlock (called by App.jsx before loading)
+  // ---------------------------------------------------------------------------
+
+  async unlock() {
+    this._unlocked = true;
+    this.bindFirstUserGesture();
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Kept for API compat but no-op in the simplified version
+  // ---------------------------------------------------------------------------
+
+  ensureContext() { return null; }
+
+  // ---------------------------------------------------------------------------
+  // Cleanup
+  // ---------------------------------------------------------------------------
+
   async dispose() {
-    if (typeof window !== "undefined" && this.unlockHandler) {
-      ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
-        window.removeEventListener(eventName, this.unlockHandler);
+    // Remove gesture listeners
+    if (typeof window !== "undefined" && this._unlockHandler) {
+      ["pointerdown", "keydown", "touchstart"].forEach((evt) => {
+        window.removeEventListener(evt, this._unlockHandler);
       });
-      this.unlockHandler = null;
+      this._unlockHandler = null;
     }
 
-    if (this.current?.source) {
-      try {
-        this.current.source.stop();
-      } catch {
-        // noop
-      }
+    // Stop and clean up audio element
+    if (this._audio) {
+      this._audio.pause();
+      this._audio.removeAttribute("src");
+      this._audio.load(); // Reset the element
+      this._audio = null;
     }
 
-    this.current = null;
+    // Revoke blob URL
+    this._revokeUrl?.();
+    this._revokeUrl = null;
 
-    if (this.audioContext) {
-      try {
-        await this.audioContext.close();
-      } catch {
-        // noop
-      }
-    }
-
-    this.audioContext = null;
-    this.masterGain = null;
-    this.unlocked = false;
+    this._currentLabel = "";
+    this._unlocked = false;
   }
 }

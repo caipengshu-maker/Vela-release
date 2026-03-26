@@ -1191,55 +1191,43 @@ export default function App() {
     };
   }, [isLoading, state.onboarding?.required]);
 
-  const bgmLoadedTrackRef = useRef("");
-
   useEffect(() => {
     const bgm = bgmControllerRef.current;
     if (!bgm) {
-      return undefined;
+      return;
     }
 
     bgm.setEnabled(bgmEnabled);
 
     if (!bgmEnabled) {
-      bgm.pause();
-      return undefined;
+      return;
     }
 
+    // Load and play the correct day/night BGM track.
+    // BgmController.isCurrentTrack() handles dedup internally, so React Strict
+    // Mode double-runs and dep-triggered re-runs are safe — they no-op if the
+    // same track is already playing.
     const syncTrack = async () => {
       const assetPath = getBundledBgmAssetPath();
 
-      // Hard ref guard: if we already loaded this exact track, do nothing
-      if (bgmLoadedTrackRef.current === assetPath) {
+      // Controller-level dedup: if this track is already loaded, skip.
+      if (bgm.isCurrentTrack(assetPath)) {
+        await bgm.resume();
         return;
       }
 
       try {
         const payload = await window.vela.readBundledAsset(assetPath);
         const arrayBuffer = toArrayBuffer(payload);
+        if (!arrayBuffer) return;
 
-        if (!arrayBuffer) {
-          return;
-        }
-
-        // Double-check ref before actually loading (async gap protection)
-        if (bgmLoadedTrackRef.current === assetPath) {
-          return;
-        }
-
-        bgmLoadedTrackRef.current = assetPath;
         await bgm.loadFromBuffer(arrayBuffer, assetPath);
       } catch (err) {
         console.warn("[bgm] failed to load:", assetPath, err?.message);
-        bgmLoadedTrackRef.current = "";
       }
     };
 
-    void bgm.resume().then(() => {
-      syncTrack();
-    });
-
-    return undefined;
+    syncTrack();
   }, [bgmEnabled, isLoading, state.onboarding?.required]);
 
   useEffect(() => {
@@ -1809,19 +1797,7 @@ export default function App() {
   }
 
   function handleBgmToggle() {
-    setBgmEnabled((current) => {
-      const next = !current;
-      const bgm = bgmControllerRef.current;
-      if (bgm) {
-        bgm.setEnabled(next);
-        if (!next) {
-          bgm.pause();
-        } else {
-          void bgm.resume();
-        }
-      }
-      return next;
-    });
+    setBgmEnabled((current) => !current);
   }
 
   const relationshipStage = String(state.avatar?.relationshipStage || "reserved").trim().toLowerCase();
