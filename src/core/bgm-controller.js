@@ -27,6 +27,8 @@ export class BgmController {
     this.activeTrackUrl = "";
     this._muted = false;
     this._loadingPromise = null;
+    this._tracks = new Set();
+    this._pendingStopTimers = new Set();
   }
 
   ensureContext() {
@@ -62,6 +64,8 @@ export class BgmController {
     if (!this.masterGain || !this.audioContext) {
       return;
     }
+
+    this.stopAllStaleTracks();
 
     const now = this.audioContext.currentTime;
     const target = clampVolume(targetVolume);
@@ -217,20 +221,53 @@ export class BgmController {
     gainNode.gain.value = 1;
     source.connect(gainNode);
     gainNode.connect(this.masterGain);
-    source.start();
 
-    return {
+    const track = {
       source,
       gainNode,
       label: this.normalizeTrackLabel(label)
     };
+
+    source.addEventListener?.("ended", () => {
+      this._tracks.delete(track);
+    });
+
+    this._tracks.add(track);
+    source.start();
+    return track;
   }
 
   stopTrackSource(track) {
+    if (!track) {
+      return;
+    }
+
     try {
-      track?.source?.stop();
+      track.gainNode?.disconnect?.();
     } catch {
       // noop
+    }
+
+    try {
+      track.source?.disconnect?.();
+    } catch {
+      // noop
+    }
+
+    try {
+      track.source?.stop();
+    } catch {
+      // noop
+    }
+
+    this._tracks.delete(track);
+  }
+
+  stopAllStaleTracks() {
+    for (const track of Array.from(this._tracks)) {
+      if (track !== this.current) {
+        this.stopTrackSource(track);
+      }
     }
   }
 
@@ -258,6 +295,7 @@ export class BgmController {
     if (nextTrack.label) {
       this.activeTrackUrl = nextTrack.label;
     }
+    this.stopAllStaleTracks();
     this.applyGain(this.getCurrentTargetVolume(), 0);
     return true;
   }
