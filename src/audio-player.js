@@ -103,7 +103,7 @@ export class AudioPlayerService {
 
     this.audio = document.createElement("audio");
     this.audio.style.display = "none";
-    this.audio.volume = this.userVolume;
+    this.audio.volume = 1;
     this.audio.addEventListener("ended", this.audioEndedHandler);
     document.body.appendChild(this.audio);
     void this._ensureVisemeDriver();
@@ -330,7 +330,7 @@ export class AudioPlayerService {
   setVolume(volume) {
     this.userVolume = mapUserVolumeToGain(volume);
     if (this.audio) {
-      this.audio.volume = this.userVolume;
+      this.audio.volume = 1;
     }
     this.visemeDriver?.setOutputGain?.(this.userVolume);
   }
@@ -355,7 +355,7 @@ export class AudioPlayerService {
     this._createElements();
     void this._ensureVisemeDriver();
     this.audio.pause();
-    this.audio.volume = this.userVolume;
+    this.audio.volume = 1;
     this.audio.src = replay.url;
     this.audio.currentTime = 0;
     void this.audio.play().catch(() => {});
