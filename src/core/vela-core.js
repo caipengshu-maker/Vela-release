@@ -2,7 +2,7 @@
 import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { parse } from "jsonc-parser";
-import { loadConfig } from "./config.js";
+import { loadConfig, CONFIG_SCHEMA_VERSION } from "./config.js";
 import {
   buildPersona,
   onboardingOptions
@@ -162,6 +162,22 @@ function buildOnboardingState(profile) {
       distance: onboarding.distance || "warm"
     },
     options: onboardingOptions
+  };
+}
+
+function hasCompletedCurrentOnboarding(profile) {
+  return (
+    Boolean(profile?.onboarding?.completed) &&
+    Number(profile?.onboarding?.completedVersion || 0) >= CONFIG_SCHEMA_VERSION
+  );
+}
+
+function buildCompletedOnboardingState(profile) {
+  return {
+    required: false,
+    completed: true,
+    completedVersion:
+      Number(profile?.onboarding?.completedVersion) || CONFIG_SCHEMA_VERSION
   };
 }
 
@@ -784,11 +800,8 @@ export class VelaCore {
       );
     const nextOnboarding =
       onboarding ||
-      (memory.profile.onboarding?.completed
-        ? {
-            required: false,
-            completed: true
-          }
+      (hasCompletedCurrentOnboarding(memory.profile)
+        ? buildCompletedOnboardingState(memory.profile)
         : buildOnboardingState(memory.profile));
     const tts = getTtsCapabilities(this.config);
     const asr = getAsrCapabilities(this.config);
@@ -1031,11 +1044,8 @@ export class VelaCore {
       memorySnapshot: memory,
       avatar,
       messages: [],
-      onboarding: memory.profile.onboarding?.completed
-        ? {
-            required: false,
-            completed: true
-          }
+      onboarding: hasCompletedCurrentOnboarding(memory.profile)
+        ? buildCompletedOnboardingState(memory.profile)
         : buildOnboardingState(memory.profile)
     });
   }
@@ -1055,7 +1065,12 @@ export class VelaCore {
   }
 
   async completeOnboarding(payload) {
-    await this.memoryStore.completeOnboarding(payload);
+    const completedVersion = payload?.completedVersion ?? CONFIG_SCHEMA_VERSION;
+
+    await this.memoryStore.completeOnboarding({
+      ...payload,
+      completedVersion
+    });
     await this.syncRelationshipMemoryState({
       ...(this.memorySnapshot?.relationship || {}),
       sharedMoments: this.memorySnapshot?.relationship?.sharedMoments || []
@@ -1089,7 +1104,8 @@ export class VelaCore {
       welcomeNote: "唤醒完成。现在可以把第一句话交给她。",
       onboarding: {
         required: false,
-        completed: true
+        completed: true,
+        completedVersion
       }
     });
   }
@@ -1208,7 +1224,8 @@ export class VelaCore {
       userName,
       velaName: this.persona?.name || "Vela",
       temperament: "gentle-cool",
-      distance: "warm"
+      distance: "warm",
+      completedVersion: CONFIG_SCHEMA_VERSION
     });
 
     const memory = await this.loadMemorySnapshot();
@@ -1219,7 +1236,8 @@ export class VelaCore {
       avatar: this.currentAvatar,
       onboarding: {
         required: false,
-        completed: true
+        completed: true,
+        completedVersion: CONFIG_SCHEMA_VERSION
       },
       welcomeNote: "初始化完成，设置可随时在 Settings 里调整。"
     });
@@ -1406,7 +1424,7 @@ export class VelaCore {
       await this.loadMemorySnapshot();
     }
 
-    if (!this.memorySnapshot?.profile?.onboarding?.completed) {
+    if (!hasCompletedCurrentOnboarding(this.memorySnapshot?.profile)) {
       return null;
     }
 
@@ -1431,7 +1449,7 @@ export class VelaCore {
       await this.loadMemorySnapshot();
     }
 
-    if (!this.memorySnapshot?.profile?.onboarding?.completed) {
+    if (!hasCompletedCurrentOnboarding(this.memorySnapshot?.profile)) {
       return null;
     }
 
