@@ -3,6 +3,8 @@ import path from "node:path";
 import { parse } from "jsonc-parser";
 import { getProviderDefaults } from "./providers/registry.js";
 
+export const CONFIG_SCHEMA_VERSION = 2;
+
 const defaultConfig = {
   app: {
     name: "Vela",

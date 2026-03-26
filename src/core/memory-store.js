@@ -397,7 +397,7 @@ export class MemoryStore {
     }
   }
 
-  async completeOnboarding({ velaName, userName, temperament, distance }) {
+  async completeOnboarding({ velaName, userName, temperament, distance, completedVersion }) {
     try {
       const profile = mergeProfile(
         await this.store.readJson(PROFILE_FILE, defaultProfile())
@@ -412,6 +412,7 @@ export class MemoryStore {
         onboarding: {
           ...profile.onboarding,
           completed: true,
+          completedVersion: completedVersion || 1,
           velaName: velaName || profile.onboarding.velaName,
           userName: userName || profile.onboarding.userName,
           temperament: temperament || profile.onboarding.temperament,
