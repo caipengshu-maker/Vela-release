@@ -1234,12 +1234,6 @@ export default function App() {
 
     return () => {
       window.clearInterval(intervalId);
-      try {
-        bgm.current?.source?.stop?.();
-      } catch {
-        // noop
-      }
-      bgm.current = null;
     };
   }, [bgmEnabled, isLoading, state.onboarding?.required]);
 
