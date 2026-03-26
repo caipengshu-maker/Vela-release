@@ -1145,7 +1145,7 @@ export default function App() {
     const getSceneTrack = () => {
       const hour = new Date().getHours();
       const sceneType = hour >= 6 && hour < 18 ? "day" : "night";
-      return `/assets/bgm/${sceneType}.mp3`;
+      return `./assets/bgm/${sceneType}.mp3`;
     };
 
     const syncTrack = () => {
