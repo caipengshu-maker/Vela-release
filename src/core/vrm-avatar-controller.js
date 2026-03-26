@@ -17,6 +17,10 @@ import {
   resolveEmotionCameraHint,
   resolveEmotionPreset
 } from "./emotion-presets.js";
+import {
+  readBundledAssetArrayBuffer,
+  resolveRendererAssetDirectoryUrl
+} from "./renderer-assets.js";
 
 const CAMERA_PRESETS = {
   wide: {
@@ -345,18 +349,18 @@ function resolveSafePresentation(avatar) {
 }
 
 const IDLE_ANIMATION_PATHS = [
-  "/assets/animations/Breathing Idle.fbx",
-  "/assets/animations/Happy Idle.fbx",
-  "/assets/animations/Standing Idle.fbx",
-  "/assets/animations/Idle.fbx",
-  "/assets/animations/Bored.fbx",
-  "/assets/animations/Thinking.fbx",
-  "/assets/animations/Sad Idle.fbx",
-  "/assets/animations/Angry.fbx",
-  "/assets/animations/Bashful.fbx",
-  "/assets/animations/Looking Around.fbx",
-  "/assets/animations/Talking.fbx",
-  "/assets/animations/Yawn.fbx"
+  "assets/animations/Breathing Idle.fbx",
+  "assets/animations/Happy Idle.fbx",
+  "assets/animations/Standing Idle.fbx",
+  "assets/animations/Idle.fbx",
+  "assets/animations/Bored.fbx",
+  "assets/animations/Thinking.fbx",
+  "assets/animations/Sad Idle.fbx",
+  "assets/animations/Angry.fbx",
+  "assets/animations/Bashful.fbx",
+  "assets/animations/Looking Around.fbx",
+  "assets/animations/Talking.fbx",
+  "assets/animations/Yawn.fbx"
 ];
 const IDLE_CROSSFADE_INTERVAL_MIN = 15;
 const IDLE_CROSSFADE_INTERVAL_MAX = 30;
@@ -1763,36 +1767,43 @@ export class VrmAvatarController {
     const fbxLoader = new FBXLoader();
     let loaded = 0;
     const total = IDLE_ANIMATION_PATHS.length;
+    const finalizeLoad = () => {
+      loaded += 1;
+      if (loaded === total && this.idleClips.length > 0) {
+        this._tickMixerCrossfade(1 / 60);
+      }
+    };
 
-    IDLE_ANIMATION_PATHS.forEach((path) => {
-      fbxLoader.load(
-        path,
-        (fbx) => {
+    IDLE_ANIMATION_PATHS.forEach((assetPath) => {
+      readBundledAssetArrayBuffer(assetPath)
+        .then((arrayBuffer) => {
+          const fbx = fbxLoader.parse(
+            arrayBuffer,
+            resolveRendererAssetDirectoryUrl(assetPath)
+          );
           try {
             const clip = retargetAnimation(fbx, vrm, { logWarnings: false });
             if (clip) {
               // Remove hips position track — Mixamo skeleton height differs from VRM,
               // keeping it causes the model to float. Only rotation tracks matter.
-              clip.tracks = clip.tracks.filter(t => !t.name.endsWith(".position"));
-              clip.name = path.split("/").pop().replace(".fbx", "");
+              clip.tracks = clip.tracks.filter(
+                (track) => !track.name.endsWith(".position")
+              );
+              clip.name = assetPath.split("/").pop().replace(".fbx", "");
               this.idleClips.push(clip);
               this.idleClipMap.set(clip.name, clip);
               console.log(`[VRM][anim] loaded: ${clip.name} (${clip.duration.toFixed(1)}s)`);
             }
           } catch (err) {
-            console.warn(`[VRM][anim] retarget failed for ${path}:`, err.message);
+            console.warn(`[VRM][anim] retarget failed for ${assetPath}:`, err.message);
           }
-          loaded++;
-          if (loaded === total && this.idleClips.length > 0) {
-            this._tickMixerCrossfade(1 / 60);
-          }
-        },
-        undefined,
-        (err) => {
-          console.warn(`[VRM][anim] failed to load ${path}:`, err.message);
-          loaded++;
-        }
-      );
+        })
+        .catch((err) => {
+          console.warn(`[VRM][anim] failed to load ${assetPath}:`, err.message);
+        })
+        .finally(() => {
+          finalizeLoad();
+        });
     });
   }
 

@@ -1,24 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { VrmAvatarController } from "./core/vrm-avatar-controller.js";
+import { createBundledAssetObjectUrl } from "./core/renderer-assets.js";
 
-const DAY_BACKGROUND_PATH = "D:\\Vela\\assets\\backgrounds\\bg-day.png";
-const NIGHT_BACKGROUND_PATH = "D:\\Vela\\assets\\backgrounds\\bg-night.png";
+const DAY_BACKGROUND_PATH = "assets/backgrounds/bg-day.png";
+const NIGHT_BACKGROUND_PATH = "assets/backgrounds/bg-night.png";
 const BACKGROUND_REFRESH_MS = 5 * 60 * 1000;
-
-function toBlobPart(binaryPayload) {
-  if (binaryPayload instanceof ArrayBuffer) {
-    return binaryPayload;
-  }
-
-  if (ArrayBuffer.isView(binaryPayload)) {
-    return binaryPayload.buffer.slice(
-      binaryPayload.byteOffset,
-      binaryPayload.byteOffset + binaryPayload.byteLength
-    );
-  }
-
-  return binaryPayload;
-}
 
 function getTimeSceneType(date = new Date()) {
   const hour = date.getHours();
@@ -59,25 +45,17 @@ export function VrmAvatarStage({ avatar, avatarAsset }) {
     const objectUrls = [];
 
     async function loadBackgrounds() {
-      if (typeof window.vela?.readBinaryFile !== "function") {
-        return;
-      }
-
       try {
-        const [dayPayload, nightPayload] = await Promise.all([
-          window.vela.readBinaryFile(DAY_BACKGROUND_PATH),
-          window.vela.readBinaryFile(NIGHT_BACKGROUND_PATH)
+        const [dayUrl, nightUrl] = await Promise.all([
+          createBundledAssetObjectUrl(DAY_BACKGROUND_PATH, "image/png"),
+          createBundledAssetObjectUrl(NIGHT_BACKGROUND_PATH, "image/png")
         ]);
 
         if (cancelled) {
+          URL.revokeObjectURL(dayUrl);
+          URL.revokeObjectURL(nightUrl);
           return;
         }
-
-        const dayBlob = new Blob([toBlobPart(dayPayload)], { type: "image/png" });
-        const nightBlob = new Blob([toBlobPart(nightPayload)], { type: "image/png" });
-
-        const dayUrl = URL.createObjectURL(dayBlob);
-        const nightUrl = URL.createObjectURL(nightBlob);
 
         objectUrls.push(dayUrl, nightUrl);
 

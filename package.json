@@ -10,8 +10,10 @@
     "dev:renderer": "vite",
     "dev:electron": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "build": "vite build",
-    "start": "electron .",
-    "smoke": "electron . --smoke-test",
+    "start": "npm run dev",
+    "start:dist": "electron .",
+    "smoke": "npm run build && electron . --smoke-test",
+    "build:exe": "npm run build && electron-builder --win nsis",
     "verify:core": "node scripts/verify-core.mjs",
     "verify:providers": "node scripts/verify-provider-adapters.mjs",
     "verify:m2": "node scripts/verify-m2.mjs"
@@ -32,7 +34,42 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^41.0.3",
+    "electron-builder": "^26.8.1",
     "vite": "^8.0.0",
     "wait-on": "^9.0.4"
+  },
+  "build": {
+    "appId": "com.vela.desktop",
+    "productName": "Vela",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "src/core/**/*",
+      "package.json",
+      "vela.jsonc"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/avatars",
+        "to": "assets/avatars",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName}-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

@@ -35,13 +35,18 @@ function fetchIpLocation() {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
+const isDevelopment = !app.isPackaged;
 const isRendererDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const isSmokeTest = process.argv.includes("--smoke-test");
-const electronDataDir = isRendererDev
+const electronDataDir = isSmokeTest
+  ? path.join(rootDir, ".vela-data", "electron-smoke")
+  : isDevelopment
   ? path.join(rootDir, ".vela-data", "electron")
   : app.getPath("userData");
 const electronSessionDir = path.join(electronDataDir, "session");
-const windowStatePath = isRendererDev
+const windowStatePath = isSmokeTest
+  ? path.join(rootDir, ".vela-data", "window-state-smoke.json")
+  : isDevelopment
   ? path.join(rootDir, ".vela-data", "window-state.json")
   : path.join(electronDataDir, "window-state.json");
 const WINDOW_STATE_DEBOUNCE_MS = 500;
@@ -317,7 +322,15 @@ function bindWindowRuntimeEvents(windowInstance) {
 
 async function createMainWindow() {
   isFarewellClosing = false;
-  core = new VelaCore({ rootDir, userDataDir: app.getPath("userData") });
+  core = new VelaCore({
+    rootDir,
+    userDataDir: app.getPath("userData"),
+    storageRootOverride: isSmokeTest
+      ? path.join(rootDir, ".vela-data", "smoke-runtime")
+      : null,
+    isDevelopment,
+    resourcesDir: process.resourcesPath
+  });
   await core.initialize();
 
   // IP-based location: runs async, does not block startup

@@ -4,6 +4,7 @@
  */
 
 import { VisemeDriver } from "./core/viseme-driver.js";
+import { mapUserVolumeToGain } from "./core/audio-volume.js";
 
 function decodeBase64ToUint8Array(input) {
   const normalized = String(input || "")
@@ -88,6 +89,7 @@ export class AudioPlayerService {
     this.currentMimeType = MSE_MIME;
     this.replayCache = new Map();
     this.visemeDriver = new VisemeDriver();
+    this.userVolume = 1;
     this.playbackEndedHandler = null;
     this.audioEndedHandler = () => {
       this.playbackEndedHandler?.();
@@ -101,6 +103,7 @@ export class AudioPlayerService {
 
     this.audio = document.createElement("audio");
     this.audio.style.display = "none";
+    this.audio.volume = this.userVolume;
     this.audio.addEventListener("ended", this.audioEndedHandler);
     document.body.appendChild(this.audio);
     void this._ensureVisemeDriver();
@@ -320,6 +323,13 @@ export class AudioPlayerService {
   setPlaybackEndedHandler(handler) {
     this.playbackEndedHandler =
       typeof handler === "function" ? handler : null;
+  }
+
+  setVolume(volume) {
+    this.userVolume = mapUserVolumeToGain(volume);
+    if (this.audio) {
+      this.audio.volume = this.userVolume;
+    }
   }
 
   update(deltaMs) {

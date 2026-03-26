@@ -1,26 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { createBundledAssetObjectUrl } from "./core/renderer-assets.js";
 
-const SPLASH_LOGO_PATH = "D:\\Vela\\assets\\splash\\k-studio-logo.png";
+const SPLASH_LOGO_PATH = "assets/splash/k-studio-logo.png";
 const FADE_IN_MS = 600;
 const HOLD_MS = 2500;
 const FADE_OUT_MS = 800;
 const EXIT_AT_MS = FADE_IN_MS + HOLD_MS;
 const DONE_AT_MS = EXIT_AT_MS + FADE_OUT_MS;
-
-function toBlobPart(binaryPayload) {
-  if (binaryPayload instanceof ArrayBuffer) {
-    return binaryPayload;
-  }
-
-  if (ArrayBuffer.isView(binaryPayload)) {
-    return binaryPayload.buffer.slice(
-      binaryPayload.byteOffset,
-      binaryPayload.byteOffset + binaryPayload.byteLength
-    );
-  }
-
-  return binaryPayload;
-}
 
 export function SplashScreen({ onDone }) {
   const [isExiting, setIsExiting] = useState(false);
@@ -31,19 +17,16 @@ export function SplashScreen({ onDone }) {
     let objectUrl = "";
 
     async function loadLogo() {
-      if (typeof window.vela?.readBinaryFile !== "function") {
-        return;
-      }
-
       try {
-        const payload = await window.vela.readBinaryFile(SPLASH_LOGO_PATH);
-
+        objectUrl = await createBundledAssetObjectUrl(
+          SPLASH_LOGO_PATH,
+          "image/png"
+        );
         if (cancelled) {
+          URL.revokeObjectURL(objectUrl);
+          objectUrl = "";
           return;
         }
-
-        const blob = new Blob([toBlobPart(payload)], { type: "image/png" });
-        objectUrl = URL.createObjectURL(blob);
         setLogoSrc(objectUrl);
       } catch {
         // Keep splash background even if logo load fails.

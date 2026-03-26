@@ -946,6 +946,12 @@ export default function App() {
   }, [state.audio?.bgmVolume]);
 
   useEffect(() => {
+    audioPlayerRef.current?.setVolume(
+      Number(state.audio?.ttsVolume ?? 100) / 100
+    );
+  }, [state.audio?.ttsVolume]);
+
+  useEffect(() => {
     let isMounted = true;
 
     async function bootstrap() {
@@ -1687,6 +1693,10 @@ export default function App() {
       bgmControllerRef.current.setVolume(Number(payload.bgmVolume) / 100);
     }
 
+    if (payload && audioPlayerRef.current) {
+      audioPlayerRef.current.setVolume(Number(payload.ttsVolume) / 100);
+    }
+
     if (nextState) {
       setState(nextState);
     }
@@ -1817,7 +1827,8 @@ export default function App() {
                     userName: state.persona?.userName || "",
                     llmApiKey: state.llm?.apiKey || "",
                     asrEnabled: state.asr?.enabled,
-                    ttsEnabled: state.tts?.enabled
+                    ttsEnabled: state.tts?.enabled,
+                    voiceId: state.tts?.voiceId || ""
                   }}
                   onComplete={async (payload) => {
                     const nextState = await handleOnboarding(payload);

@@ -19,8 +19,8 @@ const defaultConfig = {
   },
   runtime: {
     storageRoot: "./.vela-data",
-    cacheRoot: "./.vela-cache",
-    assetRoot: "./assets",
+    cacheRoot: "./.vela-data/cache",
+    assetRoot: "assets",
     recentSummaryLimit: 2,
     summaryIndexLimit: 8,
     sessionMessageLimit: 40,
@@ -97,7 +97,7 @@ const defaultConfig = {
   avatar: {
     defaultPresence: "idle",
     defaultEmotion: "calm",
-    assetPath: ""
+    assetPath: "avatars/eku/Eku_VRM_v1_0_0.vrm"
   }
 };
 
@@ -236,6 +236,44 @@ function normalizeLlmConfig(llmConfig = {}) {
   };
 }
 
+function normalizeRuntimeConfig(runtimeConfig = {}) {
+  return {
+    storageRoot: String(
+      runtimeConfig.storageRoot || defaultConfig.runtime.storageRoot
+    ).trim() || defaultConfig.runtime.storageRoot,
+    cacheRoot: String(
+      runtimeConfig.cacheRoot || defaultConfig.runtime.cacheRoot
+    ).trim() || defaultConfig.runtime.cacheRoot,
+    assetRoot: String(
+      runtimeConfig.assetRoot || defaultConfig.runtime.assetRoot
+    ).trim() || defaultConfig.runtime.assetRoot,
+    recentSummaryLimit: normalizeNumber(
+      runtimeConfig.recentSummaryLimit,
+      defaultConfig.runtime.recentSummaryLimit
+    ),
+    summaryIndexLimit: normalizeNumber(
+      runtimeConfig.summaryIndexLimit,
+      defaultConfig.runtime.summaryIndexLimit
+    ),
+    sessionMessageLimit: normalizeNumber(
+      runtimeConfig.sessionMessageLimit,
+      defaultConfig.runtime.sessionMessageLimit
+    ),
+    recentTranscriptBudget: normalizeNumber(
+      runtimeConfig.recentTranscriptBudget,
+      defaultConfig.runtime.recentTranscriptBudget
+    ),
+    relevantMemoryLimit: normalizeNumber(
+      runtimeConfig.relevantMemoryLimit,
+      defaultConfig.runtime.relevantMemoryLimit
+    ),
+    behaviorPatternRefreshTurns: normalizeNumber(
+      runtimeConfig.behaviorPatternRefreshTurns,
+      defaultConfig.runtime.behaviorPatternRefreshTurns
+    )
+  };
+}
+
 function normalizeAsrConfig(asrConfig = {}) {
   const provider = normalizeProviderId(asrConfig.provider, "placeholder");
 
@@ -324,15 +362,32 @@ function normalizeAudioConfig(audioConfig = {}) {
   };
 }
 
-export async function loadConfig(rootDir) {
+async function readJsoncConfig(filePath) {
+  try {
+    const raw = await fs.readFile(filePath, "utf8");
+    return parse(raw.replace(/^\uFEFF/, "")) || {};
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return {};
+    }
+
+    throw error;
+  }
+}
+
+export async function loadConfig(rootDir, options = {}) {
   const configPath = path.join(rootDir, "vela.jsonc");
-  const raw = await fs.readFile(configPath, "utf8");
-  const parsed = parse(raw);
-  const merged = deepMerge(defaultConfig, parsed);
+  const userConfigPath = String(options?.userConfigPath || "").trim();
+  const [baseConfig, userConfig] = await Promise.all([
+    readJsoncConfig(configPath),
+    userConfigPath ? readJsoncConfig(userConfigPath) : Promise.resolve({})
+  ]);
+  const merged = deepMerge(deepMerge(defaultConfig, baseConfig), userConfig);
   const normalizedLlm = normalizeLlmConfig(merged.llm);
 
   return {
     ...merged,
+    runtime: normalizeRuntimeConfig(merged.runtime),
     user: normalizeUserConfig(merged.user),
     llm: normalizedLlm,
     asr: normalizeAsrConfig(merged.asr),

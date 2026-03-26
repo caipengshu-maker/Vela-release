@@ -2,6 +2,9 @@
   "app": {
     "name": "Vela",
     "tagline": "克制而持续地在场",
+    "onboarding": {
+      "completed": false
+    },
     "window": {
       "width": 1320,
       "height": 860,
@@ -10,9 +13,9 @@
     }
   },
   "runtime": {
-    "storageRoot": "D:/Vela/data",
-    "cacheRoot": "D:/Vela/cache",
-    "assetRoot": "D:/Vela/assets",
+    "storageRoot": "./.vela-data",
+    "cacheRoot": "./.vela-data/cache",
+    "assetRoot": "assets",
     "recentSummaryLimit": 2,
     "summaryIndexLimit": 8,
     "sessionMessageLimit": 40,
@@ -24,13 +27,13 @@
     "location": {
       "city": "Shanghai"
     },
-    "name": "测试用户"
+    "name": ""
   },
   "llm": {
     "provider": "minimax-messages",
     "baseUrl": "https://api.minimaxi.com/anthropic",
     "model": "MiniMax-M2.7",
-    "apiKey": "sk-cp-Kit5f2b4vHQOPuiuuHcgehqhNdZzldOb4oRvUi0ztvMuqfZngUHu1SC3nZGpFjVyV4FFbhkzhqGY1-eMDWEQheFZZWDlca8pswRVNINGkDcjVe7KMmO4J_8",
+    "apiKey": "",
     "apiKeyEnv": "MINIMAX_API_KEY",
     "temperature": 0.9,
     "maxTokens": 512,
@@ -45,7 +48,7 @@
     "fallback": {
       "provider": "anthropic-messages",
       "model": "k2p5",
-      "apiKey": "sk-kimi-q0oYlWUTV4arTDXI9XZxiwVEeAEnvTq2NsOhxMSi0W9N8qD3p74PL7ysdeAppS5B",
+      "apiKey": "",
       "apiKeyEnv": "KIMI_CODING_API_KEY",
       "baseUrl": "https://api.kimi.com/coding"
     }
@@ -57,7 +60,7 @@
   "tts": {
     "enabled": true,
     "provider": "minimax-websocket",
-    "apiKey": "sk-cp-Kit5f2b4vHQOPuiuuHcgehqhNdZzldOb4oRvUi0ztvMuqfZngUHu1SC3nZGpFjVyV4FFbhkzhqGY1-eMDWEQheFZZWDlca8pswRVNINGkDcjVe7KMmO4J_8",
+    "apiKey": "",
     "apiKeyEnv": "MINIMAX_API_KEY",
     "model": "speech-2.8-hd",
     "wsUrl": "wss://api.minimaxi.com/ws/v1/t2a_v2",
@@ -89,10 +92,10 @@
   "avatar": {
     "defaultPresence": "listening",
     "defaultEmotion": "calm",
-    "assetPath": "D:/Vela/assets/avatars/eku/Eku_VRM_v1_0_0.vrm"
+    "assetPath": "avatars/eku/Eku_VRM_v1_0_0.vrm"
   },
   "audio": {
-    "bgmVolume": 0,
+    "bgmVolume": 42,
     "ttsVolume": 100
   }
 }

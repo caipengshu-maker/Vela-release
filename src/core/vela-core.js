@@ -366,11 +366,50 @@ function sanitizeVolumePercent(value, fallback = 100) {
   return Math.max(0, Math.min(100, Math.round(numericValue)));
 }
 
+function normalizeAssetSubPath(assetPath) {
+  const normalizedPath = String(assetPath || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/^\/+/, "");
+
+  if (!normalizedPath) {
+    return "";
+  }
+
+  return normalizedPath.startsWith("assets/")
+    ? normalizedPath.slice("assets/".length)
+    : normalizedPath;
+}
+
+function resolveRuntimeAssetPath(assetRoot, configuredPath) {
+  const assetPath = String(configuredPath || "").trim();
+
+  if (!assetPath) {
+    return "";
+  }
+
+  if (path.isAbsolute(assetPath)) {
+    return path.resolve(assetPath);
+  }
+
+  return path.resolve(assetRoot, normalizeAssetSubPath(assetPath));
+}
+
 export class VelaCore {
-  constructor({ rootDir, userDataDir, storageRootOverride }) {
+  constructor({
+    rootDir,
+    userDataDir,
+    storageRootOverride,
+    isDevelopment = true,
+    resourcesDir = ""
+  }) {
     this.rootDir = rootDir;
     this.userDataDir = userDataDir;
     this.storageRootOverride = storageRootOverride || null;
+    this.isDevelopment = Boolean(isDevelopment);
+    this.resourcesDir = resourcesDir || rootDir;
+    this.runtimePaths = null;
     this.config = null;
     this.persona = null;
     this.localStore = null;
@@ -395,12 +434,67 @@ export class VelaCore {
     };
   }
 
-  async initialize() {
-    this.config = await loadConfig(this.rootDir);
-
+  resolveRuntimePaths() {
     const storageRoot = this.storageRootOverride
       ? path.resolve(this.storageRootOverride)
-      : path.resolve(this.rootDir, this.config.runtime.storageRoot);
+      : this.isDevelopment
+        ? path.resolve(this.rootDir, ".vela-data")
+        : path.resolve(this.userDataDir || path.join(this.rootDir, ".vela-data"));
+
+    return {
+      storageRoot,
+      cacheRoot: path.join(storageRoot, "cache"),
+      assetRoot: this.isDevelopment
+        ? path.resolve(this.rootDir, "assets")
+        : path.resolve(this.resourcesDir, "assets"),
+      userConfigPath: path.join(storageRoot, "config", "vela.user.jsonc")
+    };
+  }
+
+  applyRuntimePaths(config) {
+    const runtimePaths = this.runtimePaths || this.resolveRuntimePaths();
+
+    return {
+      ...config,
+      runtime: {
+        ...(config.runtime || {}),
+        storageRoot: runtimePaths.storageRoot,
+        cacheRoot: runtimePaths.cacheRoot,
+        assetRoot: runtimePaths.assetRoot
+      },
+      avatar: {
+        ...(config.avatar || {}),
+        assetPath: resolveRuntimeAssetPath(
+          runtimePaths.assetRoot,
+          config?.avatar?.assetPath
+        )
+      }
+    };
+  }
+
+  async reloadConfig() {
+    const loadedConfig = await loadConfig(this.rootDir, {
+      userConfigPath: this.runtimePaths?.userConfigPath
+    });
+
+    this.config = this.applyRuntimePaths(loadedConfig);
+
+    if (this.memoryStore) {
+      this.memoryStore.config = this.config;
+    }
+
+    if (this.memorySummarizer) {
+      this.memorySummarizer.config = this.config;
+    }
+
+    return this.config;
+  }
+
+  async initialize() {
+    this.runtimePaths = this.resolveRuntimePaths();
+    await this.reloadConfig();
+
+    const storageRoot = this.runtimePaths.storageRoot;
 
     this.localStore = new LocalStore(storageRoot);
     this.memoryStore = new MemoryStore(this.localStore, this.config);
@@ -413,6 +507,7 @@ export class VelaCore {
     });
     this.sessionStore = new SessionStateStore(this.localStore);
 
+    await fs.mkdir(this.config.runtime.cacheRoot, { recursive: true });
     await this.memoryStore.initialize();
     await this.sessionStore.initialize();
 
@@ -678,7 +773,7 @@ export class VelaCore {
       );
     const nextOnboarding =
       onboarding ||
-      (this.config?.app?.onboarding?.completed || memory.profile.onboarding?.completed
+      (memory.profile.onboarding?.completed
         ? {
             required: false,
             completed: true
@@ -720,7 +815,8 @@ export class VelaCore {
       tts: {
         ...tts,
         enabled: Boolean(this.config.tts.enabled),
-        volume: Number(this.config.tts?.voiceSettings?.volume ?? 1)
+        volume: Number(this.config.tts?.voiceSettings?.volume ?? 1),
+        voiceId: this.config.tts?.voiceId || ""
       },
       asr: {
         ...asr,
@@ -988,10 +1084,21 @@ export class VelaCore {
   }
 
   async persistConfigPatch(patch = {}) {
-    const configPath = path.join(this.rootDir, "vela.jsonc");
-    const raw = await fs.readFile(configPath, "utf8");
-    const normalizedRaw = raw.replace(/^\uFEFF/, "");
-    const parsed = parse(normalizedRaw) || {};
+    const configPath = this.runtimePaths?.userConfigPath;
+    let parsed = {};
+
+    if (!configPath) {
+      throw new Error("User config path is unavailable");
+    }
+
+    try {
+      const raw = await fs.readFile(configPath, "utf8");
+      parsed = parse(raw.replace(/^\uFEFF/, "")) || {};
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+    }
 
     const mergeObjects = (base, override) => {
       const result = { ...(base || {}) };
@@ -1015,9 +1122,10 @@ export class VelaCore {
     };
 
     const nextConfig = mergeObjects(parsed, patch);
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
     await fs.writeFile(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
 
-    this.config = await loadConfig(this.rootDir);
+    await this.reloadConfig();
     return nextConfig;
   }
 
@@ -1033,11 +1141,6 @@ export class VelaCore {
       audio: {
         bgmVolume,
         ttsVolume
-      },
-      tts: {
-        voiceSettings: {
-          volume: Number((ttsVolume / 100).toFixed(2))
-        }
       }
     });
 
@@ -1056,29 +1159,37 @@ export class VelaCore {
     const llmApiKey = String(payload?.llmApiKey || "").trim();
     const asrEnabled = Boolean(payload?.asrEnabled);
     const ttsEnabled = Boolean(payload?.ttsEnabled);
+    const voiceId = String(payload?.voiceId || this.config?.tts?.voiceId || "").trim();
+    const effectiveApiKey =
+      llmApiKey ||
+      this.config.llm.apiKey ||
+      (this.config.llm.apiKeyEnv
+        ? process.env[this.config.llm.apiKeyEnv] || ""
+        : "");
+
+    if (!userName) {
+      throw new Error("User name is required");
+    }
+
+    if (!effectiveApiKey) {
+      throw new Error("LLM API key is required");
+    }
 
     await this.persistConfigPatch({
-      app: {
-        onboarding: {
-          completed: true
-        }
-      },
       user: {
         name: userName
       },
       llm: {
-        provider: "minimax",
-        mode: "minimax",
-        apiKey: llmApiKey
+        apiKey: effectiveApiKey
       },
       asr: {
         enabled: asrEnabled,
-        provider: "minimax"
+        provider: "webspeech"
       },
       tts: {
         enabled: ttsEnabled,
-        provider: "minimax-websocket",
-        apiKey: llmApiKey || this.config.llm.apiKey || ""
+        apiKey: effectiveApiKey,
+        voiceId: voiceId || this.config.tts.voiceId
       }
     });
 

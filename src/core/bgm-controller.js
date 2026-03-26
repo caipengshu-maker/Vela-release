@@ -1,3 +1,5 @@
+import { mapUserVolumeToGain } from "./audio-volume.js";
+
 const DUCK_RATIO = 0.2;
 const DUCK_FADE_MS = 300;
 const UNDUCK_FADE_MS = 500;
@@ -296,7 +298,7 @@ export class BgmController {
   }
 
   setVolume(volume) {
-    this.userVolume = clampVolume(volume);
+    this.userVolume = mapUserVolumeToGain(clampVolume(volume));
     this.applyGain(this.getCurrentTargetVolume(), 160);
   }
 

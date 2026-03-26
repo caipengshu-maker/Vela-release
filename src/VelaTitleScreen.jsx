@@ -1,23 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createBundledAssetObjectUrl } from "./core/renderer-assets.js";
 
-const TITLE_LOGO_PATH = "D:\\Vela\\assets\\splash\\vela-title-logo.png";
+const TITLE_LOGO_PATH = "assets/splash/vela-title-logo.png";
 const FADE_OUT_MS = 900;
 const MIN_DISPLAY_MS = 1800;
-
-function toBlobPart(binaryPayload) {
-  if (binaryPayload instanceof ArrayBuffer) {
-    return binaryPayload;
-  }
-
-  if (ArrayBuffer.isView(binaryPayload)) {
-    return binaryPayload.buffer.slice(
-      binaryPayload.byteOffset,
-      binaryPayload.byteOffset + binaryPayload.byteLength
-    );
-  }
-
-  return binaryPayload;
-}
 
 export function VelaTitleScreen({ isReady, canExit = false, onDone }) {
   const [logoSrc, setLogoSrc] = useState("");
@@ -26,25 +12,21 @@ export function VelaTitleScreen({ isReady, canExit = false, onDone }) {
   const mountedAtRef = useRef(Date.now());
   const hasFiredDone = useRef(false);
 
-  // Load logo image via preload bridge
   useEffect(() => {
     let cancelled = false;
     let objectUrl = "";
 
     async function loadLogo() {
-      if (typeof window.vela?.readBinaryFile !== "function") {
-        return;
-      }
-
       try {
-        const payload = await window.vela.readBinaryFile(TITLE_LOGO_PATH);
-
+        objectUrl = await createBundledAssetObjectUrl(
+          TITLE_LOGO_PATH,
+          "image/png"
+        );
         if (cancelled) {
+          URL.revokeObjectURL(objectUrl);
+          objectUrl = "";
           return;
         }
-
-        const blob = new Blob([toBlobPart(payload)], { type: "image/png" });
-        objectUrl = URL.createObjectURL(blob);
         setLogoSrc(objectUrl);
       } catch {
         // Title screen works fine without the logo (just progress line).
