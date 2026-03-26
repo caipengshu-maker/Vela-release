@@ -64,6 +64,22 @@ export class BgmController {
     const now = this.audioContext.currentTime;
     const target = clampVolume(targetVolume);
     this.masterGain.gain.cancelScheduledValues(now);
+
+    if (target <= 0) {
+      // Hard mute: force gain to zero and suspend context to guarantee silence
+      this.masterGain.gain.setValueAtTime(0, now);
+      this.masterGain.gain.value = 0;
+      if (this.audioContext.state === "running") {
+        void this.audioContext.suspend();
+      }
+      return;
+    }
+
+    // Resume if previously suspended for mute
+    if (this.audioContext.state === "suspended" && this.unlocked) {
+      void this.audioContext.resume();
+    }
+
     this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
 
     if (fadeMs > 0) {
