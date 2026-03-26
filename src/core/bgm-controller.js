@@ -25,6 +25,7 @@ export class BgmController {
     this.unlocked = false;
     this.unlockHandler = null;
     this.activeTrackUrl = "";
+    this._muted = false;
   }
 
   ensureContext() {
@@ -66,16 +67,23 @@ export class BgmController {
     this.masterGain.gain.cancelScheduledValues(now);
 
     if (target <= 0) {
-      // Hard mute: force gain to zero and suspend context to guarantee silence
+      // Nuclear mute: force gain zero + disconnect from destination
       this.masterGain.gain.setValueAtTime(0, now);
       this.masterGain.gain.value = 0;
-      if (this.audioContext.state === "running") {
-        void this.audioContext.suspend();
-      }
+      try { this.masterGain.disconnect(); } catch { /* already disconnected */ }
+      this._muted = true;
       return;
     }
 
-    // Resume if previously suspended for mute
+    // Reconnect if previously disconnected
+    if (this._muted) {
+      try {
+        this.masterGain.connect(this.audioContext.destination);
+      } catch { /* already connected */ }
+      this._muted = false;
+    }
+
+    // Resume if context was suspended
     if (this.audioContext.state === "suspended" && this.unlocked) {
       void this.audioContext.resume();
     }
