@@ -114,6 +114,8 @@ export class AudioPlayerService {
       return false;
     }
 
+    this.visemeDriver?.setOutputGain?.(this.userVolume);
+
     return this.visemeDriver.attach(this.audio).catch((error) => {
       console.warn(
         `[AudioPlayer] Lip-sync graph disabled: ${error?.message || "initialization failed"}`
@@ -330,6 +332,7 @@ export class AudioPlayerService {
     if (this.audio) {
       this.audio.volume = this.userVolume;
     }
+    this.visemeDriver?.setOutputGain?.(this.userVolume);
   }
 
   update(deltaMs) {
