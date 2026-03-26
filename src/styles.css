@@ -1416,6 +1416,7 @@ textarea {
   max-height: calc(100vh - 48px);
   overflow: hidden;
   display: grid;
+  grid-template-rows: auto 1fr auto;
   gap: 18px;
 }
 
@@ -1441,6 +1442,7 @@ textarea {
 .settings-modal-body {
   overflow-y: auto;
   max-height: calc(100vh - 280px);
+  min-height: 0;
 }
 
 .settings-slider-block input[type="range"] {
