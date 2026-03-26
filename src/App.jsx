@@ -1688,9 +1688,22 @@ export default function App() {
     }
   }
 
+  function handleBgmPreview(nextValue) {
+    bgmControllerRef.current?.setVolume(Number(nextValue) / 100);
+  }
+
   async function handleSettingsSave(nextState, payload) {
     if (payload && bgmControllerRef.current) {
       bgmControllerRef.current.setVolume(Number(payload.bgmVolume) / 100);
+    }
+
+    if (payload) {
+      setSettingsDraft((current) => ({
+        ...current,
+        bgmVolume: Number(payload.bgmVolume),
+        ttsVolume: Number(payload.ttsVolume),
+        userAlias: payload.userName ?? current.userAlias
+      }));
     }
 
     if (payload && audioPlayerRef.current) {
@@ -1994,6 +2007,7 @@ export default function App() {
         initialValues={settingsDraft}
         onClose={() => setIsSettingsOpen(false)}
         onSaved={handleSettingsSave}
+        onBgmPreview={handleBgmPreview}
         models={composerModelOptions}
         selectedModel={state.modelStatus?.selectedModel || "auto"}
         onModelSwitch={handleModelSwitch}
@@ -2010,6 +2024,5 @@ export default function App() {
     </main>
   );
 }
-
 
 

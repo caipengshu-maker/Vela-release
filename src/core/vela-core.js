@@ -78,8 +78,17 @@ function formatTime(isoString) {
   return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+function sanitizeTopicLabel(text) {
+  const cleaned = String(text || "")
+    .replace(/\s+/g, " ")
+    .replace(/^第\d+次验证[:：]\s*/u, "")
+    .trim();
+
+  return cleaned;
+}
+
 function extractTopicLabel(text) {
-  const cleaned = String(text || "").replace(/\s+/g, " ").trim();
+  const cleaned = sanitizeTopicLabel(text);
   return cleaned ? clipText(cleaned, 18) : "近况";
 }
 
@@ -115,9 +124,9 @@ function createTurnSummary({
   };
 }
 function buildWelcomeNote(memory) {
-  const bridgeSummary = String(
+  const bridgeSummary = sanitizeTopicLabel(
     memory?.bridgeSummary?.summary || memory?.bridgeSummary?.text || memory?.bridgeSummary || ""
-  ).trim();
+  );
 
   if (bridgeSummary) {
     return `上次我们停在“${clipText(bridgeSummary, 30)}”。想接着说的话，直接从这里继续就行。`;
@@ -125,7 +134,9 @@ function buildWelcomeNote(memory) {
 
   const recentSummary = memory?.recentSummaries?.[0];
   if (recentSummary) {
-    return `上次我们停在“${recentSummary.topicLabel || clipText(recentSummary.summary, 24)}”。想继续的话可以从这里接上。`;
+    const topicLabel = sanitizeTopicLabel(recentSummary.topicLabel);
+    const summaryText = sanitizeTopicLabel(recentSummary.summary);
+    return `上次我们停在“${topicLabel || clipText(summaryText, 24)}”。想继续的话可以从这里接上。`;
   }
 
   return "如果你想接着刚才的话题，或者只是随便说一句，都可以直接开始。";

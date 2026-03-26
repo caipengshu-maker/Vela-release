@@ -3,7 +3,9 @@ import { generateReply } from "./provider.js";
 const BRIDGE_DIARY_SYSTEM_PROMPT = "你是 Vela，用日记体写一段简短回忆，描述上次和用户聊了什么。用第一人称，像在自言自语。2-4句话，不要太正式，带点情绪和小细节。不要提到自己是AI。";
 
 function cleanText(value) {
-  return String(value || "").trim();
+  return String(value || "")
+    .replace(/^第\d+次验证[:：]\s*/u, "")
+    .trim();
 }
 
 function normalizeSummary(entry) {
