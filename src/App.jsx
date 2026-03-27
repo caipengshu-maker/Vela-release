@@ -816,7 +816,8 @@ export default function App() {
   const [ttsHint, setTtsHint] = useState("");
   const [sendError, setSendError] = useState("");
   const [error, setError] = useState("");
-  const [bgmEnabled, setBgmEnabled] = useState(true);
+  const lastBgmVolumeRef = useRef(42);
+  const bgmEnabled = Number(state.audio?.bgmVolume ?? 42) > 0;
   const [isFullscreenBusy, setIsFullscreenBusy] = useState(false);
   const [isChatMinimized, setIsChatMinimized] = useState(false);
   const [lastUserMessage, setLastUserMessage] = useState("");
@@ -966,7 +967,13 @@ export default function App() {
       return;
     }
 
-    bgm.setVolume(Number(state.audio?.bgmVolume ?? 42) / 100);
+    const vol = Number(state.audio?.bgmVolume ?? 42);
+    bgm.setEnabled(vol > 0);
+    bgm.setVolume(vol / 100);
+
+    if (vol > 0) {
+      lastBgmVolumeRef.current = vol;
+    }
   }, [state.audio?.bgmVolume]);
 
   useEffect(() => {
@@ -1197,11 +1204,17 @@ export default function App() {
       return;
     }
 
-    bgm.setEnabled(bgmEnabled);
-    // Always sync volume from saved state when enabling
-    bgm.setVolume(Number(state.audio?.bgmVolume ?? 42) / 100);
+    const vol = Number(state.audio?.bgmVolume ?? 42);
+    bgm.setEnabled(vol > 0);
+    bgm.setVolume(vol / 100);
 
-    if (!bgmEnabled) {
+    // Remember last non-zero volume so the toggle can restore it
+    if (vol > 0) {
+      lastBgmVolumeRef.current = vol;
+    }
+
+    if (vol <= 0) {
+      bgm.pause();
       return;
     }
 
@@ -1710,8 +1723,17 @@ export default function App() {
   }
 
   function handleBgmPreview(nextValue) {
-    bgmControllerRef.current?.setVolume(Number(nextValue) / 100);
-    void bgmControllerRef.current?.resume?.();
+    const vol = Number(nextValue);
+    const bgm = bgmControllerRef.current;
+    if (bgm) {
+      bgm.setEnabled(vol > 0);
+      bgm.setVolume(vol / 100);
+      if (vol > 0) {
+        void bgm.resume?.();
+      } else {
+        bgm.pause();
+      }
+    }
   }
 
   function handleTtsPreview(nextValue) {
@@ -1720,8 +1742,14 @@ export default function App() {
 
   async function handleSettingsSave(nextState, payload) {
     if (payload && bgmControllerRef.current) {
-      bgmControllerRef.current.setVolume(Number(payload.bgmVolume) / 100);
-      void bgmControllerRef.current.resume?.();
+      const vol = Number(payload.bgmVolume);
+      bgmControllerRef.current.setEnabled(vol > 0);
+      bgmControllerRef.current.setVolume(vol / 100);
+      if (vol > 0) {
+        void bgmControllerRef.current.resume?.();
+      } else {
+        bgmControllerRef.current.pause();
+      }
     }
 
     if (payload && audioPlayerRef.current) {
@@ -1799,17 +1827,46 @@ export default function App() {
   }
 
   function handleBgmToggle() {
+    const currentVolume = Number(state.audio?.bgmVolume ?? 42);
+    const nextVolume = currentVolume > 0 ? 0 : (lastBgmVolumeRef.current || 42);
+
+    // Remember last non-zero volume before muting
+    if (currentVolume > 0) {
+      lastBgmVolumeRef.current = currentVolume;
+    }
+
+    // Immediately update the audio controller for responsiveness
     const bgm = bgmControllerRef.current;
-    setBgmEnabled((current) => {
-      const next = !current;
-      if (bgm) {
-        bgm.setEnabled(next);
-        if (!next) {
-          bgm.pause();
-        }
+    if (bgm) {
+      bgm.setVolume(nextVolume / 100);
+      bgm.setEnabled(nextVolume > 0);
+      if (nextVolume <= 0) {
+        bgm.pause();
+      } else {
+        void bgm.resume?.();
       }
-      return next;
-    });
+    }
+
+    // Optimistically update local state so the derived bgmEnabled flips instantly
+    setState((prev) => ({
+      ...prev,
+      audio: { ...prev.audio, bgmVolume: nextVolume }
+    }));
+
+    // Keep settingsDraft in sync (so the Settings modal shows the right value)
+    setSettingsDraft((prev) => ({ ...prev, bgmVolume: nextVolume }));
+
+    // Persist in the background
+    const payload = {
+      ...settingsDraft,
+      bgmVolume: nextVolume
+    };
+    window.vela.ipcRenderer
+      .invoke("vela:update-settings", payload)
+      .then((nextState) => {
+        if (nextState) setState(nextState);
+      })
+      .catch(() => {});
   }
 
   const relationshipStage = String(state.avatar?.relationshipStage || "reserved").trim().toLowerCase();
