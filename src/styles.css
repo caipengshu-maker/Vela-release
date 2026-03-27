@@ -1481,51 +1481,6 @@ textarea {
   padding-right: 6px;
 }
 
-.settings-slider-block input[type="range"] {
-  width: 100%;
-  accent-color: #2d7d77;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 6px;
-  background: rgba(19, 32, 38, 0.12);
-  border-radius: 3px;
-  outline: none;
-  padding: 0;
-  margin: 8px 0;
-  cursor: pointer;
-}
-
-.settings-slider-block input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #2d7d77;
-  border: none;
-  cursor: pointer;
-}
-
-.settings-slider-block input[type="range"]::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #2d7d77;
-  border: none;
-  cursor: pointer;
-}
-
-.settings-slider-block input[type="range"]::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 3px;
-}
-
-.settings-slider-block input[type="range"]::-moz-range-track {
-  height: 6px;
-  background: rgba(19, 32, 38, 0.12);
-  border-radius: 3px;
-}
-
 .settings-modal-actions,
 .onboarding-actions {
   display: flex;

@@ -89,7 +89,7 @@
     "assetPath": "avatars/eku/Eku_VRM_v1_0_0.vrm"
   },
   "audio": {
-    "bgmVolume": 42,
-    "ttsVolume": 100
+    "bgmEnabled": true,
+    "ttsEnabled": false
   }
 }

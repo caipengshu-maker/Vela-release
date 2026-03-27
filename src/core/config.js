@@ -61,8 +61,8 @@ const defaultConfig = {
     model: ""
   },
   audio: {
-    bgmVolume: 42,
-    ttsVolume: 100
+    bgmEnabled: true,
+    ttsEnabled: false
   },
   tts: {
     enabled: false,
@@ -357,16 +357,20 @@ function normalizeUserConfig(userConfig = {}) {
 }
 
 function normalizeAudioConfig(audioConfig = {}) {
-  const bgmVolume = Number(audioConfig?.bgmVolume);
-  const ttsVolume = Number(audioConfig?.ttsVolume);
+  const bgmEnabled =
+    typeof audioConfig?.bgmEnabled === "boolean"
+      ? audioConfig.bgmEnabled
+      : Number.isFinite(Number(audioConfig?.bgmVolume))
+        ? Number(audioConfig.bgmVolume) > 0
+        : defaultConfig.audio.bgmEnabled;
+  const ttsEnabled =
+    typeof audioConfig?.ttsEnabled === "boolean"
+      ? audioConfig.ttsEnabled
+      : defaultConfig.audio.ttsEnabled;
 
   return {
-    bgmVolume: Number.isFinite(bgmVolume)
-      ? Math.max(0, Math.min(100, Math.round(bgmVolume)))
-      : defaultConfig.audio.bgmVolume,
-    ttsVolume: Number.isFinite(ttsVolume)
-      ? Math.max(0, Math.min(100, Math.round(ttsVolume)))
-      : defaultConfig.audio.ttsVolume
+    bgmEnabled: Boolean(bgmEnabled),
+    ttsEnabled: Boolean(ttsEnabled)
   };
 }
 

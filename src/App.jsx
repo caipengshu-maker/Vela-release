@@ -66,6 +66,10 @@ const initialState = {
     launchTurnCount: 0,
     lifetimeTurnCount: 0
   },
+  audio: {
+    bgmEnabled: true,
+    ttsEnabled: false
+  },
   window: {
     fullscreen: false
   }
@@ -808,16 +812,16 @@ export default function App() {
     ttsProvider: "off",
     ttsApiKey: "",
     voiceId: DEFAULT_MINIMAX_TTS_VOICE_ID,
-    bgmVolume: 42,
-    ttsVolume: 100
+    bgmEnabled: true,
+    ttsEnabled: false
   });
   const [isAsrListening, setIsAsrListening] = useState(false);
   const [asrHint, setAsrHint] = useState("");
   const [ttsHint, setTtsHint] = useState("");
   const [sendError, setSendError] = useState("");
   const [error, setError] = useState("");
-  const lastBgmVolumeRef = useRef(42);
-  const bgmEnabled = Number(state.audio?.bgmVolume ?? 42) > 0;
+  const bgmEnabled = Boolean(state.audio?.bgmEnabled);
+  const ttsEnabled = Boolean(state.audio?.ttsEnabled);
   const [isFullscreenBusy, setIsFullscreenBusy] = useState(false);
   const [isChatMinimized, setIsChatMinimized] = useState(false);
   const [lastUserMessage, setLastUserMessage] = useState("");
@@ -853,8 +857,8 @@ export default function App() {
       ttsProvider: getTtsModeFromSettings(snapshot.tts),
       ttsApiKey: snapshot.tts?.apiKey || "",
       voiceId: snapshot.tts?.voiceId || DEFAULT_MINIMAX_TTS_VOICE_ID,
-      bgmVolume: Number(snapshot.audio?.bgmVolume ?? 42),
-      ttsVolume: Number(snapshot.audio?.ttsVolume ?? 100)
+      bgmEnabled: Boolean(snapshot.audio?.bgmEnabled),
+      ttsEnabled: Boolean(snapshot.audio?.ttsEnabled)
     });
   });
 
@@ -960,27 +964,6 @@ export default function App() {
       asrProviderRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    const bgm = bgmControllerRef.current;
-    if (!bgm) {
-      return;
-    }
-
-    const vol = Number(state.audio?.bgmVolume ?? 42);
-    bgm.setEnabled(vol > 0);
-    bgm.setVolume(vol / 100);
-
-    if (vol > 0) {
-      lastBgmVolumeRef.current = vol;
-    }
-  }, [state.audio?.bgmVolume]);
-
-  useEffect(() => {
-    audioPlayerRef.current?.setVolume(
-      Number(state.audio?.ttsVolume ?? 100) / 100
-    );
-  }, [state.audio?.ttsVolume]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1204,30 +1187,18 @@ export default function App() {
       return;
     }
 
-    const vol = Number(state.audio?.bgmVolume ?? 42);
-    bgm.setEnabled(vol > 0);
-    bgm.setVolume(vol / 100);
+    bgm.setEnabled(bgmEnabled);
 
-    // Remember last non-zero volume so the toggle can restore it
-    if (vol > 0) {
-      lastBgmVolumeRef.current = vol;
-    }
-
-    if (vol <= 0) {
-      bgm.pause();
+    if (!bgmEnabled) {
+      bgm.stop();
       return;
     }
 
-    // Load and play the correct day/night BGM track.
-    // BgmController.isCurrentTrack() handles dedup internally, so React Strict
-    // Mode double-runs and dep-triggered re-runs are safe — they no-op if the
-    // same track is already playing.
     const syncTrack = async () => {
       const assetPath = getBundledBgmAssetPath();
 
-      // Controller-level dedup: if this track is already loaded, skip.
       if (bgm.isCurrentTrack(assetPath)) {
-        await bgm.resume();
+        await bgm.play();
         return;
       }
 
@@ -1242,7 +1213,11 @@ export default function App() {
       }
     };
 
-    syncTrack();
+    if (isLoading || state.onboarding?.required) {
+      return;
+    }
+
+    void syncTrack();
   }, [bgmEnabled, isLoading, state.onboarding?.required]);
 
   useEffect(() => {
@@ -1639,11 +1614,13 @@ export default function App() {
     setError("");
 
     try {
-      const nextState = await window.vela.setVoiceMode(!state.voiceMode.enabled);
-      if (state.voiceMode.enabled) {
+      const nextEnabled = !ttsEnabled;
+      const nextState = await window.vela.setVoiceMode(nextEnabled);
+      if (!nextEnabled) {
         audioPlayerRef.current?.reset();
       }
       setState(nextState);
+      setSettingsDraft((current) => ({ ...current, ttsEnabled: nextEnabled }));
     } catch (toggleError) {
       setError(toggleError.message || "语音模式切换失败。");
     } finally {
@@ -1660,6 +1637,7 @@ export default function App() {
     try {
       const nextState = await window.vela.setVoiceMode(true);
       setState(nextState);
+      setSettingsDraft((current) => ({ ...current, ttsEnabled: true }));
     } catch (e) {
       setError(e.message || "语音模式启动失败");
     } finally {
@@ -1675,12 +1653,13 @@ export default function App() {
     setIsVoiceMode(false);
 
     // Disable TTS when exiting voice mode
-    if (state.voiceMode.enabled) {
+    if (ttsEnabled) {
       setIsSwitchingVoice(true);
       try {
         const nextState = await window.vela.setVoiceMode(false);
         audioPlayerRef.current?.reset();
         setState(nextState);
+        setSettingsDraft((current) => ({ ...current, ttsEnabled: false }));
       } catch (e) {
         setError(e.message || "语音模式关闭失败");
       } finally {
@@ -1722,40 +1701,7 @@ export default function App() {
     }
   }
 
-  function handleBgmPreview(nextValue) {
-    const vol = Number(nextValue);
-    const bgm = bgmControllerRef.current;
-    if (bgm) {
-      bgm.setEnabled(vol > 0);
-      bgm.setVolume(vol / 100);
-      if (vol > 0) {
-        void bgm.resume?.();
-      } else {
-        bgm.pause();
-      }
-    }
-  }
-
-  function handleTtsPreview(nextValue) {
-    audioPlayerRef.current?.setVolume(Number(nextValue) / 100);
-  }
-
-  async function handleSettingsSave(nextState, payload) {
-    if (payload && bgmControllerRef.current) {
-      const vol = Number(payload.bgmVolume);
-      bgmControllerRef.current.setEnabled(vol > 0);
-      bgmControllerRef.current.setVolume(vol / 100);
-      if (vol > 0) {
-        void bgmControllerRef.current.resume?.();
-      } else {
-        bgmControllerRef.current.pause();
-      }
-    }
-
-    if (payload && audioPlayerRef.current) {
-      audioPlayerRef.current.setVolume(Number(payload.ttsVolume) / 100);
-    }
-
+  async function handleSettingsSave(nextState) {
     if (nextState) {
       setState(nextState);
     }
@@ -1827,42 +1773,28 @@ export default function App() {
   }
 
   function handleBgmToggle() {
-    const currentVolume = Number(state.audio?.bgmVolume ?? 42);
-    const nextVolume = currentVolume > 0 ? 0 : (lastBgmVolumeRef.current || 42);
-
-    // Remember last non-zero volume before muting
-    if (currentVolume > 0) {
-      lastBgmVolumeRef.current = currentVolume;
-    }
-
-    // Immediately update the audio controller for responsiveness
+    const nextEnabled = !bgmEnabled;
     const bgm = bgmControllerRef.current;
     if (bgm) {
-      bgm.setVolume(nextVolume / 100);
-      bgm.setEnabled(nextVolume > 0);
-      if (nextVolume <= 0) {
-        bgm.pause();
+      bgm.setEnabled(nextEnabled);
+      if (!nextEnabled) {
+        bgm.stop();
       } else {
-        void bgm.resume?.();
+        void bgm.play();
       }
     }
 
-    // Optimistically update local state so the derived bgmEnabled flips instantly
     setState((prev) => ({
       ...prev,
-      audio: { ...prev.audio, bgmVolume: nextVolume }
+      audio: { ...prev.audio, bgmEnabled: nextEnabled }
     }));
 
-    // Keep settingsDraft in sync (so the Settings modal shows the right value)
-    setSettingsDraft((prev) => ({ ...prev, bgmVolume: nextVolume }));
+    setSettingsDraft((prev) => ({ ...prev, bgmEnabled: nextEnabled }));
 
-    // Persist in the background
-    const payload = {
-      ...settingsDraft,
-      bgmVolume: nextVolume
-    };
     window.vela.ipcRenderer
-      .invoke("vela:update-settings", payload)
+      .invoke("vela:update-settings", {
+        bgmEnabled: nextEnabled
+      })
       .then((nextState) => {
         if (nextState) setState(nextState);
       })
@@ -1969,13 +1901,13 @@ export default function App() {
                     <div className="voice-control-group">
                       <button
                         type="button"
-                        className={`voice-control-button speaker-control ${state.voiceMode.enabled ? "is-active" : "is-muted"}`}
+                        className={`voice-control-button speaker-control ${ttsEnabled ? "is-active" : "is-muted"}`}
                         onClick={handleVoiceToggle}
                         disabled={isSwitchingVoice}
-                        title={state.voiceMode.enabled ? "关闭语音回复" : "开启语音回复"}
-                        aria-label={state.voiceMode.enabled ? "关闭语音回复" : "开启语音回复"}
+                        title={ttsEnabled ? "关闭语音回复" : "开启语音回复"}
+                        aria-label={ttsEnabled ? "关闭语音回复" : "开启语音回复"}
                       >
-                        {state.voiceMode.enabled ? <SpeakerIcon size={16} /> : <SpeakerMutedIcon size={16} />}
+                        {ttsEnabled ? <SpeakerIcon size={16} /> : <SpeakerMutedIcon size={16} />}
                       </button>
                       <ErrorHint message={ttsHint} tone="tts" />
                     </div>
@@ -2086,8 +2018,6 @@ export default function App() {
         initialValues={settingsDraft}
         onClose={() => setIsSettingsOpen(false)}
         onSaved={handleSettingsSave}
-        onBgmPreview={handleBgmPreview}
-        onTtsPreview={handleTtsPreview}
         models={composerModelOptions}
         selectedModel={state.modelStatus?.selectedModel || "auto"}
         onModelSwitch={handleModelSwitch}

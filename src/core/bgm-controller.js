@@ -1,303 +1,369 @@
-/**
- * BGM Controller — simplified rewrite (2024-03).
- *
- * Previous version used Web Audio API (AudioContext + BufferSourceNode + GainNode
- * graph) with a serialized-load queue, per-track gain nodes, crossfade, and a
- * track registry. Over 8 patch rounds this grew into ~430 lines of overlapping
- * guards that still allowed double-play under React Strict Mode and broke volume
- * control (applyGain called stopAllStaleTracks, reconnecting masterGain, etc.).
- *
- * This rewrite uses a single <audio> HTML element:
- *   • One element = one source. Double-play is structurally impossible.
- *   • volume property = real-time slider. No gain nodes to manage.
- *   • loop attribute = native. No source-restart bookkeeping.
- *   • Ducking = just lower the volume temporarily.
- *
- * Trade-offs accepted:
- *   • No crossfade between day/night tracks (hard cut instead). This is cosmetic
- *     and not worth the complexity.
- *   • Ducking uses a simple multiplier on volume rather than Web Audio ramps.
- *     Perceptually equivalent for BGM.
- */
-
+const DEFAULT_VOLUME = 0.42;
 const DUCK_RATIO = 0.2;
+const CROSSFADE_MS = 650;
 
-function clampUnit(value, fallback = 1) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(0, Math.min(1, n));
-}
-
-/**
- * Attempt to convert various binary payloads into an Object URL suitable for
- * <audio src="…">. We accept ArrayBuffer, TypedArray, Blob, or a plain URL
- * string. Returns { url, revoke } where revoke() frees the blob URL (no-op for
- * plain URLs).
- */
-function toPlayableUrl(source, label = "") {
-  // Already a URL string (http/https/relative path)
+function toPlayableUrl(source) {
   if (typeof source === "string" && source.length > 0) {
     return { url: source, revoke() {} };
   }
 
-  let blob;
+  let blob = null;
+
   if (source instanceof Blob) {
     blob = source;
   } else if (source instanceof ArrayBuffer) {
     blob = new Blob([source], { type: "audio/mpeg" });
   } else if (ArrayBuffer.isView(source)) {
-    blob = new Blob([source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength)], { type: "audio/mpeg" });
+    blob = new Blob(
+      [source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength)],
+      { type: "audio/mpeg" }
+    );
   }
 
-  if (!blob) return null;
+  if (!blob) {
+    return null;
+  }
 
   const url = URL.createObjectURL(blob);
   return {
     url,
     revoke() {
-      try { URL.revokeObjectURL(url); } catch { /* noop */ }
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // Ignore stale object URL cleanup errors.
+      }
     }
   };
 }
 
+function getTimestamp() {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
 export class BgmController {
   constructor() {
-    /** @type {HTMLAudioElement | null} */
-    this._audio = null;
-    /** Label/path of the currently loaded track (used for dedup) */
-    this._currentLabel = "";
-    /** Revoke function for the current blob URL */
-    this._revokeUrl = null;
-
-    // Volume state
-    this._userVolume = 0.42;  // 0..1 (linear slider value)
-    this._ducked = false;
+    this._currentTrack = null;
+    this._outgoingTrack = null;
     this._enabled = true;
-
-    // Gesture-unlock state
+    this._ducked = false;
     this._unlocked = false;
     this._unlockHandler = null;
-
-    // Loading lock — only one load at a time
     this._loadId = 0;
+    this._fadeFrame = null;
+    this._fadeToken = 0;
+    this._fadeProgress = 0;
   }
 
-  // ---------------------------------------------------------------------------
-  // Internal: audio element lifecycle
-  // ---------------------------------------------------------------------------
+  _createAudioElement() {
+    if (typeof document === "undefined") {
+      return null;
+    }
 
-  /** Lazily create the singleton <audio> element. */
-  _ensureAudio() {
-    if (this._audio) return this._audio;
-    if (typeof document === "undefined") return null;
-
-    const el = document.createElement("audio");
-    el.loop = true;
-    el.preload = "auto";
-    // Start with correct volume
-    el.volume = this._computeVolume();
-    this._audio = el;
-    return el;
+    const audio = document.createElement("audio");
+    audio.loop = true;
+    audio.preload = "auto";
+    audio.volume = 0;
+    return audio;
   }
 
-  /** Compute the effective volume (0..1) given user slider + duck state. */
-  _computeVolume() {
-    if (!this._enabled) return 0;
-    // Keep BGM volume honest and predictable: slider value == audio volume.
-    const gain = clampUnit(this._userVolume, 0);
-    return this._ducked ? gain * DUCK_RATIO : gain;
+  _createTrack(playable, label) {
+    const audio = this._createAudioElement();
+    if (!audio) {
+      return null;
+    }
+
+    audio.src = playable.url;
+
+    return {
+      audio,
+      label,
+      revoke: playable.revoke
+    };
   }
 
-  /** Apply current computed volume to the audio element. */
-  _syncVolume() {
-    if (!this._audio) return;
-    const vol = this._computeVolume();
-    this._audio.volume = vol;
-    this._audio.muted = vol <= 0;
+  _pauseTrack(track) {
+    try {
+      track?.audio?.pause();
+    } catch {
+      // Ignore pause failures from a torn-down element.
+    }
   }
 
-  // ---------------------------------------------------------------------------
-  // Gesture unlock — browsers require user interaction before audio can play
-  // ---------------------------------------------------------------------------
+  _destroyTrack(track) {
+    if (!track) {
+      return;
+    }
+
+    this._pauseTrack(track);
+
+    try {
+      track.audio.removeAttribute("src");
+      track.audio.load();
+    } catch {
+      // Ignore cleanup failures from a torn-down element.
+    }
+
+    track.revoke?.();
+  }
+
+  _getTargetVolume() {
+    if (!this._enabled) {
+      return 0;
+    }
+
+    return this._ducked ? DEFAULT_VOLUME * DUCK_RATIO : DEFAULT_VOLUME;
+  }
+
+  _applyTrackVolume(track, factor = 1) {
+    if (!track?.audio) {
+      return;
+    }
+
+    const volume = Math.max(0, Math.min(1, this._getTargetVolume() * factor));
+    track.audio.volume = volume;
+    track.audio.muted = volume <= 0;
+  }
+
+  _syncTrackVolumes() {
+    if (this._outgoingTrack) {
+      this._applyTrackVolume(this._outgoingTrack, 1 - this._fadeProgress);
+    }
+
+    if (this._currentTrack) {
+      this._applyTrackVolume(
+        this._currentTrack,
+        this._outgoingTrack ? this._fadeProgress : 1
+      );
+    }
+  }
+
+  _cancelCrossfade() {
+    if (this._fadeFrame) {
+      window.cancelAnimationFrame(this._fadeFrame);
+      this._fadeFrame = null;
+    }
+
+    this._fadeToken += 1;
+    this._fadeProgress = 0;
+
+    if (this._outgoingTrack) {
+      this._destroyTrack(this._outgoingTrack);
+      this._outgoingTrack = null;
+    }
+
+    this._syncTrackVolumes();
+  }
+
+  async _playTrack(track) {
+    if (!track?.audio?.src || !this._enabled) {
+      return false;
+    }
+
+    try {
+      await track.audio.play();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async _swapTrack(nextTrack) {
+    this._cancelCrossfade();
+
+    if (!this._currentTrack) {
+      this._currentTrack = nextTrack;
+      this._syncTrackVolumes();
+
+      if (this._enabled) {
+        await this._playTrack(nextTrack);
+      }
+
+      return true;
+    }
+
+    if (!this._enabled || this._currentTrack.audio.paused) {
+      this._destroyTrack(this._currentTrack);
+      this._currentTrack = nextTrack;
+      this._syncTrackVolumes();
+      if (this._enabled) {
+        await this._playTrack(nextTrack);
+      }
+      return true;
+    }
+
+    const outgoingTrack = this._currentTrack;
+    this._outgoingTrack = outgoingTrack;
+    this._currentTrack = nextTrack;
+    this._fadeProgress = 0;
+    this._syncTrackVolumes();
+
+    const started = await this._playTrack(nextTrack);
+    if (!started) {
+      this._destroyTrack(nextTrack);
+      this._currentTrack = outgoingTrack;
+      this._outgoingTrack = null;
+      this._syncTrackVolumes();
+      return false;
+    }
+
+    const fadeToken = ++this._fadeToken;
+    const startedAt = getTimestamp();
+
+    await new Promise((resolve) => {
+      const step = (frameAt) => {
+        if (fadeToken !== this._fadeToken) {
+          resolve();
+          return;
+        }
+
+        const elapsed = frameAt - startedAt;
+        this._fadeProgress = Math.max(0, Math.min(1, elapsed / CROSSFADE_MS));
+        this._syncTrackVolumes();
+
+        if (this._fadeProgress >= 1) {
+          this._fadeFrame = null;
+          this._destroyTrack(outgoingTrack);
+          if (this._outgoingTrack === outgoingTrack) {
+            this._outgoingTrack = null;
+          }
+          this._fadeProgress = 0;
+          this._syncTrackVolumes();
+          resolve();
+          return;
+        }
+
+        this._fadeFrame = window.requestAnimationFrame(step);
+      };
+
+      this._fadeFrame = window.requestAnimationFrame(step);
+    });
+
+    return true;
+  }
+
+  async _loadPlayable(playable, label) {
+    const nextTrack = this._createTrack(playable, label);
+    if (!nextTrack) {
+      playable.revoke();
+      return false;
+    }
+
+    return this._swapTrack(nextTrack);
+  }
 
   bindFirstUserGesture() {
-    if (typeof window === "undefined" || this._unlockHandler) return;
+    if (typeof window === "undefined" || this._unlockHandler) {
+      return;
+    }
 
     this._unlockHandler = () => {
       this._unlocked = true;
-      // Try to play if we have a source ready
-      if (this._audio && this._audio.src && this._audio.paused && this._enabled) {
-        this._audio.play().catch(() => {});
-      }
-      // Clean up listeners
-      ["pointerdown", "keydown", "touchstart"].forEach((evt) => {
-        window.removeEventListener(evt, this._unlockHandler);
+      void this.play();
+      void this._playTrack(this._outgoingTrack);
+
+      ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+        window.removeEventListener(eventName, this._unlockHandler);
       });
       this._unlockHandler = null;
     };
 
-    ["pointerdown", "keydown", "touchstart"].forEach((evt) => {
-      window.addEventListener(evt, this._unlockHandler, { passive: true });
+    ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+      window.addEventListener(eventName, this._unlockHandler, { passive: true });
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Public API: loading tracks
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Check if the given label is already the active track.
-   * This is the ONLY dedup guard needed — no refs, no registries.
-   */
   isCurrentTrack(label) {
     const normalized = String(label || "").trim();
-    return Boolean(normalized) && normalized === this._currentLabel;
+    return Boolean(normalized) && normalized === this._currentTrack?.label;
   }
 
-  /**
-   * Load a track from an ArrayBuffer (the primary path used by the app).
-   * Returns true if playback started, false otherwise.
-   *
-   * Key invariant: if this method is called multiple times (React Strict Mode,
-   * effect re-runs, etc.) with the same label, it no-ops. If called with a
-   * different label, the previous track is replaced — not duplicated.
-   */
   async loadFromBuffer(arrayBuffer, label = "") {
     const normalized = String(label || "").trim();
 
-    // Dedup: same track already playing
-    if (this.isCurrentTrack(normalized)) return true;
+    if (this.isCurrentTrack(normalized)) {
+      return true;
+    }
 
-    // Acquire a load ID so concurrent loads can be cancelled
     const myLoadId = ++this._loadId;
+    const playable = toPlayableUrl(arrayBuffer);
+    if (!playable) {
+      return false;
+    }
 
-    const playable = toPlayableUrl(arrayBuffer, normalized);
-    if (!playable) return false;
-
-    // Check if a newer load has started while we were converting
     if (this._loadId !== myLoadId) {
       playable.revoke();
       return false;
     }
 
-    // Revoke previous blob URL if any
-    this._revokeUrl?.();
+    return this._loadPlayable(playable, normalized);
+  }
 
-    const audio = this._ensureAudio();
-    if (!audio) {
-      playable.revoke();
+  async loadAndPlay(trackUrl) {
+    const normalized = String(trackUrl || "").trim();
+    if (!normalized) {
       return false;
     }
 
-    this._currentLabel = normalized;
-    this._revokeUrl = playable.revoke;
-    audio.src = playable.url;
-    this._syncVolume();
-
-    if (this._enabled) {
-      try {
-        await audio.play();
-      } catch {
-        // Autoplay blocked — bindFirstUserGesture will retry on interaction
-      }
+    if (this.isCurrentTrack(normalized)) {
+      return this.play();
     }
-
-    return true;
-  }
-
-  /**
-   * Load a track from a URL (alternative path, kept for API compat).
-   */
-  async loadAndPlay(trackUrl) {
-    const normalized = String(trackUrl || "").trim();
-    if (!normalized) return false;
-    if (this.isCurrentTrack(normalized)) return true;
 
     const myLoadId = ++this._loadId;
-
-    const audio = this._ensureAudio();
-    if (!audio) return false;
-
-    // Revoke previous blob URL if any
-    this._revokeUrl?.();
-    this._revokeUrl = null;
-
-    if (this._loadId !== myLoadId) return false;
-
-    this._currentLabel = normalized;
-    audio.src = normalized;
-    this._syncVolume();
-
-    if (this._enabled) {
-      try {
-        await audio.play();
-      } catch {
-        // Autoplay blocked
-      }
+    if (this._loadId !== myLoadId) {
+      return false;
     }
 
-    return true;
+    return this._loadPlayable(toPlayableUrl(normalized), normalized);
   }
 
-  /**
-   * Switch to a different track (alias for loadAndPlay, kept for API compat).
-   */
-  async switchTrack(newUrl) {
-    return this.loadAndPlay(newUrl);
+  async switchTrack(trackUrl) {
+    return this.loadAndPlay(trackUrl);
   }
 
-  // ---------------------------------------------------------------------------
-  // Public API: playback control
-  // ---------------------------------------------------------------------------
+  stop() {
+    this._cancelCrossfade();
+    this._pauseTrack(this._currentTrack);
+    this._syncTrackVolumes();
+  }
 
   pause() {
-    this._audio?.pause();
+    this.stop();
+  }
+
+  async play() {
+    if (!this._currentTrack) {
+      return false;
+    }
+
+    this._syncTrackVolumes();
+    return this._playTrack(this._currentTrack);
   }
 
   async resume() {
-    if (!this._audio) return false;
-    this._syncVolume();
-    if (this._audio.src && this._enabled) {
-      try {
-        await this._audio.play();
-        return true;
-      } catch {
-        return false;
-      }
-    }
-    return false;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Public API: volume
-  // ---------------------------------------------------------------------------
-
-  setVolume(volume, _fadeMs = 0) {
-    this._userVolume = clampUnit(volume);
-    this._syncVolume();
+    return this.play();
   }
 
   duck() {
     this._ducked = true;
-    this._syncVolume();
+    this._syncTrackVolumes();
   }
 
   unduck() {
     this._ducked = false;
-    this._syncVolume();
+    this._syncTrackVolumes();
   }
 
   setEnabled(enabled) {
     this._enabled = Boolean(enabled);
-    this._syncVolume();
-    if (!this._enabled) {
-      this._audio?.pause();
-    }
-  }
 
-  // ---------------------------------------------------------------------------
-  // Public API: unlock (called by App.jsx before loading)
-  // ---------------------------------------------------------------------------
+    if (!this._enabled) {
+      this.stop();
+      return;
+    }
+
+    this._syncTrackVolumes();
+  }
 
   async unlock() {
     this._unlocked = true;
@@ -305,38 +371,21 @@ export class BgmController {
     return true;
   }
 
-  // ---------------------------------------------------------------------------
-  // Kept for API compat but no-op in the simplified version
-  // ---------------------------------------------------------------------------
-
-  ensureContext() { return null; }
-
-  // ---------------------------------------------------------------------------
-  // Cleanup
-  // ---------------------------------------------------------------------------
+  ensureContext() {
+    return null;
+  }
 
   async dispose() {
-    // Remove gesture listeners
     if (typeof window !== "undefined" && this._unlockHandler) {
-      ["pointerdown", "keydown", "touchstart"].forEach((evt) => {
-        window.removeEventListener(evt, this._unlockHandler);
+      ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+        window.removeEventListener(eventName, this._unlockHandler);
       });
       this._unlockHandler = null;
     }
 
-    // Stop and clean up audio element
-    if (this._audio) {
-      this._audio.pause();
-      this._audio.removeAttribute("src");
-      this._audio.load(); // Reset the element
-      this._audio = null;
-    }
-
-    // Revoke blob URL
-    this._revokeUrl?.();
-    this._revokeUrl = null;
-
-    this._currentLabel = "";
+    this._cancelCrossfade();
+    this._destroyTrack(this._currentTrack);
+    this._currentTrack = null;
     this._unlocked = false;
   }
 }

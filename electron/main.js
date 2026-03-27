@@ -98,8 +98,8 @@ function buildSettingsSnapshot(config = {}) {
   return {
     userName: config.user?.name || "",
     audio: {
-      bgmVolume: Number(config.audio?.bgmVolume ?? 42),
-      ttsVolume: Number(config.audio?.ttsVolume ?? 100)
+      bgmEnabled: Boolean(config.audio?.bgmEnabled),
+      ttsEnabled: Boolean(config.audio?.ttsEnabled)
     },
     llm: {
       provider: config.llm?.provider || "openai-compatible",

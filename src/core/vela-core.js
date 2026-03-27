@@ -384,13 +384,25 @@ function buildInvalidModelMessage(config) {
   };
 }
 
-function sanitizeVolumePercent(value, fallback = 100) {
-  const numericValue = Number(value);
-  if (!Number.isFinite(numericValue)) {
-    return fallback;
+function sanitizeBooleanFlag(value, fallback = false) {
+  if (typeof value === "boolean") {
+    return value;
   }
 
-  return Math.max(0, Math.min(100, Math.round(numericValue)));
+  if (typeof value === "number") {
+    return value > 0;
+  }
+
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
 }
 
 function normalizeAssetSubPath(assetPath) {
@@ -506,6 +518,10 @@ export class VelaCore {
 
     this.config = this.applyRuntimePaths(loadedConfig);
 
+    if (this.runtimeSession) {
+      this.runtimeSession.voiceModeEnabled = Boolean(this.config.audio?.ttsEnabled);
+    }
+
     if (this.memoryStore) {
       this.memoryStore.config = this.config;
     }
@@ -540,6 +556,7 @@ export class VelaCore {
 
     this.persistedState = await this.sessionStore.loadPersistedState();
     this.runtimeSession = this.sessionStore.createRuntimeSession(this.persistedState);
+    this.runtimeSession.voiceModeEnabled = Boolean(this.config.audio?.ttsEnabled);
     this.runtimeSession.thinkingMode = normalizeThinkingMode(
       this.runtimeSession.thinkingMode
     );
@@ -839,7 +856,6 @@ export class VelaCore {
       tts: {
         ...tts,
         enabled: Boolean(this.config.tts.enabled),
-        volume: Number(this.config.tts?.voiceSettings?.volume ?? 1),
         voiceId: this.config.tts?.voiceId || ""
       },
       asr: {
@@ -847,8 +863,8 @@ export class VelaCore {
         enabled: Boolean(this.config.asr.enabled)
       },
       audio: {
-        bgmVolume: this.config.audio?.bgmVolume ?? 42,
-        ttsVolume: this.config.audio?.ttsVolume ?? 100
+        bgmEnabled: Boolean(this.config.audio?.bgmEnabled),
+        ttsEnabled: Boolean(this.config.audio?.ttsEnabled)
       },
       status: this.buildStatusSnapshot(nextAvatar),
       modelStatus: buildModelStatus(
@@ -1175,14 +1191,16 @@ export class VelaCore {
         apiKeyEnv: "MINIMAX_API_KEY"
       }
     };
-    const userName = String(payload?.userName || "").trim();
-    const bgmVolume = sanitizeVolumePercent(
-      payload?.bgmVolume,
-      this.config?.audio?.bgmVolume ?? 42
-    );
-    const ttsVolume = sanitizeVolumePercent(
-      payload?.ttsVolume,
-      this.config?.audio?.ttsVolume ?? 100
+    const userName = hasOwnField("userName")
+      ? String(payload?.userName || "").trim()
+      : String(
+          this.config?.user?.name ||
+            this.memorySnapshot?.profile?.user?.name ||
+            ""
+        ).trim();
+    const bgmEnabled = sanitizeBooleanFlag(
+      payload?.bgmEnabled,
+      Boolean(this.config?.audio?.bgmEnabled)
     );
     const llmProvider = String(
       payload?.llmProvider || this.config?.llm?.provider || "openai-compatible"
@@ -1215,7 +1233,12 @@ export class VelaCore {
         : ttsSelection === "minimax-websocket"
           ? "minimax-websocket"
           : "placeholder";
-    const ttsEnabled = ttsSelection !== "off";
+    const ttsConfigured = ttsSelection !== "off";
+    const audioTtsEnabled = hasOwnField("ttsEnabled")
+      ? sanitizeBooleanFlag(payload?.ttsEnabled, Boolean(this.config?.audio?.ttsEnabled))
+      : hasOwnField("ttsProvider") && !ttsConfigured
+        ? false
+        : Boolean(this.config?.audio?.ttsEnabled);
     const ttsApiKey = hasOwnField("ttsApiKey")
       ? String(payload?.ttsApiKey || "").trim()
       : String(this.config?.tts?.apiKey || "").trim();
@@ -1235,21 +1258,20 @@ export class VelaCore {
         apiKeyEnv: llmDefaults.apiKeyEnv
       },
       tts: {
-        enabled: ttsEnabled,
+        enabled: ttsConfigured,
         provider: ttsProvider,
         apiKey: ttsProvider === "minimax-websocket" ? ttsApiKey : "",
         apiKeyEnv: ttsProvider === "minimax-websocket" ? "MINIMAX_API_KEY" : "",
-        voiceId: voiceId || this.config?.tts?.voiceId || "",
-        voiceSettings: {
-          ...(this.config?.tts?.voiceSettings || {}),
-          volume: ttsVolume / 100
-        }
+        voiceId: voiceId || this.config?.tts?.voiceId || ""
       },
       audio: {
-        bgmVolume,
-        ttsVolume
+        bgmEnabled,
+        ttsEnabled: audioTtsEnabled
       }
     });
+
+    this.runtimeSession.voiceModeEnabled = Boolean(this.config?.audio?.ttsEnabled);
+    await this.sessionStore.savePreferences(this.runtimeSession);
 
     await this.memoryStore.completeOnboarding({
       userName,
@@ -1410,23 +1432,31 @@ export class VelaCore {
   }
 
   async setVoiceMode(enabled, options = {}) {
+    const nextEnabled = Boolean(enabled);
     console.log("[vela-core] setVoiceMode called", {
-      enabled: Boolean(enabled)
+      enabled: nextEnabled
     });
-    this.runtimeSession.voiceModeEnabled = Boolean(enabled);
+
+    await this.persistConfigPatch({
+      audio: {
+        ttsEnabled: nextEnabled
+      }
+    });
+
+    this.runtimeSession.voiceModeEnabled = nextEnabled;
     await this.sessionStore.savePreferences(this.runtimeSession);
     console.log("[vela-core] setVoiceMode updated runtime session", {
       runtimeVoiceModeEnabled: Boolean(this.runtimeSession.voiceModeEnabled)
     });
 
-    if (!enabled && this.currentSpeech) {
+    if (!nextEnabled && this.currentSpeech) {
       await this.cancelCurrentSpeech(options.onEvent);
     }
 
     this.currentAvatar = settleAvatarState(
       this.currentAvatar || this.buildPresenceAvatar("idle"),
       {
-        voiceModeEnabled: Boolean(enabled)
+        voiceModeEnabled: nextEnabled
       }
     );
 

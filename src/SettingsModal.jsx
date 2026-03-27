@@ -7,11 +7,6 @@ import {
   TTS_PROVIDER_OPTIONS
 } from "./settings-schema.js";
 
-function percentLabel(value) {
-  const normalized = Number.isFinite(Number(value)) ? Number(value) : 0;
-  return `${Math.max(0, Math.min(100, normalized))}%`;
-}
-
 function SelectorCard({ option, selected, onSelect }) {
   return (
     <button
@@ -48,8 +43,6 @@ export function SettingsModal({
   initialValues,
   onClose,
   onSaved,
-  onBgmPreview,
-  onTtsPreview,
   models,
   selectedModel,
   onModelSwitch
@@ -62,8 +55,6 @@ export function SettingsModal({
   const [ttsProvider, setTtsProvider] = useState("off");
   const [ttsApiKey, setTtsApiKey] = useState("");
   const [voiceId, setVoiceId] = useState(DEFAULT_MINIMAX_TTS_VOICE_ID);
-  const [bgmVolume, setBgmVolume] = useState(42);
-  const [ttsVolume, setTtsVolume] = useState(100);
   const [showLlmApiKey, setShowLlmApiKey] = useState(false);
   const [showTtsApiKey, setShowTtsApiKey] = useState(false);
   const [webSpeechVoices, setWebSpeechVoices] = useState([]);
@@ -90,16 +81,6 @@ export function SettingsModal({
     setTtsProvider(initialValues?.ttsProvider || "off");
     setTtsApiKey(initialValues?.ttsApiKey || "");
     setVoiceId(initialValues?.voiceId || DEFAULT_MINIMAX_TTS_VOICE_ID);
-    setBgmVolume(
-      Number.isFinite(Number(initialValues?.bgmVolume))
-        ? Number(initialValues?.bgmVolume)
-        : 42
-    );
-    setTtsVolume(
-      Number.isFinite(Number(initialValues?.ttsVolume))
-        ? Number(initialValues?.ttsVolume)
-        : 100
-    );
     setShowLlmApiKey(false);
     setShowTtsApiKey(false);
     setTestState(null);
@@ -234,9 +215,7 @@ export function SettingsModal({
           ? ""
           : ttsProvider === "webspeech"
             ? selectedWebSpeechVoice
-            : String(voiceId || "").trim() || DEFAULT_MINIMAX_TTS_VOICE_ID,
-      bgmVolume: Number(bgmVolume),
-      ttsVolume: Number(ttsVolume)
+            : String(voiceId || "").trim() || DEFAULT_MINIMAX_TTS_VOICE_ID
     };
   }
 
@@ -320,7 +299,7 @@ export function SettingsModal({
       >
         <div className="settings-modal-header">
           <h3>Settings</h3>
-          <p>Switch providers, fine-tune voice output, and keep the audio mix comfortable.</p>
+          <p>Switch providers and fine-tune how Vela replies.</p>
         </div>
 
         <div className="settings-modal-body">
@@ -513,63 +492,6 @@ export function SettingsModal({
                 </select>
               </label>
             ) : null}
-          </SettingsSection>
-
-          <SettingsSection
-            title="Audio"
-            description="Adjust the background mix and reply volume."
-          >
-            <label className="field-block settings-slider-block">
-              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span>BGM Volume {percentLabel(bgmVolume)}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = bgmVolume > 0 ? 0 : 42;
-                    setBgmVolume(next);
-                    onBgmPreview?.(next);
-                  }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: bgmVolume > 0 ? "var(--ink-soft)" : "var(--danger, #c44)",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    padding: "2px 6px"
-                  }}
-                >
-                  {bgmVolume > 0 ? "Mute" : "Unmute"}
-                </button>
-              </span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={bgmVolume}
-                onChange={(event) => {
-                  const nextValue = Number(event.target.value);
-                  setBgmVolume(nextValue);
-                  onBgmPreview?.(nextValue);
-                }}
-              />
-            </label>
-
-            <label className="field-block settings-slider-block">
-              <span>TTS Volume {percentLabel(ttsVolume)}</span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={ttsVolume}
-                onChange={(event) => {
-                  const nextValue = Number(event.target.value);
-                  setTtsVolume(nextValue);
-                  onTtsPreview?.(nextValue);
-                }}
-              />
-            </label>
           </SettingsSection>
 
           {error ? <p className="error-text">{error}</p> : null}
