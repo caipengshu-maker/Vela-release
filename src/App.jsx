@@ -1198,6 +1198,8 @@ export default function App() {
     }
 
     bgm.setEnabled(bgmEnabled);
+    // Always sync volume from saved state when enabling
+    bgm.setVolume(Number(state.audio?.bgmVolume ?? 42) / 100);
 
     if (!bgmEnabled) {
       return;
@@ -1797,7 +1799,17 @@ export default function App() {
   }
 
   function handleBgmToggle() {
-    setBgmEnabled((current) => !current);
+    const bgm = bgmControllerRef.current;
+    setBgmEnabled((current) => {
+      const next = !current;
+      if (bgm) {
+        bgm.setEnabled(next);
+        if (!next) {
+          bgm.pause();
+        }
+      }
+      return next;
+    });
   }
 
   const relationshipStage = String(state.avatar?.relationshipStage || "reserved").trim().toLowerCase();
