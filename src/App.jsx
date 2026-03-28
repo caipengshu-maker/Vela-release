@@ -1844,7 +1844,7 @@ export default function App() {
               {state.onboarding?.required ? (
                 <OnboardingFlow
                   initialValues={{
-                    locale: settingsDraft.locale || state.app?.locale || "zh-CN",
+                    locale: settingsDraft.locale || state.app?.locale || "",
                     userName: settingsDraft.userName || state.persona?.userName || "",
                     llmProvider: settingsDraft.llmProvider,
                     llmBaseUrl: settingsDraft.llmBaseUrl,

@@ -277,7 +277,7 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
               <button
                 type="button"
                 className={`provider-card ${locale === "zh-CN" ? "selected" : ""}`}
-                onClick={() => { setLocale("zh-CN"); setStep(1); }}
+                onClick={() => { setLocale("zh-CN"); setVoiceId(TTS_VOICE_MAP["zh-CN"]); setStep(1); }}
               >
                 <div className="provider-card-head">
                   <strong>中文</strong>
@@ -288,7 +288,7 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
               <button
                 type="button"
                 className={`provider-card ${locale === "en" ? "selected" : ""}`}
-                onClick={() => { setLocale("en"); setStep(1); }}
+                onClick={() => { setLocale("en"); setVoiceId(TTS_VOICE_MAP["en"]); setStep(1); }}
               >
                 <div className="provider-card-head">
                   <strong>English</strong>

@@ -1,21 +1,33 @@
 # SESSION-STATE
 
 ## 当前任务
-M5.5 + AX 板子校准收口 — 真相源已对齐
+M8-T1.5 快修收口（UI 截边 / BGM 音量 / TTS 稳定性 / memory summarizer）
+
+## Owner
+main + Codex CLI（按需）
 
 ## 状态
-DONE：TASKS.md / CURRENT-ROUTE.md 已全部校准到代码真实状态
+IN-PROGRESS
 
-## 变更摘要
-- M5.5 Phase 5-7 中 7 项从 TODO/IN-PROGRESS 校正为 DONE（T7/T6/C2/T8/T9/P1/P2 代码已存在）
-- AX L1/L2/L3 全部从 TODO 校正为 DONE + commit 引用
-- 待处理池清理：T8/T9 重复条目删除
-- C1 P键 demo 仍真 TODO（代码还在 vrm-avatar-stage.jsx）
-- DEEP-01 relationship intimate 枚举分裂确认为真 bug
-- DEEP-03 summarizer 确认已有 raw fallback 兜底，不再列为待修
+## 最新决策
+- 单一开发真源锁定：`C:\Users\caipe\.openclaw\workspace\Vela`
+- `D:\Vela-opensource` 只作 public release 副本，不再作为开发主线
+- 已完成：CURRENT-ROUTE.md / TASKS.md 收敛；settings modal scroll 修复；onboarding version detection 修复
 
-## 下一步
-等用户决定：
-1. 清掉 C1 P键 + DEEP-01 relationship（小活，直接做）
-2. 推 M6 产品化打包
-3. 或者先做 P3/P4/P5 体验打磨
+## 当前待修
+1. 语音模式按钮贴底边，影响观感
+2. 全屏模式底部介绍文案被截
+3. BGM 音量调节无效
+4. MiniMax WebSocket TTS 报 `invalid params, invalid message format`，导致时断时续
+5. memory summarizer 报 `did not return JSON`
+
+## 下一步 1-3 actions
+1. 定位 App.jsx / styles.css 中底部布局与全屏布局问题
+2. 定位 BGM volume 数据流与实时预览/持久化链路
+3. 定位 MiniMax task start payload 与 summarizer JSON 解析逻辑
+
+## Waiting on
+无
+
+## Blockers
+暂无；若 MiniMax 协议细节不明，再补调研
