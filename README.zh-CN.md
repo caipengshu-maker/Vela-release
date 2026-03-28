@@ -1,8 +1,8 @@
-# Vela
+﻿# Vela
 
 > 一个住在你桌面上的 AI 伴侣。她有身体，有声音，有脾气，会记住你说过的每一句话。
 
-![Vela hero placeholder](docs/screenshots/hero.svg)
+![Vela](docs/screenshots/hero.jpg)
 
 🌏 [English](README.md)
 
@@ -55,7 +55,7 @@ Vela 走的是反方向：
 ### 方式一：从源码运行（开发者）
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/caipengshu-maker/Vela-release
 cd Vela
 npm install
 npm start
@@ -81,9 +81,9 @@ Vela 需要一个 MiniMax API key 来驱动对话和语音。获取方式：
 
 ## 截图
 
-![Chat placeholder](docs/screenshots/chat.svg)
+![Chat](docs/screenshots/chat.jpg)
 
-![Onboarding placeholder](docs/screenshots/onboarding.svg)
+![Onboarding](docs/screenshots/onboarding.jpg)
 
 ![Settings placeholder](docs/screenshots/settings.svg)
 

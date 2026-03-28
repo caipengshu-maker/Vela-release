@@ -572,7 +572,7 @@ export class VelaCore {
     this.memorySnapshot = this.mergeRelationshipIntoMemorySnapshot(
       initialMemorySnapshot
     );
-    this.persona = buildPersona(this.memorySnapshot.profile);
+    this.persona = buildPersona(this.memorySnapshot.profile, this.config?.app?.locale);
     this.currentAvatar = this.buildPresenceAvatar(
       this.runtimeSession.voiceModeEnabled ? "listening" : "idle"
     );
@@ -739,7 +739,7 @@ export class VelaCore {
   async loadMemorySnapshot() {
     const memorySnapshot = await this.memoryStore.loadMemorySnapshot();
     this.memorySnapshot = this.mergeRelationshipIntoMemorySnapshot(memorySnapshot);
-    this.persona = buildPersona(this.memorySnapshot.profile);
+    this.persona = buildPersona(this.memorySnapshot.profile, this.config?.app?.locale);
     return this.memorySnapshot;
   }
 
@@ -1278,7 +1278,7 @@ export class VelaCore {
       completedVersion: CONFIG_SCHEMA_VERSION
     });
     const memory = await this.loadMemorySnapshot();
-    this.persona = buildPersona(memory.profile);
+    this.persona = buildPersona(memory.profile, this.config?.app?.locale);
 
     return this.buildAppState({
       memorySnapshot: memory,
@@ -1372,6 +1372,8 @@ export class VelaCore {
           (process.env.MINIMAX_API_KEY || "")
         : "";
 
+    const locale = String(payload?.locale || "zh-CN").trim();
+
     if (!userName) {
       throw new Error("User name is required");
     }
@@ -1385,6 +1387,9 @@ export class VelaCore {
     }
 
     await this.persistConfigPatch({
+      app: {
+        locale
+      },
       user: {
         name: userName
       },
@@ -1417,7 +1422,7 @@ export class VelaCore {
     });
 
     const memory = await this.loadMemorySnapshot();
-    this.persona = buildPersona(memory.profile);
+    this.persona = buildPersona(memory.profile, this.config?.app?.locale);
 
     return this.buildAppState({
       memorySnapshot: memory,
@@ -2259,3 +2264,4 @@ export class VelaCore {
     }
   }
 }
+

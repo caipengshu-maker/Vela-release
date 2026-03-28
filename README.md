@@ -1,10 +1,10 @@
-# Vela
+﻿# Vela
 
 > A local-first AI companion with a living anime avatar, continuous memory, and a relationship that grows with you.
 
 🌏 [中文文档](README.zh-CN.md)
 
-![Vela hero placeholder](docs/screenshots/hero.svg)
+![Vela](docs/screenshots/hero.jpg)
 
 ![Electron](https://img.shields.io/badge/Electron-41-1f1f1f?logo=electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-20232a?logo=react&logoColor=61dafb)
@@ -51,7 +51,7 @@ Most anime companion apps are cloud-only, privacy-invasive, and visually dead. V
 1. Clone the repo.
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/caipengshu-maker/Vela-release
 cd Vela
 ```
 
@@ -104,9 +104,9 @@ Notes:
 
 ## Screenshots
 
-![Chat placeholder](docs/screenshots/chat.svg)
+![Chat](docs/screenshots/chat.jpg)
 
-![Onboarding placeholder](docs/screenshots/onboarding.svg)
+![Onboarding](docs/screenshots/onboarding.jpg)
 
 ![Settings placeholder](docs/screenshots/settings.svg)
 

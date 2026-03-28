@@ -9,6 +9,7 @@ const defaultConfig = {
   app: {
     name: "Vela",
     tagline: "克制而持续地在场",
+    locale: "zh-CN",
     onboarding: {
       completed: false
     },

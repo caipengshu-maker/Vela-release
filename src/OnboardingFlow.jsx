@@ -9,13 +9,16 @@ import {
   summarizeApiKey,
   TTS_PROVIDER_OPTIONS
 } from "./settings-schema.js";
+import { getStrings } from "./i18n/strings.js";
 
-const STEPS = [
-  "Your Name",
-  "LLM",
-  "Voice",
-  "Review"
-];
+const TTS_VOICE_MAP = {
+  "zh-CN": "Chinese (Mandarin)_Sweet_Lady",
+  en: "Sweet_Girl"
+};
+
+function getSteps(t) {
+  return [t["onboarding.steps.name"], t["onboarding.steps.llm"], t["onboarding.steps.voice"], t["onboarding.steps.review"]];
+}
 
 function ProviderCard({ option, selected, onSelect }) {
   return (
@@ -49,7 +52,10 @@ function SummaryItem({ label, value }) {
 }
 
 export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
-  const [step, setStep] = useState(1);
+  const [locale, setLocale] = useState(initialValues?.locale || "");
+  const [step, setStep] = useState(locale ? 1 : 0);
+  const t = getStrings(locale || "en");
+  const STEPS = getSteps(t);
   const [userName, setUserName] = useState("");
   const [llmProvider, setLlmProvider] = useState("openai-compatible");
   const [llmBaseUrl, setLlmBaseUrl] = useState("https://api.openai.com/v1");
@@ -67,7 +73,9 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
     ).trim().toLowerCase() || "openai-compatible";
     const llmDefaults = getLlmProviderDefaults(nextLlmProvider);
 
-    setStep(1);
+    const nextLocale = initialValues?.locale || "";
+    setLocale(nextLocale);
+    setStep(nextLocale ? 1 : 0);
     setUserName(initialValues?.userName || "");
     setLlmProvider(nextLlmProvider);
     setLlmBaseUrl(initialValues?.llmBaseUrl || llmDefaults.baseUrl);
@@ -139,7 +147,7 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
 
   function validateStepOne() {
     if (!String(userName || "").trim()) {
-      return "Tell Vela how to address you first.";
+      return t["onboarding.name.error"];
     }
 
     return "";
@@ -147,15 +155,15 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
 
   function validateStepTwo() {
     if (!String(llmBaseUrl || "").trim()) {
-      return "Base URL is required.";
+      return t["onboarding.error.baseUrl"];
     }
 
     if (!String(llmModel || "").trim()) {
-      return "Model name is required.";
+      return t["onboarding.error.model"];
     }
 
     if (llmApiKeyIsRequired && !String(llmApiKey || "").trim()) {
-      return "This provider needs an API key.";
+      return t["onboarding.error.llmKey"];
     }
 
     return "";
@@ -166,7 +174,7 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
       ttsProvider === "minimax-websocket" &&
       !String(effectiveTtsApiKey || "").trim()
     ) {
-      return "MiniMax Voice needs an API key.";
+      return t["onboarding.error.ttsKey"];
     }
 
     return "";
@@ -203,6 +211,7 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
 
     try {
       await onComplete?.({
+        locale: locale || "zh-CN",
         userName: String(userName || "").trim(),
         llmProvider,
         llmBaseUrl: String(llmBaseUrl || "").trim(),
@@ -215,7 +224,7 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
             : "",
         voiceId:
           ttsProvider === "minimax-websocket"
-            ? String(voiceId || "").trim() || DEFAULT_MINIMAX_TTS_VOICE_ID
+            ? String(voiceId || "").trim() || TTS_VOICE_MAP[locale] || DEFAULT_MINIMAX_TTS_VOICE_ID
             : ""
       });
     } catch (submitError) {
@@ -227,51 +236,83 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
     <section className="chat-shell onboarding-shell onboarding-v2">
       <div className="chat-header onboarding-header">
         <div className="chat-header-copy">
-          <span className="eyebrow">First Run</span>
-          <h2>Welcome to Vela</h2>
+          <span className="eyebrow">{step === 0 ? "Language" : t["onboarding.eyebrow"]}</span>
+          <h2>{step === 0 ? "Choose Your Language" : t["onboarding.title"]}</h2>
           <p>
-            Four short steps: who you are, which model to use, how replies sound,
-            then one last confirmation.
+            {step === 0
+              ? "Select the language Vela will use to talk with you."
+              : t["onboarding.subtitle"]}
           </p>
         </div>
       </div>
 
-      <div className="step-dots" aria-label="Onboarding progress">
-        {STEPS.map((label, index) => {
-          const stepNumber = index + 1;
-          const stateClass =
-            stepNumber === step
-              ? "is-current"
-              : stepNumber < step
-                ? "is-complete"
-                : "";
+      {step > 0 ? (
+        <div className="step-dots" aria-label="Onboarding progress">
+          {STEPS.map((label, index) => {
+            const stepNumber = index + 1;
+            const stateClass =
+              stepNumber === step
+                ? "is-current"
+                : stepNumber < step
+                  ? "is-complete"
+                  : "";
 
-          return (
-            <div key={label} className={`step-dot ${stateClass}`}>
-              <span className="step-dot-index">{stepNumber}</span>
-              <span className="step-dot-label">{label}</span>
-            </div>
-          );
-        })}
-      </div>
+            return (
+              <div key={label} className={`step-dot ${stateClass}`}>
+                <span className="step-dot-index">{stepNumber}</span>
+                <span className="step-dot-label">{label}</span>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       <section className="onboarding-step-card">
+        {step === 0 ? (
+          <>
+            <div className="step-copy">
+              <h3>🌐</h3>
+            </div>
+            <div className="provider-grid">
+              <button
+                type="button"
+                className={`provider-card ${locale === "zh-CN" ? "selected" : ""}`}
+                onClick={() => { setLocale("zh-CN"); setStep(1); }}
+              >
+                <div className="provider-card-head">
+                  <strong>中文</strong>
+                  <span className="provider-checkmark" aria-hidden="true" />
+                </div>
+                <p>Vela 将用中文和你聊天</p>
+              </button>
+              <button
+                type="button"
+                className={`provider-card ${locale === "en" ? "selected" : ""}`}
+                onClick={() => { setLocale("en"); setStep(1); }}
+              >
+                <div className="provider-card-head">
+                  <strong>English</strong>
+                  <span className="provider-checkmark" aria-hidden="true" />
+                </div>
+                <p>Vela will chat with you in English</p>
+              </button>
+            </div>
+          </>
+        ) : null}
+
         {step === 1 ? (
           <>
             <div className="step-copy">
-              <h3>Your Name</h3>
-              <p>
-                This is how Vela will address you in chat, memory, and the quiet
-                little welcome-backs later on.
-              </p>
+              <h3>{t["onboarding.name.title"]}</h3>
+              <p>{t["onboarding.name.desc"]}</p>
             </div>
 
             <label className="field-block">
-              <span>How should she call you?</span>
+              <span>{t["onboarding.name.label"]}</span>
               <input
                 value={userName}
                 onChange={(event) => setUserName(event.target.value.slice(0, 20))}
-                placeholder="For example: Celine"
+                placeholder={t["onboarding.name.placeholder"]}
                 maxLength={20}
               />
             </label>
@@ -281,11 +322,8 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
         {step === 2 ? (
           <>
             <div className="step-copy">
-              <h3>Choose an LLM</h3>
-              <p>
-                Pick the chat backend first. You can change providers later in
-                Settings without editing files by hand.
-              </p>
+              <h3>{t["onboarding.llm.title"]}</h3>
+              <p>{t["onboarding.llm.desc"]}</p>
             </div>
 
             <div className="provider-grid">
@@ -362,11 +400,8 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
         {step === 3 ? (
           <>
             <div className="step-copy">
-              <h3>Choose a Voice</h3>
-              <p>
-                MiniMax sounds best, Web Speech is free and instant, and you can
-                always keep things text-only.
-              </p>
+              <h3>{t["onboarding.voice.title"]}</h3>
+              <p>{t["onboarding.voice.desc"]}</p>
             </div>
 
             <div className="provider-grid">
@@ -411,15 +446,20 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
 
             {ttsProvider === "webspeech" ? (
               <div className="onboarding-note">
-                Browser Built-in Voice uses your local speech engine, so there is
-                nothing else to fill in right now.
+                {t["onboarding.voice.webspeech"]}
               </div>
             ) : null}
 
             {ttsProvider === "off" ? (
               <div className="onboarding-note">
-                Spoken replies will stay off. You can enable a voice provider later.
+                {t["onboarding.voice.off"]}
               </div>
+            ) : null}
+
+            {ttsProvider === "minimax-websocket" && llmProvider === "minimax-messages" && String(llmApiKey || "").trim() ? (
+              <p className="onboarding-note">
+                {t["onboarding.voice.minimaxNote"]}
+              </p>
             ) : null}
           </>
         ) : null}
@@ -427,33 +467,33 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
         {step === 4 ? (
           <>
             <div className="step-copy">
-              <h3>Confirm Your Setup</h3>
-              <p>One last glance before the app writes everything into your local user config.</p>
+              <h3>{t["onboarding.review.title"]}</h3>
+              <p>{t["onboarding.review.desc"]}</p>
             </div>
 
             <div className="summary-panel">
-              <SummaryItem label="Name" value={String(userName || "").trim() || "Not set"} />
-              <SummaryItem label="LLM" value={llmOption.label} />
-              <SummaryItem label="Base URL" value={String(llmBaseUrl || "").trim()} />
-              <SummaryItem label="Model" value={String(llmModel || "").trim()} />
+              <SummaryItem label={t["common.name"]} value={String(userName || "").trim() || t["onboarding.review.notSet"]} />
+              <SummaryItem label={t["common.model"]} value={llmOption.label} />
+              <SummaryItem label={t["common.baseUrl"]} value={String(llmBaseUrl || "").trim()} />
+              <SummaryItem label={t["common.model"]} value={String(llmModel || "").trim()} />
               <SummaryItem
-                label="LLM API Key"
+                label={t["common.apiKey"]}
                 value={
                   llmApiKeyIsRequired || String(llmApiKey || "").trim()
                     ? summarizeApiKey(llmApiKey)
-                    : "Local provider without key"
+                    : t["onboarding.review.localNoKey"]
                 }
               />
-              <SummaryItem label="Voice" value={ttsOption.label} />
+              <SummaryItem label={t["common.voice"]} value={ttsOption.label} />
               {ttsProvider === "minimax-websocket" ? (
                 <>
                   <SummaryItem
-                    label="Voice Key"
+                    label={t["common.voiceKey"]}
                     value={summarizeApiKey(effectiveTtsApiKey)}
                   />
                   <SummaryItem
-                    label="Voice ID"
-                    value={String(voiceId || "").trim() || DEFAULT_MINIMAX_TTS_VOICE_ID}
+                    label={t["common.voiceId"]}
+                    value={String(voiceId || "").trim() || TTS_VOICE_MAP[locale] || DEFAULT_MINIMAX_TTS_VOICE_ID}
                   />
                 </>
               ) : null}
@@ -471,28 +511,30 @@ export function OnboardingFlow({ isSubmitting, initialValues, onComplete }) {
               onClick={() => moveToStep(step - 1)}
               disabled={isSubmitting}
             >
-              Back
+              {t["onboarding.btn.back"]}
             </button>
           ) : null}
 
-          {step < 4 ? (
+          {step > 0 && step < 4 ? (
             <button
               type="button"
               className="btn-primary"
               onClick={() => moveToStep(step + 1)}
             >
-              Next
+              {t["onboarding.btn.next"]}
             </button>
-          ) : (
+          ) : null}
+
+          {step === 4 ? (
             <button
               type="button"
               className="btn-primary"
               onClick={() => void handleFinish()}
               disabled={isSubmitting}
             >
-              {isSubmitting ? "Saving..." : "Finish Setup"}
+              {isSubmitting ? t["onboarding.btn.saving"] : t["onboarding.btn.finish"]}
             </button>
-          )}
+          ) : null}
         </div>
       </section>
     </section>
