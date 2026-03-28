@@ -270,6 +270,11 @@ function isCircuitBreakerError(error) {
   );
 }
 
+function isUserCancelledError(error) {
+  const reason = String(error?.message || error || "").toLowerCase();
+  return reason.includes("llm-request-cancelled");
+}
+
 async function persistProviderState(options, providerState) {
   if (typeof options.persistProviderState !== "function") {
     return providerState;
@@ -371,7 +376,8 @@ async function executeAttempt({
         config: attempt.config,
         requestTuning: attempt.requestTuning,
         fetchImpl: options.fetchImpl,
-        onEvent: options.onEvent
+        onEvent: options.onEvent,
+        signal: options.signal
       })
     );
   }
@@ -382,7 +388,8 @@ async function executeAttempt({
       context,
       config: attempt.config,
       requestTuning: attempt.requestTuning,
-      fetchImpl: options.fetchImpl
+      fetchImpl: options.fetchImpl,
+      signal: options.signal
     })
   );
 }
@@ -570,6 +577,10 @@ async function generateWithFallback(context, config, options = {}, stream = fals
 
         return attached;
       } catch (error) {
+        if (isUserCancelledError(error)) {
+          throw error;
+        }
+
         failures.push(normalizeAttemptError(routeAttempts.primaryAttempt.providerId, error));
 
         if (routeAttempts.requestedRoute?.kind === "primary") {
@@ -626,6 +637,10 @@ async function generateWithFallback(context, config, options = {}, stream = fals
         );
         return attached;
       } catch (error) {
+        if (isUserCancelledError(error)) {
+          throw error;
+        }
+
         failures.push(normalizeAttemptError(routeAttempts.fallbackAttempt.providerId, error));
       }
     }

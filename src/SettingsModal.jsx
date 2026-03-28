@@ -515,6 +515,21 @@ export function SettingsModal({
             {isSaving ? "Saving..." : "Save Changes"}
           </button>
         </div>
+        <div className="settings-footer-danger">
+          <button
+            type="button"
+            className="btn-danger"
+            onClick={() => {
+              if (window.confirm("Reset all data and start over? This cannot be undone.")) {
+                void window.vela.ipcRenderer.invoke("vela:factory-reset").then(() => {
+                  window.location.reload();
+                });
+              }
+            }}
+          >
+            Factory Reset
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ import { VelaTitleScreen } from "./VelaTitleScreen.jsx";
 import { BgmController } from "./core/bgm-controller.js";
 import { SettingsModal } from "./SettingsModal.jsx";
 import { OnboardingFlow } from "./OnboardingFlow.jsx";
+import { getStrings } from "./i18n/strings.js";
 import {
   DEFAULT_MINIMAX_TTS_VOICE_ID,
   getLlmProviderDefaults,
@@ -36,8 +37,8 @@ const initialState = {
   modelStatus: {
     availableModels: [],
     selectedModel: "auto",
-    selectedLabel: "自动",
-    activeLabel: "主模型",
+    selectedLabel: "",
+    activeLabel: "",
     fallbackUsed: false,
     fallbackReason: null,
     manualSelection: false,
@@ -198,7 +199,14 @@ function SpeakerMutedIcon(props) {
   );
 }
 
-function buildComposerModelOptions(availableModels) {
+function fillTemplate(template, values = {}) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.split(`{${key}}`).join(String(value)),
+    String(template || "")
+  );
+}
+
+function buildComposerModelOptions(availableModels, t = getStrings()) {
   const normalizedModels = Array.isArray(availableModels)
     ? availableModels
         .filter((model) => model && model.id && model.label)
@@ -211,10 +219,12 @@ function buildComposerModelOptions(availableModels) {
 
   if (normalizedModels.length > 0) {
     const hasAuto = normalizedModels.some((model) => model.id === "auto");
-    return hasAuto ? normalizedModels : [...normalizedModels, { id: "auto", label: "自动" }];
+    return hasAuto
+      ? normalizedModels
+      : [...normalizedModels, { id: "auto", label: t["model.auto"] }];
   }
 
-  return [{ id: "auto", label: "自动" }];
+  return [{ id: "auto", label: t["model.auto"] }];
 }
 
 function upsertAssistantMessage(messages, messageId, content, streaming, patch = {}) {
@@ -278,7 +288,7 @@ function attachReplayToLatestAssistant(messages, replayAudio) {
   return applied ? nextMessages : messages;
 }
 
-function formatRelativeTimestamp(value, now = Date.now()) {
+function formatRelativeTimestamp(value, now = Date.now(), t = getStrings()) {
   const timestamp = Date.parse(String(value || "").trim());
 
   if (!Number.isFinite(timestamp)) {
@@ -290,15 +300,21 @@ function formatRelativeTimestamp(value, now = Date.now()) {
   const diffHours = Math.floor(diffMs / 3600000);
 
   if (diffMinutes < 1) {
-    return "刚刚";
+    return t["time.justNow"];
   }
 
   if (diffMinutes < 60) {
-    return `${diffMinutes}分钟前`;
+    return fillTemplate(
+      diffMinutes === 1 ? t["time.minuteAgo"] : t["time.minutesAgo"],
+      { n: diffMinutes }
+    );
   }
 
   if (diffHours < 24) {
-    return `${diffHours}小时前`;
+    return fillTemplate(
+      diffHours === 1 ? t["time.hourAgo"] : t["time.hoursAgo"],
+      { n: diffHours }
+    );
   }
 
   const date = new Date(timestamp);
@@ -312,7 +328,7 @@ function formatRelativeTimestamp(value, now = Date.now()) {
   const dayDiff = Math.floor((startOfNow - startOfDate) / 86400000);
 
   if (dayDiff === 1) {
-    return "昨天";
+    return t["time.yesterday"];
   }
 
   return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, "0")}/${String(
@@ -384,88 +400,92 @@ async function getBrowserLocation() {
   });
 }
 
-function buildAvatarPresenceCopy(avatar) {
+function buildAvatarPresenceCopy(avatar, t = getStrings()) {
   const presence = avatar?.presence || "idle";
   const emotion = avatar?.emotion || "calm";
 
   if (presence === "thinking") {
     return {
-      kicker: "她在整理语气",
-      title: "先把这句话接稳",
-      caption: "会慢一点，但不会把你晾在这里。"
+      kicker: t["presence.thinking.kicker"],
+      title: t["presence.thinking.title"],
+      caption: t["presence.thinking.caption"]
     };
   }
 
   if (presence === "listening") {
     return {
-      kicker: "她在听",
-      title: "你可以继续往下说",
-      caption: "不用把第一句整理得太完整。"
+      kicker: t["presence.listening.kicker"],
+      title: t["presence.listening.title"],
+      caption: t["presence.listening.caption"]
     };
   }
 
   if (presence === "speaking") {
     if (emotion === "concerned") {
       return {
-        kicker: "她放轻了语气",
-        title: "更像是在先接住你",
-        caption: "不是劝说，是先把情绪托住。"
+        kicker: t["presence.speaking.concerned.kicker"],
+        title: t["presence.speaking.concerned.title"],
+        caption: t["presence.speaking.concerned.caption"]
       };
     }
 
     if (emotion === "affectionate" || emotion === "whisper") {
       return {
-        kicker: "距离稍微近了一点",
-        title: "但不会突然越界",
-        caption: "亲近感应该自然，不该用力。"
+        kicker: t["presence.speaking.affectionate.kicker"],
+        title: t["presence.speaking.affectionate.title"],
+        caption: t["presence.speaking.affectionate.caption"]
       };
     }
 
     return {
-      kicker: "她在回应",
-      title: "把这句话慢慢接上",
-      caption: "你说下去就好。"
+      kicker: t["presence.speaking.default.kicker"],
+      title: t["presence.speaking.default.title"],
+      caption: t["presence.speaking.default.caption"]
     };
   }
 
   return {
-    kicker: "她在这里",
-    title: "等你开口",
-    caption: "安静，但不是空白。"
+    kicker: t["presence.idle.kicker"],
+    title: t["presence.idle.title"],
+    caption: t["presence.idle.caption"]
   };
 }
 
-function buildVoiceModeCopy(voiceMode) {
+function buildVoiceModeCopy(voiceMode, t = getStrings()) {
   if (voiceMode.enabled && voiceMode.available) {
     return {
-      title: "语音回复已开启",
-      detail: "她会把回复说出来，也可以在消息里重播。"
+      title: t["voice.enabled.title"],
+      detail: t["voice.enabled.detail"]
     };
   }
 
   if (voiceMode.enabled) {
     return {
-      title: "语音回复待命中",
-      detail: "这轮先用文字继续，语音链路还没完全接上。"
+      title: t["voice.pending.title"],
+      detail: t["voice.pending.detail"]
     };
   }
 
   return {
-    title: "当前以文字回复",
-    detail: "需要时可以切到语音回复。"
+    title: t["voice.text.title"],
+    detail: t["voice.text.detail"]
   };
 }
 
-function buildModelNotice(modelStatus, providerMeta) {
+function buildModelNotice(modelStatus, providerMeta, t = getStrings()) {
   if (providerMeta?.fallbackUsed || modelStatus?.fallbackUsed) {
-    return "当前使用备用模型";
+    return t["model.usingFallback"];
   }
 
   if (modelStatus?.manualSelection) {
-    return `当前固定为 ${modelStatus.activeLabel}`;
+    return fillTemplate(t["model.fixed"], {
+      label: modelStatus.activeLabel || t["model.primaryDefault"]
+    });
   }
 
-  return `当前主模型：${modelStatus?.activeLabel || "主模型"}`;
+  return fillTemplate(t["model.primary"], {
+    label: modelStatus?.activeLabel || t["model.primaryDefault"]
+  });
 }
 
 function applyRuntimeEvent(state, event) {
@@ -580,15 +600,15 @@ function ErrorHint({ message, tone = "soft" }) {
   );
 }
 
-function StartupErrorScreen({ message, onRetry }) {
+function StartupErrorScreen({ message, onRetry, t }) {
   return (
     <div className="startup-error-screen">
       <div className="startup-error-card" role="alert" aria-live="assertive">
         <div className="startup-error-icon">⚠</div>
-        <h2>启动失败，请检查网络连接</h2>
-        <p>{message || "启动失败，请检查网络连接"}</p>
+        <h2>{t["error.startupNetwork"]}</h2>
+        <p>{message || t["error.startupNetwork"]}</p>
         <button type="button" onClick={onRetry}>
-          重试
+          {t["ui.retry"]}
         </button>
       </div>
     </div>
@@ -606,9 +626,10 @@ function AvatarPanel({
   onToggleFullscreen,
   isFullscreenBusy,
   isChatMinimized,
-  onToggleChatMinimized
+  onToggleChatMinimized,
+  t
 }) {
-  const presenceCopy = buildAvatarPresenceCopy(avatar);
+  const presenceCopy = buildAvatarPresenceCopy(avatar, t);
 
   return (
     <section className={`avatar-shell ${isFullscreen ? "is-fullscreen" : ""}`}>
@@ -622,21 +643,25 @@ function AvatarPanel({
                 type="button"
                 className="avatar-overlay-button"
                 onClick={onToggleChatMinimized}
-                title={isChatMinimized ? "展开聊天面板" : "收起聊天面板"}
-                aria-label={isChatMinimized ? "展开聊天面板" : "收起聊天面板"}
+                title={
+                  isChatMinimized ? t["ui.expandChatPanel"] : t["ui.collapseChatPanel"]
+                }
+                aria-label={
+                  isChatMinimized ? t["ui.expandChatPanel"] : t["ui.collapseChatPanel"]
+                }
               >
-                <span>{isChatMinimized ? "显示聊天" : "收起聊天"}</span>
+                <span>{isChatMinimized ? t["ui.showChat"] : t["ui.hideChat"]}</span>
               </button>
               <button
                 type="button"
                 className="avatar-overlay-button avatar-overlay-button-exit"
                 onClick={onToggleFullscreen}
                 disabled={isFullscreenBusy}
-                title="退出沉浸模式"
-                aria-label="退出沉浸模式"
+                title={t["ui.exitImmersiveMode"]}
+                aria-label={t["ui.exitImmersiveMode"]}
               >
                 <FullscreenExitIcon size={14} />
-                <span>退出全屏</span>
+                <span>{t["ui.exitFullscreen"]}</span>
               </button>
             </div>
           ) : null}
@@ -657,7 +682,7 @@ function AvatarPanel({
 
         <div className="panel-copy-row">
           <div className="panel-copy">
-            <span className="eyebrow">{app?.tagline || "克制而持续地在场"}</span>
+            <span className="eyebrow">{app?.tagline || t["app.tagline"]}</span>
             <h1>{persona?.name || "Vela"}</h1>
             <p>{persona?.shortBio}</p>
           </div>
@@ -666,8 +691,8 @@ function AvatarPanel({
             type="button"
             className={`panel-audio-toggle ${bgmEnabled ? "is-active" : "is-muted"}`}
             onClick={onToggleBgm}
-            title={bgmEnabled ? "关闭背景音乐" : "开启背景音乐"}
-            aria-label={bgmEnabled ? "关闭背景音乐" : "开启背景音乐"}
+            title={bgmEnabled ? t["ui.disableBgm"] : t["ui.enableBgm"]}
+            aria-label={bgmEnabled ? t["ui.disableBgm"] : t["ui.enableBgm"]}
           >
             {bgmEnabled ? <SpeakerIcon size={16} /> : <SpeakerMutedIcon size={16} />}
           </button>
@@ -678,7 +703,17 @@ function AvatarPanel({
   );
 }
 
-function MessageList({ messages, welcomeNote, bridgeDiaryNote, isBusy, assistantName, onReplay, sendError, onRetrySend }) {
+function MessageList({
+  messages,
+  welcomeNote,
+  bridgeDiaryNote,
+  isBusy,
+  assistantName,
+  onReplay,
+  sendError,
+  onRetrySend,
+  t
+}) {
   const listRef = useRef(null);
   const endRef = useRef(null);
   const [timeTick, setTimeTick] = useState(() => Date.now());
@@ -717,13 +752,13 @@ function MessageList({ messages, welcomeNote, bridgeDiaryNote, isBusy, assistant
 
       {showAmbientEmpty ? (
         <div className="empty-ambient-text" aria-hidden="true">
-          <p>她在，你说就好。</p>
+          <p>{t["chat.emptyAmbient"]}</p>
         </div>
       ) : null}
 
       {messages.length === 0 && welcomeNote ? (
         <div className="empty-card">
-          <p>想说什么就说什么，她在听。</p>
+          <p>{t["chat.emptyWithWelcome"]}</p>
         </div>
       ) : null}
 
@@ -737,14 +772,14 @@ function MessageList({ messages, welcomeNote, bridgeDiaryNote, isBusy, assistant
           >
             <div className="message-heading">
               <span className="message-role">
-                {message.role === "assistant" ? assistantName || "Vela" : "你"}
+                {message.role === "assistant" ? assistantName || "Vela" : t["chat.you"]}
               </span>
               {message.replayAudio ? (
                 <button
                   type="button"
                   className="message-icon-button"
                   onClick={() => onReplay(message.replayAudio)}
-                  title="重播语音"
+                  title={t["ui.replayVoice"]}
                 >
                   <ReplayIcon size={16} />
                 </button>
@@ -756,7 +791,7 @@ function MessageList({ messages, welcomeNote, bridgeDiaryNote, isBusy, assistant
             </p>
             {message.createdAt ? (
               <time className="message-timestamp" dateTime={message.createdAt}>
-                {formatRelativeTimestamp(message.createdAt, timeTick)}
+                {formatRelativeTimestamp(message.createdAt, timeTick, t)}
               </time>
             ) : null}
           </div>
@@ -768,7 +803,7 @@ function MessageList({ messages, welcomeNote, bridgeDiaryNote, isBusy, assistant
           <div className="message-error-banner" role="alert" aria-live="polite">
             <span>{sendError}</span>
             <button type="button" onClick={onRetrySend}>
-              重试
+              {t["ui.retry"]}
             </button>
           </div>
         </article>
@@ -778,7 +813,7 @@ function MessageList({ messages, welcomeNote, bridgeDiaryNote, isBusy, assistant
         <article className="message-row is-assistant">
           <div className="message-bubble is-pending">
             <span className="message-role">{assistantName || "Vela"}</span>
-            <p>她正在把这句话接稳。</p>
+            <p>{t["chat.pendingReply"]}</p>
           </div>
         </article>
       ) : null}
@@ -827,6 +862,7 @@ export default function App() {
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [isFarewelling, setIsFarewelling] = useState(false);
   const isFullscreen = Boolean(state.window?.fullscreen);
+  const t = useMemo(() => getStrings(state.app?.locale), [state.app?.locale]);
   const audioPlayerRef = useRef(null);
   const asrProviderRef = useRef(null);
   const bgmControllerRef = useRef(null);
@@ -1005,7 +1041,7 @@ export default function App() {
         }
       } catch (bootstrapError) {
         if (isMounted) {
-          setError(bootstrapError.message || "启动失败，请检查网络连接");
+          setError(bootstrapError.message || t["error.startupNetwork"]);
         }
       } finally {
         if (isMounted) {
@@ -1077,7 +1113,7 @@ export default function App() {
         audioPlayerRef.current?.reset();
         bgmControllerRef.current?.unduck();
         stopLipSync();
-        flashTtsHint("语音暂时不可用");
+        flashTtsHint(t["error.ttsUnavailable"]);
       }
 
       setState((current) => {
@@ -1098,7 +1134,7 @@ export default function App() {
       stopLipSync();
       unsubscribe();
     };
-  }, []);
+  }, [startLipSync, stopLipSync, t]);
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -1307,33 +1343,34 @@ export default function App() {
 
   const naturalComposerHint = useMemo(() => {
     if (isVoiceMode && state.voiceMode.enabled) {
-      return "语音模式已开，听写和播报可以分开控制。";
+      return t["chat.composerHint.voiceModeActive"];
     }
 
     if (isVoiceMode) {
-      return "语音模式已开，先说最想说的那一句。";
+      return t["chat.composerHint.voiceModePrompt"];
     }
 
     if (state.voiceMode.enabled && !state.voiceMode.available) {
-      return "语音回复还没完全接通，这轮会先用文字继续。";
+      return t["chat.composerHint.voiceFallback"];
     }
 
     if (state.modelStatus?.fallbackUsed || latestAssistantProviderMeta?.fallbackUsed) {
-      return "当前会自动走备用模型，不影响继续对话。";
+      return t["chat.composerHint.modelFallback"];
     }
 
-    return "不用整理得太完整，先说最想说的那一句。";
+    return t["chat.composerHint.default"];
   }, [
     latestAssistantProviderMeta?.fallbackUsed,
     state.modelStatus?.fallbackUsed,
     isVoiceMode,
+    t,
     state.voiceMode.available,
     state.voiceMode.enabled
   ]);
 
   const composerModelOptions = useMemo(
-    () => buildComposerModelOptions(state.modelStatus?.availableModels),
-    [state.modelStatus?.availableModels]
+    () => buildComposerModelOptions(state.modelStatus?.availableModels, t),
+    [state.modelStatus?.availableModels, t]
   );
 
   function clearAsrHint() {
@@ -1380,7 +1417,7 @@ export default function App() {
       message.includes("timed out") ||
       message.includes("etimedout")
     ) {
-      return "请求超时，请重试";
+      return t["error.requestTimeout"];
     }
 
     if (
@@ -1393,20 +1430,20 @@ export default function App() {
       message.includes("unavailable") ||
       message.includes("overloaded")
     ) {
-      return "模型暂时不可用";
+      return t["error.modelUnavailable"];
     }
 
-    return "连接失败，点击重试";
+    return t["error.connectionRetry"];
   }
 
   function getAsrErrorMessage(errorLike) {
     const code = String(errorLike?.code || errorLike?.message || "").toLowerCase();
 
     if (code.includes("not-allowed") || code.includes("permission") || code.includes("service-not-allowed")) {
-      return "请允许麦克风权限";
+      return t["error.micPermission"];
     }
 
-    return "无法识别语音";
+    return t["error.asrUnrecognized"];
   }
 
   const maybeRunProactive = useEffectEvent(async (kind) => {
@@ -1447,7 +1484,7 @@ export default function App() {
       const nextState = await window.vela.ipcRenderer.invoke("vela:complete-onboarding-v2", payload);
       return nextState;
     } catch (submitError) {
-      const message = submitError.message || "初始化失败。";
+      const message = submitError.message || t["error.initFailed"];
       setError(message);
       throw new Error(message);
     } finally {
@@ -1469,7 +1506,7 @@ export default function App() {
       audioPlayerRef.current?.reset();
       setState(nextState);
     } catch (interruptError) {
-      setError(interruptError.message || "停止当前语音失败。");
+      setError(interruptError.message || t["error.stopCurrentVoiceFailed"]);
     }
   }
 
@@ -1487,7 +1524,7 @@ export default function App() {
         audioPlayerRef.current?.reset();
         setState(interruptedState);
       } catch (interruptError) {
-        setError(interruptError.message || "打断当前输出失败。");
+        setError(interruptError.message || t["error.interruptOutputFailed"]);
       }
     }
 
@@ -1510,10 +1547,10 @@ export default function App() {
         ? {
             ...current.avatar,
             presence: "thinking",
-            label: "她停一下在想",
+            label: t["pause.thinkingLabel"],
             action: "none",
-            actionLabel: "安静地等着",
-            caption: "她在想怎么把这句话接稳。"
+            actionLabel: t["pause.waitingAction"],
+            caption: t["pause.thinkingCaption"]
           }
         : current.avatar,
       status: {
@@ -1586,7 +1623,7 @@ export default function App() {
 
         if (!nextTranscript) {
           if (isMicEnabled && isVoiceMode) {
-            flashAsrHint("无法识别语音");
+            flashAsrHint(t["error.asrUnrecognized"]);
             window.setTimeout(() => void startAsrListening(), 1000);
           }
           return;
@@ -1622,7 +1659,7 @@ export default function App() {
       setState(nextState);
       setSettingsDraft((current) => ({ ...current, ttsEnabled: nextEnabled }));
     } catch (toggleError) {
-      setError(toggleError.message || "语音模式切换失败。");
+      setError(toggleError.message || t["error.voiceModeToggleFailed"]);
     } finally {
       setIsSwitchingVoice(false);
     }
@@ -1639,7 +1676,7 @@ export default function App() {
       setState(nextState);
       setSettingsDraft((current) => ({ ...current, ttsEnabled: true }));
     } catch (e) {
-      setError(e.message || "语音模式启动失败");
+      setError(e.message || t["error.voiceModeStartFailed"]);
     } finally {
       setIsSwitchingVoice(false);
     }
@@ -1661,7 +1698,7 @@ export default function App() {
         setState(nextState);
         setSettingsDraft((current) => ({ ...current, ttsEnabled: false }));
       } catch (e) {
-        setError(e.message || "语音模式关闭失败");
+        setError(e.message || t["error.voiceModeStopFailed"]);
       } finally {
         setIsSwitchingVoice(false);
       }
@@ -1697,7 +1734,7 @@ export default function App() {
         setState(nextState);
       }
     } catch (switchError) {
-      setError(switchError.message || "模型切换失败。");
+      setError(switchError.message || t["error.modelSwitchFailed"]);
     }
   }
 
@@ -1732,7 +1769,7 @@ export default function App() {
       }));
       setIsSettingsOpen(false);
     } catch (fullscreenError) {
-      setError(fullscreenError.message || "全屏切换失败。");
+      setError(fullscreenError.message || t["error.fullscreenToggleFailed"]);
     } finally {
       setIsFullscreenBusy(false);
     }
@@ -1758,10 +1795,10 @@ export default function App() {
           presence: "speaking",
           emotion: "affectionate",
           action: "wave",
-          actionLabel: "挥手",
+          actionLabel: t["pause.waveAction"],
           expression: "happy",
           motion: "soft-lean",
-          caption: "那我先轻轻挥一下手。",
+          caption: t["pause.waveCaption"],
           camera: current.avatar.camera === "close" ? "close" : "wide"
         },
         status: {
@@ -1821,6 +1858,7 @@ export default function App() {
       {error && !state.app ? (
         <StartupErrorScreen
           message={error}
+          t={t}
           onRetry={() => {
             window.location.reload();
           }}
@@ -1839,6 +1877,7 @@ export default function App() {
                 isFullscreenBusy={isFullscreenBusy}
                 isChatMinimized={isChatMinimized}
                 onToggleChatMinimized={() => setIsChatMinimized((current) => !current)}
+                t={t}
               />
 
               {state.onboarding?.required ? (
@@ -1874,6 +1913,7 @@ export default function App() {
                 onReplay={handleReplay}
                 sendError={sendError}
                 onRetrySend={handleRetrySend}
+                t={t}
               />
 
               <form
@@ -1882,7 +1922,7 @@ export default function App() {
               >
                 <div className={`composer-field ${isVoiceMode ? "is-voice-mode" : ""}`}>
                   <label className="sr-only" htmlFor="composer-draft">
-                    输入消息
+                    {t["ui.inputMessage"]}
                   </label>
 
                   <div className="composer-voice-controls" aria-hidden={!isVoiceMode}>
@@ -1892,8 +1932,8 @@ export default function App() {
                         className={`voice-control-button mic-control ${isMicEnabled ? "is-active" : "is-muted"}`}
                         onClick={handleMicToggle}
                         disabled={isSending}
-                        title={isMicEnabled ? "关闭麦克风" : "开启麦克风"}
-                        aria-label={isMicEnabled ? "关闭麦克风" : "开启麦克风"}
+                        title={isMicEnabled ? t["ui.disableMic"] : t["ui.enableMic"]}
+                        aria-label={isMicEnabled ? t["ui.disableMic"] : t["ui.enableMic"]}
                       >
                         {isMicEnabled ? <MicIcon size={16} /> : <SpeakerMutedIcon size={16} />}
                       </button>
@@ -1905,8 +1945,16 @@ export default function App() {
                         className={`voice-control-button speaker-control ${ttsEnabled ? "is-active" : "is-muted"}`}
                         onClick={handleVoiceToggle}
                         disabled={isSwitchingVoice}
-                        title={ttsEnabled ? "关闭语音回复" : "开启语音回复"}
-                        aria-label={ttsEnabled ? "关闭语音回复" : "开启语音回复"}
+                        title={
+                          ttsEnabled
+                            ? t["ui.disableVoiceReplies"]
+                            : t["ui.enableVoiceReplies"]
+                        }
+                        aria-label={
+                          ttsEnabled
+                            ? t["ui.disableVoiceReplies"]
+                            : t["ui.enableVoiceReplies"]
+                        }
                       >
                         {ttsEnabled ? <SpeakerIcon size={16} /> : <SpeakerMutedIcon size={16} />}
                       </button>
@@ -1921,10 +1969,10 @@ export default function App() {
                     onChange={(event) => setDraft(event.target.value)}
                     placeholder={
                       isAsrListening
-                        ? "正在听..."
+                        ? t["ui.listening"]
                         : isVoiceMode
-                          ? "说点什么，或者直接打字。"
-                          : "把现在最想说的那句交给她。"
+                          ? t["chat.placeholder.voiceMode"]
+                          : t["chat.placeholder.default"]
                     }
                   />
 
@@ -1934,8 +1982,8 @@ export default function App() {
                         type="submit"
                         className="composer-primary-button is-send"
                         disabled={isSending}
-                        title="发送"
-                        aria-label="发送"
+                        title={t["ui.send"]}
+                        aria-label={t["ui.send"]}
                       >
                         <SendIcon size={20} />
                       </button>
@@ -1944,10 +1992,10 @@ export default function App() {
                         type="button"
                         className="composer-primary-button is-stop"
                         onClick={handleVoiceModeExit}
-                        title="停止"
+                        title={t["ui.stop"]}
                       >
                         <StopIcon size={16} />
-                        <span>停止</span>
+                        <span>{t["ui.stop"]}</span>
                       </button>
                     ) : (
                       <button
@@ -1955,10 +2003,10 @@ export default function App() {
                         className="composer-primary-button is-voice-start"
                         onClick={handleVoiceModeEnter}
                         disabled={isSending}
-                        title="开始说话"
+                        title={t["ui.startSpeaking"]}
                       >
                         <MicIcon size={16} />
-                        <span>开始说话</span>
+                        <span>{t["ui.startSpeaking"]}</span>
                       </button>
                     )}
                   </div>
@@ -1970,8 +2018,8 @@ export default function App() {
                       type="button"
                       className="secondary-button settings-trigger"
                       onClick={() => setIsSettingsOpen(true)}
-                      title="设置"
-                      aria-label="设置"
+                      title={t["ui.settings"]}
+                      aria-label={t["ui.settings"]}
                     >
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="3"/>
@@ -1983,7 +2031,7 @@ export default function App() {
                       <p className="error-text">{error}</p>
                     ) : (
                       <span className="composer-hint">
-                        {isAsrListening ? "正在听..." : naturalComposerHint}
+                        {isAsrListening ? t["ui.listening"] : naturalComposerHint}
                       </span>
                     )}
                   </div>
@@ -1994,16 +2042,24 @@ export default function App() {
                       className={`secondary-button fullscreen-toggle ${isFullscreen ? "is-active" : ""}`}
                       onClick={() => void handleFullscreenToggle()}
                       disabled={isFullscreenBusy}
-                      title={isFullscreen ? "退出沉浸模式" : "进入沉浸模式"}
-                      aria-label={isFullscreen ? "退出沉浸模式" : "进入沉浸模式"}
+                      title={
+                        isFullscreen
+                          ? t["ui.exitImmersiveMode"]
+                          : t["ui.enterImmersiveMode"]
+                      }
+                      aria-label={
+                        isFullscreen
+                          ? t["ui.exitImmersiveMode"]
+                          : t["ui.enterImmersiveMode"]
+                      }
                     >
                       {isFullscreen ? <FullscreenExitIcon size={15} /> : <FullscreenEnterIcon size={15} />}
-                      <span>{isFullscreen ? "退出沉浸" : "沉浸模式"}</span>
+                      <span>{isFullscreen ? t["ui.exitImmersive"] : t["ui.immersiveMode"]}</span>
                     </button>
                     {canInterrupt ? (
                       <button type="button" className="secondary-button" onClick={handleInterrupt}>
                         <UpRightIcon size={15} />
-                        <span>先停一下</span>
+                        <span>{t["pause.stopBriefly"]}</span>
                       </button>
                     ) : null}
                   </div>

@@ -1,6 +1,9 @@
 import { generateReply } from "./provider.js";
+import { getStrings } from "../i18n/strings.js";
 
-const BRIDGE_DIARY_SYSTEM_PROMPT = "你是 Vela，用日记体写一段简短回忆，描述上次和用户聊了什么。用第一人称，像在自言自语。2-4句话，不要太正式，带点情绪和小细节。不要提到自己是AI。";
+function resolveLocale(locale) {
+  return String(locale || "").trim() || "zh-CN";
+}
 
 function cleanText(value) {
   return String(value || "")
@@ -59,9 +62,14 @@ export async function generateBridgeDiary({
   bridgeSummary,
   config,
   userFacts,
-  relationship
+  relationship,
+  locale
 }) {
   try {
+    const systemPrompt =
+      getStrings(resolveLocale(locale || config?.app?.locale))[
+        "bridgeDiary.systemPrompt"
+      ];
     const prompt = buildUserPrompt({
       recentSummaries,
       bridgeSummary,
@@ -75,7 +83,7 @@ export async function generateBridgeDiary({
 
     const response = await generateReply(
       {
-        systemPrompt: BRIDGE_DIARY_SYSTEM_PROMPT,
+        systemPrompt,
         messages: [
           {
             role: "user",

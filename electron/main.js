@@ -96,6 +96,7 @@ function toTrimmedString(value) {
 
 function buildSettingsSnapshot(config = {}) {
   return {
+    locale: config.app?.locale || "zh-CN",
     userName: config.user?.name || "",
     audio: {
       bgmEnabled: Boolean(config.audio?.bgmEnabled),
@@ -620,6 +621,10 @@ ipcMain.handle("vela:toggle-fullscreen", async () => {
 
 ipcMain.handle("vela:set-fullscreen", async (_event, nextValue) => {
   return setFullscreen(typeof nextValue === "boolean" ? nextValue : undefined);
+});
+
+ipcMain.handle("vela:factory-reset", async () => {
+  await velaCore.factoryReset();
 });
 
 app.whenReady().then(async () => {

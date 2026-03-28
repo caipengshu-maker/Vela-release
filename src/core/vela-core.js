@@ -5,7 +5,7 @@ import { parse } from "jsonc-parser";
 import { loadConfig, CONFIG_SCHEMA_VERSION } from "./config.js";
 import {
   buildPersona,
-  onboardingOptions
+  getOnboardingOptions
 } from "./default-persona.js";
 import { LocalStore } from "./local-store.js";
 import { MemoryStore } from "./memory-store.js";
@@ -53,6 +53,7 @@ import {
   listAvailableModels,
   resolveModelSelection
 } from "./provider.js";
+import { getStrings } from "../i18n/strings.js";
 import {
   listThinkingModes,
   normalizeThinkingMode
@@ -69,13 +70,35 @@ function clipText(text, limit = 48) {
   return text.length > limit ? `${text.slice(0, limit)}...` : text;
 }
 
-function formatTime(isoString) {
+function resolveLocale(locale) {
+  return String(locale || "").trim() || "zh-CN";
+}
+
+function fillTemplate(template, values = {}) {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.split(`{${key}}`).join(String(value)),
+    String(template || "")
+  );
+}
+
+function formatTime(isoString, locale = "zh-CN") {
   if (!isoString) {
     return "";
   }
 
   const date = new Date(isoString);
-  return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  const normalizedLocale = resolveLocale(locale);
+
+  return new Intl.DateTimeFormat(
+    normalizedLocale === "en" ? "en-US" : "zh-CN",
+    {
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: normalizedLocale === "en"
+    }
+  ).format(date);
 }
 
 function sanitizeTopicLabel(text) {
@@ -87,9 +110,11 @@ function sanitizeTopicLabel(text) {
   return cleaned;
 }
 
-function extractTopicLabel(text) {
+function extractTopicLabel(text, locale = "zh-CN") {
   const cleaned = sanitizeTopicLabel(text);
-  return cleaned ? clipText(cleaned, 18) : "近况";
+  return cleaned
+    ? clipText(cleaned, 18)
+    : getStrings(resolveLocale(locale))["memory.topicFallback"];
 }
 
 function createTurnSummary({
@@ -98,10 +123,12 @@ function createTurnSummary({
   assistantReply,
   avatar,
   triggerReasons = [],
-  summaryLabel = null
+  summaryLabel = null,
+  locale = "zh-CN"
 }) {
+  const t = getStrings(resolveLocale(locale));
   const createdAt = new Date().toISOString();
-  const topicLabel = summaryLabel || extractTopicLabel(userMessage);
+  const topicLabel = summaryLabel || extractTopicLabel(userMessage, locale);
   const shouldBridge =
     Array.isArray(triggerReasons) &&
     triggerReasons.some((reason) => reason && reason !== "proactive");
@@ -112,10 +139,10 @@ function createTurnSummary({
     createdAt,
     topicLabel,
     summary: summaryLabel
-      ? `Vela ${summaryLabel}，以${avatar.emotionLabel}、克制的方式把这轮对话接住了。`
-      : `聊到“${topicLabel}”，Vela 以${avatar.emotionLabel}、克制的方式把这轮对话接住了。`,
+      ? fillTemplate(t["memory.turnSummary.withLabel"], { label: summaryLabel })
+      : fillTemplate(t["memory.turnSummary.withTopic"], { topic: topicLabel }),
     bridgeSummary: shouldBridge
-      ? `聊到“${topicLabel}”，这轮话题已经接住。`
+      ? fillTemplate(t["memory.bridgeSummary"], { topic: topicLabel })
       : "",
     openFollowUps: [],
     userSnippet: clipText(userMessage, 48),
@@ -123,26 +150,33 @@ function createTurnSummary({
     avatar
   };
 }
-function buildWelcomeNote(memory) {
+
+function buildWelcomeNote(memory, locale = "zh-CN") {
+  const t = getStrings(resolveLocale(locale));
   const bridgeSummary = sanitizeTopicLabel(
     memory?.bridgeSummary?.summary || memory?.bridgeSummary?.text || memory?.bridgeSummary || ""
   );
 
   if (bridgeSummary) {
-    return `上次我们停在“${clipText(bridgeSummary, 30)}”。想接着说的话，直接从这里继续就行。`;
+    return fillTemplate(t["welcome.fromBridge"], {
+      topic: clipText(bridgeSummary, 30)
+    });
   }
 
   const recentSummary = memory?.recentSummaries?.[0];
   if (recentSummary) {
     const topicLabel = sanitizeTopicLabel(recentSummary.topicLabel);
     const summaryText = sanitizeTopicLabel(recentSummary.summary);
-    return `上次我们停在“${topicLabel || clipText(summaryText, 24)}”。想继续的话可以从这里接上。`;
+    return fillTemplate(t["welcome.fromRecent"], {
+      topic: topicLabel || clipText(summaryText, 24)
+    });
   }
 
-  return "如果你想接着刚才的话题，或者只是随便说一句，都可以直接开始。";
+  return t["welcome.default"];
 }
 
-function buildOnboardingState(profile) {
+function buildOnboardingState(profile, locale = "zh-CN") {
+  const t = getStrings(resolveLocale(locale));
   const onboarding = profile.onboarding || {
     completed: false,
     velaName: "Vela",
@@ -154,14 +188,14 @@ function buildOnboardingState(profile) {
   return {
     required: true,
     completed: false,
-    prompt: "先告诉我，你希望我怎么称呼你。",
+    prompt: t["onboarding.promptName"],
     fields: {
       velaName: onboarding.velaName || "Vela",
       userName: onboarding.userName || "",
       temperament: onboarding.temperament || "gentle-cool",
       distance: onboarding.distance || "warm"
     },
-    options: onboardingOptions
+    options: getOnboardingOptions(resolveLocale(locale))
   };
 }
 
@@ -181,13 +215,16 @@ function buildCompletedOnboardingState(profile) {
   };
 }
 
-function buildMemoryPeek(memory) {
+function buildMemoryPeek(memory, locale = "zh-CN") {
   const source = memory.bridgeSummary || memory.recentSummaries[0];
 
   return source
     ? {
         summary: source.summary || source.text || String(source).trim(),
-        createdAtLabel: formatTime(source.createdAt || source.updatedAt)
+        createdAtLabel: formatTime(
+          source.createdAt || source.updatedAt,
+          locale
+        )
       }
     : null;
 }
@@ -259,22 +296,23 @@ function replaceTextBlocks(blocks, text) {
   );
 }
 
-function buildRelationshipUnlockHints(relationship) {
+function buildRelationshipUnlockHints(relationship, locale = "zh-CN") {
+  const t = getStrings(resolveLocale(locale));
   const stage = String(relationship?.stage || "reserved").trim().toLowerCase();
   const hints = [];
 
   switch (stage) {
     case "reserved":
-      hints.push("先保持礼貌和分寸，重点是接住情绪，不要抢着靠近。");
+      hints.push(t["relationship.unlock.reserved"]);
       break;
     case "warm":
-      hints.push("可以自然放松一点，偶尔更亲昵一点，但不要突然越级亲密。");
+      hints.push(t["relationship.unlock.warm"]);
       break;
     case "close":
-      hints.push("可以更亲近一点，偶尔调侃、撒娇或表达想念，但要像真实的人。");
+      hints.push(t["relationship.unlock.close"]);
       break;
     default:
-      hints.push("先保持自然和分寸，不要突然越级表达。");
+      hints.push(t["relationship.unlock.default"]);
       break;
   }
 
@@ -315,7 +353,8 @@ function parseModelCommand(message) {
   return match ? match[1] : null;
 }
 
-function buildModelStatus(config, runtimeSession, persistedState) {
+function buildModelStatus(config, runtimeSession, persistedState, locale = "zh-CN") {
+  const t = getStrings(resolveLocale(locale));
   const availableModels = listAvailableModels(config).map((model) => ({
     id: model.id,
     label: model.label,
@@ -337,13 +376,13 @@ function buildModelStatus(config, runtimeSession, persistedState) {
     selectedModel,
     selectedLabel:
       selectedModel === "auto"
-        ? "自动"
+        ? t["model.auto"]
         : resolvedSelection?.label || selectedModel,
     activeLabel:
       lastResolved?.activeRouteLabel ||
       resolvedSelection?.label ||
       availableModels[0]?.label ||
-      "主模型",
+      t["model.primaryDefault"],
     fallbackUsed: Boolean(lastResolved?.fallbackUsed),
     fallbackReason: lastResolved?.fallbackReason || null,
     manualSelection: selectedModel !== "auto",
@@ -352,10 +391,11 @@ function buildModelStatus(config, runtimeSession, persistedState) {
   };
 }
 
-function buildModelSwitchMessage(config, selectedModel) {
+function buildModelSwitchMessage(config, selectedModel, locale = "zh-CN") {
+  const t = getStrings(resolveLocale(locale));
   const selection =
     selectedModel === "auto"
-      ? { label: "自动路由" }
+      ? { label: t["model.autoRoute"] }
       : resolveModelSelection(config, selectedModel);
 
   return {
@@ -365,12 +405,15 @@ function buildModelSwitchMessage(config, selectedModel) {
     createdAt: new Date().toISOString(),
     content:
       selectedModel === "auto"
-        ? "模型已切回自动路由。主模型可用时优先走主模型，必要时再优雅降级。"
-        : `已切换到 ${selection?.label || selectedModel}。后续对话会优先按这个选择发送。`
+        ? t["model.switchedAuto"]
+        : fillTemplate(t["model.switchedManual"], {
+            label: selection?.label || selectedModel
+          })
   };
 }
 
-function buildInvalidModelMessage(config) {
+function buildInvalidModelMessage(config, locale = "zh-CN") {
+  const t = getStrings(resolveLocale(locale));
   const options = listAvailableModels(config)
     .map((entry) => entry.id)
     .join(" / ");
@@ -380,7 +423,7 @@ function buildInvalidModelMessage(config) {
     role: "assistant",
     variant: "system-tip",
     createdAt: new Date().toISOString(),
-    content: `可用模型：auto / ${options}。用法：/model <name>`
+    content: fillTemplate(t["model.availableOptions"], { options })
   };
 }
 
@@ -463,6 +506,7 @@ export class VelaCore {
     this.bridgeDiaryNote = null;
     this.currentAvatar = null;
     this.currentSpeech = null;
+    this.currentGenerationAbortController = null;
     this.lastReplyText = "";
     this.policyHistory = {
       lastEmotion: "calm",
@@ -588,6 +632,10 @@ export class VelaCore {
 
   getConfig() {
     return this.config;
+  }
+
+  getLocale() {
+    return resolveLocale(this.config?.app?.locale);
   }
 
   async loadRelationshipTracker(fallbackStage = null) {
@@ -809,6 +857,8 @@ export class VelaCore {
     onboarding = null
   } = {}) {
     const memory = memorySnapshot || this.memorySnapshot || (await this.loadMemorySnapshot());
+    const locale = this.getLocale();
+    const t = getStrings(locale);
     const nextAvatar =
       avatar ||
       this.currentAvatar ||
@@ -819,7 +869,7 @@ export class VelaCore {
       onboarding ||
       (hasCompletedCurrentOnboarding(memory.profile)
         ? buildCompletedOnboardingState(memory.profile)
-        : buildOnboardingState(memory.profile));
+        : buildOnboardingState(memory.profile, locale));
     const tts = getTtsCapabilities(this.config);
     const asr = getAsrCapabilities(this.config);
 
@@ -828,7 +878,8 @@ export class VelaCore {
     return {
       app: {
         name: this.config.app.name,
-        tagline: this.config.app.tagline
+        tagline: this.config.app.tagline,
+        locale: this.config.app?.locale || ""
       },
       persona: {
         name: this.persona.name,
@@ -842,9 +893,9 @@ export class VelaCore {
       welcomeNote:
         welcomeNote ??
         (nextOnboarding.required
-          ? "第一面不用填表。先决定她怎么叫你，再从第一句话开始。"
-          : buildWelcomeNote(memory)),
-      memoryPeek: buildMemoryPeek(memory),
+          ? t["welcome.onboardingIntro"]
+          : buildWelcomeNote(memory, locale)),
+      memoryPeek: buildMemoryPeek(memory, locale),
       voiceMode: this.buildVoiceModeState(),
       thinkingMode: this.runtimeSession.thinkingMode,
       thinkingModes: listThinkingModes(),
@@ -870,7 +921,8 @@ export class VelaCore {
       modelStatus: buildModelStatus(
         this.config,
         this.runtimeSession,
-        this.persistedState
+        this.persistedState,
+        locale
       ),
       onboarding: nextOnboarding,
       session: {
@@ -953,7 +1005,8 @@ export class VelaCore {
       modelStatus: buildModelStatus(
         this.config,
         this.runtimeSession,
-        this.persistedState
+        this.persistedState,
+        this.getLocale()
       )
     });
   }
@@ -1062,7 +1115,7 @@ export class VelaCore {
       messages: [],
       onboarding: hasCompletedCurrentOnboarding(memory.profile)
         ? buildCompletedOnboardingState(memory.profile)
-        : buildOnboardingState(memory.profile)
+        : buildOnboardingState(memory.profile, this.getLocale())
     });
   }
 
@@ -1073,7 +1126,8 @@ export class VelaCore {
       bridgeSummary: memory?.bridgeSummary || null,
       config: this.config,
       userFacts: memory?.userFacts || [],
-      relationship: this.getRelationshipState(memory?.relationship)
+      relationship: this.getRelationshipState(memory?.relationship),
+      locale: this.getLocale()
     });
 
     this.bridgeDiaryNote = note || null;
@@ -1081,6 +1135,8 @@ export class VelaCore {
   }
 
   async completeOnboarding(payload) {
+    const locale = this.getLocale();
+    const t = getStrings(locale);
     const completedVersion = payload?.completedVersion ?? CONFIG_SCHEMA_VERSION;
     await this.memoryStore.completeOnboarding({
       ...(payload || {}),
@@ -1092,7 +1148,9 @@ export class VelaCore {
     });
 
     const memory = await this.loadMemorySnapshot();
-    const replyText = `${this.persona.name}，我醒来了。接下来我会用现在的语气陪你，也会慢慢记住关于你的事。`;
+    const replyText = fillTemplate(t["welcome.awakenedReply"], {
+      name: this.persona.name
+    });
     const { avatar, plan } = this.buildSpeakingAvatar({
       replyText,
       userMessage: payload.userName || ""
@@ -1116,7 +1174,7 @@ export class VelaCore {
           content: replyText
         }
       ],
-      welcomeNote: "唤醒完成。现在可以把第一句话交给她。",
+      welcomeNote: t["welcome.wakeupComplete"],
       onboarding: {
         required: false,
         completed: true,
@@ -1174,6 +1232,9 @@ export class VelaCore {
   async updateSettings(payload = {}) {
     const hasOwnField = (key) =>
       Object.prototype.hasOwnProperty.call(payload || {}, key);
+    const onboardingAlreadyCompleted = hasCompletedCurrentOnboarding(
+      this.memorySnapshot?.profile
+    );
     const llmDefaultsByProvider = {
       "openai-compatible": {
         baseUrl: "https://api.openai.com/v1",
@@ -1273,10 +1334,12 @@ export class VelaCore {
     this.runtimeSession.voiceModeEnabled = Boolean(this.config?.audio?.ttsEnabled);
     await this.sessionStore.savePreferences(this.runtimeSession);
 
-    await this.memoryStore.completeOnboarding({
-      userName,
-      completedVersion: CONFIG_SCHEMA_VERSION
-    });
+    if (onboardingAlreadyCompleted) {
+      await this.memoryStore.completeOnboarding({
+        userName,
+        completedVersion: CONFIG_SCHEMA_VERSION
+      });
+    }
     const memory = await this.loadMemorySnapshot();
     this.persona = buildPersona(memory.profile, this.config?.app?.locale);
 
@@ -1423,6 +1486,7 @@ export class VelaCore {
 
     const memory = await this.loadMemorySnapshot();
     this.persona = buildPersona(memory.profile, this.config?.app?.locale);
+    const t = getStrings(this.getLocale());
 
     return this.buildAppState({
       memorySnapshot: memory,
@@ -1432,8 +1496,51 @@ export class VelaCore {
         completed: true,
         completedVersion: CONFIG_SCHEMA_VERSION
       },
-      welcomeNote: "初始化完成，设置可随时在 Settings 里调整。"
+      welcomeNote: t["welcome.setupComplete"]
     });
+  }
+
+  async factoryReset() {
+    if (this.currentGenerationAbortController) {
+      this.currentGenerationAbortController.abort(new Error("factory-reset"));
+      this.currentGenerationAbortController = null;
+    }
+
+    if (this.currentSpeech) {
+      await this.cancelCurrentSpeech();
+    }
+
+    const userConfigPath = this.runtimePaths?.userConfigPath;
+    const memoryRoot = this.localStore?.resolve("memory");
+    const stateSessionPath = this.localStore?.resolve("state", "session.json");
+    const stateRelationshipPath = this.localStore?.resolve(
+      "state",
+      "relationship.json"
+    );
+    const removeIfPresent = async (targetPath, options = {}) => {
+      if (!targetPath) {
+        return;
+      }
+
+      try {
+        await fs.rm(targetPath, { force: true, ...options });
+      } catch (error) {
+        if (error?.code !== "ENOENT") {
+          throw error;
+        }
+      }
+    };
+
+    await Promise.all([
+      removeIfPresent(userConfigPath),
+      removeIfPresent(memoryRoot, { recursive: true }),
+      removeIfPresent(stateSessionPath),
+      removeIfPresent(stateRelationshipPath)
+    ]);
+
+    this.bridgeDiaryNote = null;
+    this.memorySnapshot = null;
+    this.lastReplyText = "";
   }
 
   async setVoiceMode(enabled, options = {}) {
@@ -1496,6 +1603,7 @@ export class VelaCore {
 
   async switchModel(selection) {
     const normalizedSelection = String(selection || "").trim().toLowerCase() || "auto";
+    const locale = this.getLocale();
 
     if (
       normalizedSelection !== "auto" &&
@@ -1504,7 +1612,7 @@ export class VelaCore {
       return this.buildAppState({
         messages: [
           ...this.runtimeSession.messages,
-          buildInvalidModelMessage(this.config)
+          buildInvalidModelMessage(this.config, locale)
         ],
         welcomeNote: ""
       });
@@ -1515,13 +1623,20 @@ export class VelaCore {
     return this.buildAppState({
       messages: [
         ...this.runtimeSession.messages,
-        buildModelSwitchMessage(this.config, normalizedSelection)
+        buildModelSwitchMessage(this.config, normalizedSelection, locale)
       ],
       welcomeNote: ""
     });
   }
 
   async interruptOutput(options = {}) {
+    if (this.currentGenerationAbortController) {
+      this.currentGenerationAbortController.abort(
+        new Error("llm-request-cancelled")
+      );
+      this.currentGenerationAbortController = null;
+    }
+
     if (this.currentSpeech) {
       await this.cancelCurrentSpeech(options.onEvent);
     }
@@ -1599,7 +1714,10 @@ export class VelaCore {
       fetchImpl: options.fetchImpl
     }).catch(() => null);
     await this.updateWeatherState(weather);
-    const relationshipUnlockHints = buildRelationshipUnlockHints(relationship);
+    const relationshipUnlockHints = buildRelationshipUnlockHints(
+      relationship,
+      this.getLocale()
+    );
     const awarenessPacket = buildContextFusion({
       timeAwareness,
       weather,
@@ -1696,6 +1814,8 @@ export class VelaCore {
 
   async generateProactiveMessage(greetingContext, options = {}, overrides = {}) {
     const trimmedContext = String(greetingContext || "").trim();
+    const locale = this.getLocale();
+    const t = getStrings(locale);
 
     if (!trimmedContext) {
       return this.buildAppState({
@@ -1742,9 +1862,11 @@ export class VelaCore {
     });
     const proactiveSystemPrompt = [
       context.systemPrompt,
-      `主动开场提示：${trimmedContext}`,
-      "这是一次主动开口，不要表现成被动回答。",
-      "请自然生成一段简短、贴近当前氛围的问候。"
+      fillTemplate(t["proactive.promptPrefix"], {
+        context: trimmedContext
+      }),
+      t["proactive.systemPassiveGuard"],
+      t["proactive.systemGreetingInstruction"]
     ].join("\n\n");
     const proactiveContext = {
       ...context,
@@ -1832,7 +1954,8 @@ export class VelaCore {
       assistantReply,
       avatar: speakingAvatar,
       triggerReasons: ["proactive"],
-      summaryLabel: "主动问候"
+      summaryLabel: t["memory.proactiveGreetingLabel"],
+      locale
     });
     const proactiveCountToday = Number(this.persistedState?.proactiveCountToday || 0) + 1;
 
@@ -1907,6 +2030,7 @@ export class VelaCore {
       await this.cancelCurrentSpeech(options.onEvent);
     }
 
+    const messagesBeforeUserTurn = [...this.runtimeSession.messages];
     const memory = await this.loadMemorySnapshot();
     const userTurn = {
       id: randomUUID(),
@@ -1970,6 +2094,10 @@ export class VelaCore {
     let prefixBuffer = null;
     let streamingIntent = null;
     let streamingAvatarResolved = false;
+    const generationAbortController =
+      typeof AbortController === "function" ? new AbortController() : null;
+
+    this.currentGenerationAbortController = generationAbortController;
 
     console.log("[vela-core] handleUserMessage processing", {
       voiceModeEnabled: Boolean(this.runtimeSession.voiceModeEnabled),
@@ -1983,11 +2111,13 @@ export class VelaCore {
       fetchImpl: options.fetchImpl,
       modelSelection: this.runtimeSession.selectedModel,
       providerState: this.runtimeSession.providerRouting,
+      signal: generationAbortController?.signal || null,
       persistProviderState: async (providerRouting) => {
         await this.persistProviderRouting(providerRouting);
       }
     };
 
+    try {
     if (options.onEvent) {
       options.onEvent({
         type: "assistant-stream-start",
@@ -2132,7 +2262,8 @@ export class VelaCore {
       userMessage: trimmedMessage,
       assistantReply,
       avatar: speakingAvatar,
-      triggerReasons
+      triggerReasons,
+      locale: this.getLocale()
     });
 
     await this.memoryStore.appendTurnSummary(summary);
@@ -2218,6 +2349,18 @@ export class VelaCore {
     });
 
     return nextState;
+    } catch (error) {
+      this.runtimeSession.messages = messagesBeforeUserTurn;
+      this.currentAvatar = this.buildPresenceAvatar(
+        this.runtimeSession.voiceModeEnabled ? "listening" : "idle"
+      );
+      await this.emitAvatarState(options.onEvent, this.currentAvatar);
+      throw error;
+    } finally {
+      if (this.currentGenerationAbortController === generationAbortController) {
+        this.currentGenerationAbortController = null;
+      }
+    }
   }
 
   async runBackgroundMemoryTasks({ userMessage, assistantReply, avatar, turnIndex }) {
