@@ -1,4 +1,4 @@
-﻿# Vela
+# Vela
 
 > A local-first AI companion with a living anime avatar, continuous memory, and a relationship that grows with you.
 
@@ -6,14 +6,13 @@
 
 ![Vela](docs/screenshots/hero.jpg)
 
+![Version](https://img.shields.io/badge/version-0.2.0-ff6b9d)
 ![Electron](https://img.shields.io/badge/Electron-41-1f1f1f?logo=electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-20232a?logo=react&logoColor=61dafb)
 ![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)
 ![Three.js](https://img.shields.io/badge/Three.js-r183-000000?logo=threedotjs&logoColor=white)
 ![VRM](https://img.shields.io/badge/VRM-Avatar-ffb703)
 ![License: MIT](https://img.shields.io/badge/License-MIT-2ea44f.svg)
-
-Source release status: Vela runs from source today with `git clone -> npm install -> npm start`. Packaged installer work is the current M6 milestone.
 
 ## What Is Vela?
 
@@ -22,6 +21,23 @@ Vela is not a chatbot with a wallpaper behind it. She is a desktop companion.
 She has a real 3D body, a voice, emotional presentation, memory across sessions, and a relationship arc that changes how she talks to you over time. She starts reserved, warms up naturally, and only gets closer when your conversations actually earn it. Not instant fake intimacy. Not enterprise copilot energy. 她不是工具, 她是陪伴.
 
 Under the hood, Vela is a local-first Electron app built with React, Three.js, and VRM. Conversations, summaries, user facts, and relationship state are stored on your machine. You can tune her personality, swap the avatar model, and customize the emotion and voice stack.
+
+## What's New in v0.2.0
+
+### 🌍 Full Dual-Language Support
+- Complete internationalization with **164 i18n keys** covering all UI and backend
+- First-launch language selection (中文 / English)
+- Locale-aware bridge diary and all system messages
+
+### 🛡️ UX Hardening
+- Fixed onboarding bypass issue — language selection now mandatory before entering main app
+- Stream interruption with `AbortController` — stop TTS mid-sentence cleanly
+- Factory Reset in Settings — one-click wipe of all local data and start fresh
+
+### 🔧 Quality of Life
+- Smoother settings persistence
+- Improved error handling for network interruptions
+- Better memory bridge formatting across locales
 
 ## Why Vela?
 
@@ -35,18 +51,22 @@ Most anime companion apps are cloud-only, privacy-invasive, and visually dead. V
 
 ## Feature Highlights
 
-- 🧠 Continuous local memory with summaries, facts, bridge notes, and relationship state saved to disk.
-- 💗 Relationship arc that advances from `reserved` to `warm` to `close` based on actual interaction history.
-- 🎭 Twelve emotion presets that coordinate facial expressions, body language, camera framing, and TTS behavior together.
-- 🗣️ Streaming MiniMax WebSocket TTS with emotion-aware voice presets and segment-by-segment playback.
-- 👄 Real-time lip sync driven by visemes through HeadAudio, with amplitude fallback when needed.
-- 🧍 VRM avatar rendering with Three.js and retargeted Mixamo motion clips for idle and emotion-driven presence.
-- 🌦️ Time-aware and weather-aware proactive openings that can gently check in instead of waiting silently forever.
-- 📝 Startup memory peek and bridge diary notes so unfinished conversations are easy to pick back up.
-- ⚙️ First-run onboarding, settings, model switching, voice mode toggles, and fullscreen desktop presentation.
-- 🔒 Local-first boundaries: Vela is a companion shell, not a system-control agent.
+- 🧠 **Continuous local memory** with summaries, facts, bridge notes, and relationship state saved to disk.
+- 💗 **Relationship arc** that advances from `reserved` to `warm` to `close` based on actual interaction history.
+- 🎭 **Twelve emotion presets** that coordinate facial expressions, body language, camera framing, and TTS behavior together.
+- 🗣️ **Streaming MiniMax WebSocket TTS** with emotion-aware voice presets and segment-by-segment playback.
+- 👄 **Real-time lip sync** driven by visemes through HeadAudio, with amplitude fallback when needed.
+- 🧍 **VRM avatar rendering** with Three.js and retargeted Mixamo motion clips for idle and emotion-driven presence.
+- 🌦️ **Time-aware and weather-aware** proactive openings that can gently check in instead of waiting silently forever.
+- 📝 **Startup memory peek** and bridge diary notes so unfinished conversations are easy to pick back up.
+- ⚙️ **First-run onboarding** with language selection, settings, model switching, voice mode toggles, and fullscreen desktop presentation.
+- 🌍 **Full i18n support** — switch between Chinese and English anytime.
+- 🔄 **Factory reset** — wipe all local data and start fresh from Settings.
+- 🔒 **Local-first boundaries**: Vela is a companion shell, not a system-control agent.
 
 ## Quick Start
+
+### Option 1: Run from Source (Developers)
 
 1. Clone the repo.
 
@@ -102,13 +122,28 @@ Notes:
 - Prefer `apiKeyEnv` over hardcoded keys if you plan to publish your own fork.
 - If you want mic input, use `asr.provider: "webspeech"` in [`vela.jsonc`](vela.jsonc).
 
+### Option 2: Download Installer (End Users)
+
+Go to the [Releases](../../releases) page and download the latest Windows installer (`.exe`). Double-click to install and run.
+
+> ⚠️ **Windows SmartScreen Warning**: Since the installer isn't code-signed, Windows may show a "Windows protected your PC" prompt. Click "More info" → "Run anyway". This is normal for independent open-source projects.
+
 ## Screenshots
 
-![Chat](docs/screenshots/chat.jpg)
+<p align="center">
+  <img src="docs/screenshots/chat.jpg" alt="Chat with Vela" width="80%">
+  <br><em>Immersive conversation — she reacts with real emotion, not canned responses</em>
+</p>
 
-![Onboarding](docs/screenshots/onboarding.jpg)
+<p align="center">
+  <img src="docs/screenshots/onboarding.jpg" alt="First encounter" width="80%">
+  <br><em>The moment you meet — curious, a little shy, full of potential</em>
+</p>
 
-![Settings placeholder](docs/screenshots/settings.svg)
+<p align="center">
+  <img src="docs/screenshots/emotions.jpg" alt="Emotional range" width="80%">
+  <br><em>12 emotion presets — joy, shyness, tsundere energy, and everything in between</em>
+</p>
 
 ## Architecture Overview
 
@@ -166,6 +201,8 @@ Already in the repo today:
 - Emotion-driven avatar presentation
 - Streaming voice and lip sync
 - Onboarding, settings, and proactive conversation hooks
+- Full dual-language support (zh-CN / en)
+- Factory reset capability
 
 ## Contributing
 
