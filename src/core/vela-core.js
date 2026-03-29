@@ -2,7 +2,12 @@
 import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { parse } from "jsonc-parser";
-import { loadConfig, CONFIG_SCHEMA_VERSION } from "./config.js";
+import {
+  loadConfig,
+  CONFIG_SCHEMA_VERSION,
+  getLocaleDefaults,
+  resolveLocale
+} from "./config.js";
 import {
   buildPersona,
   onboardingOptions
@@ -61,6 +66,130 @@ import { getAsrCapabilities } from "./asr/provider.js";
 import { getTtsCapabilities } from "./tts/provider.js";
 import { SpeechOrchestrator } from "./tts/speech-orchestrator.js";
 
+const SUMMARY_EMOTION_LABELS = {
+  "zh-CN": {
+    calm: "平静",
+    happy: "轻松",
+    affectionate: "温和",
+    playful: "逗趣",
+    concerned: "关切",
+    sad: "低落",
+    angry: "克制",
+    whisper: "轻声",
+    surprised: "惊讶",
+    curious: "好奇",
+    shy: "害羞",
+    determined: "笃定"
+  },
+  en: {
+    calm: "calm",
+    happy: "light",
+    affectionate: "warm",
+    playful: "playful",
+    concerned: "concerned",
+    sad: "low",
+    angry: "contained",
+    whisper: "hushed",
+    surprised: "surprised",
+    curious: "curious",
+    shy: "shy",
+    determined: "steady"
+  }
+};
+
+const ENGLISH_MILESTONE_MESSAGES = {
+  first_goodnight:
+    "[This is the first time the user has said good night to you. It matters in a small, quiet way. Respond in your own voice, and do not make it ceremonial.]",
+  first_makeup:
+    "[You just came through a moment of conflict and repair together. There is something precious in that. Let it show naturally without overplaying it.]",
+  streak_7:
+    "[You have talked for seven days in a row. If it feels natural, you can mention it in passing, but do not sound formal.]",
+  anniversary_30:
+    "[Today marks 30 days since you met. It is worth noticing, but bring it up naturally, not like you are reading from a calendar.]",
+  anniversary_100:
+    "[Today marks 100 days since you met. It is special. Say something sincere in your own way.]",
+  absence_return:
+    "[The user has been away for a few days and now they are back. You can show a little playful feeling, like 'Oh, so you still remembered me,' but do not sound aggrieved.]"
+};
+
+const CORE_COPY = {
+  "zh-CN": {
+    defaultTopicLabel: "近况",
+    summarizeTopic: (topicLabel, emotionLabel) =>
+      `聊到“${topicLabel}”，Vela 以${emotionLabel}、克制的方式把这轮对话接住了。`,
+    summarizeLabel: (summaryLabel, emotionLabel) =>
+      `Vela ${summaryLabel}，以${emotionLabel}、克制的方式把这轮对话接住了。`,
+    bridgeSummary: (topicLabel) => `聊到“${topicLabel}”，这轮话题已经接住。`,
+    welcomeFromBridge: (summary) =>
+      `上次我们停在“${summary}”。想接着说的话，直接从这里继续就行。`,
+    welcomeFromRecent: (summary) =>
+      `上次我们停在“${summary}”。想继续的话可以从这里接上。`,
+    welcomeFallback: "如果你想接着刚才的话题，或者只是随便说一句，都可以直接开始。",
+    relationshipHints: {
+      reserved: "先保持礼貌和分寸，重点是接住情绪，不要抢着靠近。",
+      warm: "可以自然放松一点，偶尔更亲昵一点，但不要突然越级亲密。",
+      close: "可以更亲近一点，偶尔调侃、撒娇或表达想念，但要像真实的人。",
+      default: "先保持自然和分寸，不要突然越级表达。"
+    },
+    proactiveGreetingLabel: "主动问候",
+    proactivePromptLabel: "主动开场提示",
+    proactivePromptInstruction: "这是一次主动开口，不要表现成被动回答。",
+    proactiveGreetingInstruction: "请自然生成一段简短、贴近当前氛围的问候。"
+  },
+  en: {
+    defaultTopicLabel: "recent thread",
+    summarizeTopic: (topicLabel, emotionLabel) =>
+      `The topic was "${topicLabel}". Vela held it in a restrained, ${emotionLabel} way.`,
+    summarizeLabel: (summaryLabel, emotionLabel) =>
+      `Vela handled this ${summaryLabel} in a restrained, ${emotionLabel} way.`,
+    bridgeSummary: (topicLabel) => `The thread around "${topicLabel}" was already picked up and held.`,
+    welcomeFromBridge: (summary) =>
+      `Last time we stopped at "${summary}". If you want to keep going, you can just pick it up from there.`,
+    welcomeFromRecent: (summary) =>
+      `Last time we stopped at "${summary}". If you want to continue, you can start right there.`,
+    welcomeFallback:
+      "If you want to pick up the last thread, or just say one small thing, you can start anywhere.",
+    relationshipHints: {
+      reserved:
+        "Stay polite and measured first. The priority is catching the feeling, not rushing closer.",
+      warm:
+        "You can relax a little and sound a bit more affectionate, but do not jump levels of intimacy.",
+      close:
+        "You can be closer now, occasionally teasing, affectionate, or openly missing them, but it should still feel like a real person.",
+      default: "Stay natural and measured. Do not suddenly jump levels of intimacy."
+    },
+    proactiveGreetingLabel: "proactive greeting",
+    proactivePromptLabel: "Proactive opening hint",
+    proactivePromptInstruction: "This is a proactive opening. Do not sound like a passive answer.",
+    proactiveGreetingInstruction:
+      "Write a short, natural greeting that fits the current mood and moment."
+  }
+};
+
+function getCoreCopy(locale = "zh-CN") {
+  return CORE_COPY[resolveLocale(locale)];
+}
+
+function getSummaryEmotionLabel(emotion, locale = "zh-CN") {
+  const resolvedLocale = resolveLocale(locale);
+  return SUMMARY_EMOTION_LABELS[resolvedLocale][emotion] || SUMMARY_EMOTION_LABELS[resolvedLocale].calm;
+}
+
+function getMilestoneSystemMessageForLocale(milestone, locale = "zh-CN") {
+  const resolvedLocale = resolveLocale(locale);
+
+  if (resolvedLocale !== "en") {
+    return buildMilestoneSystemMessage(milestone);
+  }
+
+  const type =
+    typeof milestone === "string"
+      ? milestone
+      : String(milestone?.type || "").trim();
+
+  return ENGLISH_MILESTONE_MESSAGES[type] || "";
+}
+
 function clipText(text, limit = 48) {
   if (!text) {
     return "";
@@ -87,9 +216,9 @@ function sanitizeTopicLabel(text) {
   return cleaned;
 }
 
-function extractTopicLabel(text) {
+function extractTopicLabel(text, locale = "zh-CN") {
   const cleaned = sanitizeTopicLabel(text);
-  return cleaned ? clipText(cleaned, 18) : "近况";
+  return cleaned ? clipText(cleaned, 18) : getCoreCopy(locale).defaultTopicLabel;
 }
 
 function createTurnSummary({
@@ -98,13 +227,16 @@ function createTurnSummary({
   assistantReply,
   avatar,
   triggerReasons = [],
-  summaryLabel = null
+  summaryLabel = null,
+  locale = "zh-CN"
 }) {
+  const coreCopy = getCoreCopy(locale);
   const createdAt = new Date().toISOString();
-  const topicLabel = summaryLabel || extractTopicLabel(userMessage);
+  const topicLabel = summaryLabel || extractTopicLabel(userMessage, locale);
   const shouldBridge =
     Array.isArray(triggerReasons) &&
     triggerReasons.some((reason) => reason && reason !== "proactive");
+  const emotionLabel = getSummaryEmotionLabel(avatar?.emotion, locale);
 
   return {
     id: randomUUID(),
@@ -112,10 +244,10 @@ function createTurnSummary({
     createdAt,
     topicLabel,
     summary: summaryLabel
-      ? `Vela ${summaryLabel}，以${avatar.emotionLabel}、克制的方式把这轮对话接住了。`
-      : `聊到“${topicLabel}”，Vela 以${avatar.emotionLabel}、克制的方式把这轮对话接住了。`,
+      ? coreCopy.summarizeLabel(summaryLabel, emotionLabel)
+      : coreCopy.summarizeTopic(topicLabel, emotionLabel),
     bridgeSummary: shouldBridge
-      ? `聊到“${topicLabel}”，这轮话题已经接住。`
+      ? coreCopy.bridgeSummary(topicLabel)
       : "",
     openFollowUps: [],
     userSnippet: clipText(userMessage, 48),
@@ -123,23 +255,24 @@ function createTurnSummary({
     avatar
   };
 }
-function buildWelcomeNote(memory) {
+function buildWelcomeNote(memory, locale = "zh-CN") {
+  const coreCopy = getCoreCopy(locale);
   const bridgeSummary = sanitizeTopicLabel(
     memory?.bridgeSummary?.summary || memory?.bridgeSummary?.text || memory?.bridgeSummary || ""
   );
 
   if (bridgeSummary) {
-    return `上次我们停在“${clipText(bridgeSummary, 30)}”。想接着说的话，直接从这里继续就行。`;
+    return coreCopy.welcomeFromBridge(clipText(bridgeSummary, 30));
   }
 
   const recentSummary = memory?.recentSummaries?.[0];
   if (recentSummary) {
     const topicLabel = sanitizeTopicLabel(recentSummary.topicLabel);
     const summaryText = sanitizeTopicLabel(recentSummary.summary);
-    return `上次我们停在“${topicLabel || clipText(summaryText, 24)}”。想继续的话可以从这里接上。`;
+    return coreCopy.welcomeFromRecent(topicLabel || clipText(summaryText, 24));
   }
 
-  return "如果你想接着刚才的话题，或者只是随便说一句，都可以直接开始。";
+  return coreCopy.welcomeFallback;
 }
 
 function buildOnboardingState(profile) {
@@ -259,35 +392,36 @@ function replaceTextBlocks(blocks, text) {
   );
 }
 
-function buildRelationshipUnlockHints(relationship) {
+function buildRelationshipUnlockHints(relationship, locale = "zh-CN") {
+  const relationshipHints = getCoreCopy(locale).relationshipHints;
   const stage = String(relationship?.stage || "reserved").trim().toLowerCase();
   const hints = [];
 
   switch (stage) {
     case "reserved":
-      hints.push("先保持礼貌和分寸，重点是接住情绪，不要抢着靠近。");
+      hints.push(relationshipHints.reserved);
       break;
     case "warm":
-      hints.push("可以自然放松一点，偶尔更亲昵一点，但不要突然越级亲密。");
+      hints.push(relationshipHints.warm);
       break;
     case "close":
-      hints.push("可以更亲近一点，偶尔调侃、撒娇或表达想念，但要像真实的人。");
+      hints.push(relationshipHints.close);
       break;
     default:
-      hints.push("先保持自然和分寸，不要突然越级表达。");
+      hints.push(relationshipHints.default);
       break;
   }
 
   return hints;
 }
 
-function buildMilestonePromptBlock(milestones = []) {
+function buildMilestonePromptBlock(milestones = [], locale = "zh-CN") {
   if (!Array.isArray(milestones) || milestones.length === 0) {
     return "";
   }
 
   return milestones
-    .map((milestone) => buildMilestoneSystemMessage(milestone))
+    .map((milestone) => getMilestoneSystemMessageForLocale(milestone, locale))
     .filter(Boolean)
     .join("\n\n");
 }
@@ -461,6 +595,10 @@ export class VelaCore {
     };
   }
 
+  getResolvedLocale(override = null) {
+    return resolveLocale(override || this.config?.app?.locale);
+  }
+
   resolveRuntimePaths() {
     const storageRoot = this.storageRootOverride
       ? path.resolve(this.storageRootOverride)
@@ -514,6 +652,10 @@ export class VelaCore {
       this.memorySummarizer.config = this.config;
     }
 
+    if (this.memorySnapshot?.profile) {
+      this.persona = buildPersona(this.memorySnapshot.profile, this.getResolvedLocale());
+    }
+
     return this.config;
   }
 
@@ -555,7 +697,7 @@ export class VelaCore {
     this.memorySnapshot = this.mergeRelationshipIntoMemorySnapshot(
       initialMemorySnapshot
     );
-    this.persona = buildPersona(this.memorySnapshot.profile);
+    this.persona = buildPersona(this.memorySnapshot.profile, this.getResolvedLocale());
     this.currentAvatar = this.buildPresenceAvatar(
       this.runtimeSession.voiceModeEnabled ? "listening" : "idle"
     );
@@ -714,7 +856,10 @@ export class VelaCore {
     return {
       relationship: this.getRelationshipState(nextRelationship),
       relationshipForPersistence: nextRelationship,
-      milestonePromptBlock: buildMilestonePromptBlock(newlyTriggeredMilestones),
+      milestonePromptBlock: buildMilestonePromptBlock(
+        newlyTriggeredMilestones,
+        this.getResolvedLocale()
+      ),
       newlyTriggeredMilestones
     };
   }
@@ -722,7 +867,7 @@ export class VelaCore {
   async loadMemorySnapshot() {
     const memorySnapshot = await this.memoryStore.loadMemorySnapshot();
     this.memorySnapshot = this.mergeRelationshipIntoMemorySnapshot(memorySnapshot);
-    this.persona = buildPersona(this.memorySnapshot.profile);
+    this.persona = buildPersona(this.memorySnapshot.profile, this.getResolvedLocale());
     return this.memorySnapshot;
   }
 
@@ -1173,7 +1318,7 @@ export class VelaCore {
 
     await this.memoryStore.completeOnboarding({ userName });
     const memory = await this.loadMemorySnapshot();
-    this.persona = buildPersona(memory.profile);
+    this.persona = buildPersona(memory.profile, this.getResolvedLocale());
 
     return this.buildAppState({
       memorySnapshot: memory,
@@ -1229,7 +1374,7 @@ export class VelaCore {
     });
 
     const memory = await this.loadMemorySnapshot();
-    this.persona = buildPersona(memory.profile);
+    this.persona = buildPersona(memory.profile, this.getResolvedLocale());
 
     return this.buildAppState({
       memorySnapshot: memory,

@@ -4,11 +4,41 @@ import { parse } from "jsonc-parser";
 import { getProviderDefaults } from "./providers/registry.js";
 
 export const CONFIG_SCHEMA_VERSION = 2;
+export const DEFAULT_APP_LOCALE = "zh-CN";
+
+const SUPPORTED_APP_LOCALES = new Set(["zh-CN", "en"]);
+const LOCALIZED_DEFAULTS = {
+  "zh-CN": {
+    tagline: "克制而持续地在场",
+    tts: {
+      languageBoost: "Chinese",
+      voiceId: "Chinese (Mandarin)_Sweet_Lady"
+    }
+  },
+  en: {
+    tagline: "Quietly, always here",
+    tts: {
+      languageBoost: "English",
+      voiceId: "English (US)_Sweet_Girl"
+    }
+  }
+};
+
+const BUILT_IN_TAGLINES = new Set(
+  Object.values(LOCALIZED_DEFAULTS).map((entry) => entry.tagline)
+);
+const BUILT_IN_TTS_LANGUAGE_BOOSTS = new Set(
+  Object.values(LOCALIZED_DEFAULTS).map((entry) => entry.tts.languageBoost)
+);
+const BUILT_IN_TTS_VOICE_IDS = new Set(
+  Object.values(LOCALIZED_DEFAULTS).map((entry) => entry.tts.voiceId)
+);
 
 const defaultConfig = {
   app: {
     name: "Vela",
-    tagline: "克制而持续地在场",
+    locale: "",
+    tagline: LOCALIZED_DEFAULTS[DEFAULT_APP_LOCALE].tagline,
     onboarding: {
       completed: false
     },
@@ -71,8 +101,8 @@ const defaultConfig = {
     apiKeyEnv: "MINIMAX_API_KEY",
     model: "speech-2.8-turbo",
     wsUrl: "wss://api.minimaxi.com/ws/v1/t2a_v2",
-    languageBoost: "Chinese",
-    voiceId: "Chinese (Mandarin)_Sweet_Lady",
+    languageBoost: LOCALIZED_DEFAULTS[DEFAULT_APP_LOCALE].tts.languageBoost,
+    voiceId: LOCALIZED_DEFAULTS[DEFAULT_APP_LOCALE].tts.voiceId,
     voiceSettings: {
       speed: 1,
       volume: 1,
@@ -102,6 +132,30 @@ const defaultConfig = {
     assetPath: "avatars/eku/Eku_VRM_v1_0_0.vrm"
   }
 };
+
+function normalizeStoredLocale(value) {
+  const locale = String(value || "").trim();
+  return SUPPORTED_APP_LOCALES.has(locale) ? locale : "";
+}
+
+export function resolveLocale(value, fallback = DEFAULT_APP_LOCALE) {
+  const locale = normalizeStoredLocale(value);
+  return locale || fallback;
+}
+
+export function getLocaleDefaults(locale) {
+  return LOCALIZED_DEFAULTS[resolveLocale(locale)];
+}
+
+function resolveLocalizedDefault(value, localeDefault, builtInDefaults) {
+  const normalizedValue = String(value || "").trim();
+
+  if (!normalizedValue || builtInDefaults.has(normalizedValue)) {
+    return localeDefault;
+  }
+
+  return normalizedValue;
+}
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -139,6 +193,36 @@ function normalizeThinkingConfig(thinkingConfig = {}) {
       thinkingConfig?.budgetTokens,
       defaultConfig.llm.thinking.budgetTokens
     )
+  };
+}
+
+function normalizeAppConfig(appConfig = {}) {
+  const locale = normalizeStoredLocale(appConfig?.locale);
+  const localeDefaults = getLocaleDefaults(locale);
+  const windowConfig = isPlainObject(appConfig?.window) ? appConfig.window : {};
+
+  return {
+    name: String(appConfig?.name || defaultConfig.app.name).trim() || defaultConfig.app.name,
+    locale,
+    tagline: resolveLocalizedDefault(
+      appConfig?.tagline,
+      localeDefaults.tagline,
+      BUILT_IN_TAGLINES
+    ),
+    onboarding: {
+      ...defaultConfig.app.onboarding,
+      ...(isPlainObject(appConfig?.onboarding) ? appConfig.onboarding : {}),
+      completed: Boolean(appConfig?.onboarding?.completed)
+    },
+    window: {
+      width: normalizeNumber(windowConfig.width, defaultConfig.app.window.width),
+      height: normalizeNumber(windowConfig.height, defaultConfig.app.window.height),
+      minWidth: normalizeNumber(windowConfig.minWidth, defaultConfig.app.window.minWidth),
+      minHeight: normalizeNumber(
+        windowConfig.minHeight,
+        defaultConfig.app.window.minHeight
+      )
+    }
   };
 }
 
@@ -287,13 +371,14 @@ function normalizeAsrConfig(asrConfig = {}) {
   };
 }
 
-function normalizeTtsConfig(ttsConfig = {}, llmConfig = {}) {
+function normalizeTtsConfig(ttsConfig = {}, llmConfig = {}, locale = "") {
   const voiceSettings = isPlainObject(ttsConfig.voiceSettings)
     ? ttsConfig.voiceSettings
     : {};
   const audioSettings = isPlainObject(ttsConfig.audioSettings)
     ? ttsConfig.audioSettings
     : {};
+  const localeDefaults = getLocaleDefaults(locale);
 
   return {
     enabled: Boolean(ttsConfig.enabled),
@@ -306,8 +391,16 @@ function normalizeTtsConfig(ttsConfig = {}, llmConfig = {}) {
     ).trim(),
     model: String(ttsConfig.model || "speech-2.8-turbo").trim(),
     wsUrl: String(ttsConfig.wsUrl || "wss://api.minimaxi.com/ws/v1/t2a_v2").trim(),
-    languageBoost: String(ttsConfig.languageBoost || "Chinese").trim(),
-    voiceId: String(ttsConfig.voiceId || "Chinese (Mandarin)_Sweet_Lady").trim(),
+    languageBoost: resolveLocalizedDefault(
+      ttsConfig.languageBoost,
+      localeDefaults.tts.languageBoost,
+      BUILT_IN_TTS_LANGUAGE_BOOSTS
+    ),
+    voiceId: resolveLocalizedDefault(
+      ttsConfig.voiceId,
+      localeDefaults.tts.voiceId,
+      BUILT_IN_TTS_VOICE_IDS
+    ),
     voiceSettings: {
       speed: Number(voiceSettings.speed ?? 1),
       volume: Number(voiceSettings.volume ?? 1),
@@ -385,15 +478,17 @@ export async function loadConfig(rootDir, options = {}) {
     userConfigPath ? readJsoncConfig(userConfigPath) : Promise.resolve({})
   ]);
   const merged = deepMerge(deepMerge(defaultConfig, baseConfig), userConfig);
+  const normalizedApp = normalizeAppConfig(merged.app);
   const normalizedLlm = normalizeLlmConfig(merged.llm);
 
   return {
     ...merged,
+    app: normalizedApp,
     runtime: normalizeRuntimeConfig(merged.runtime),
     user: normalizeUserConfig(merged.user),
     llm: normalizedLlm,
     asr: normalizeAsrConfig(merged.asr),
-    tts: normalizeTtsConfig(merged.tts, normalizedLlm),
+    tts: normalizeTtsConfig(merged.tts, normalizedLlm, normalizedApp.locale),
     audio: normalizeAudioConfig(merged.audio),
     avatar: normalizeAvatarConfig(merged.avatar)
   };

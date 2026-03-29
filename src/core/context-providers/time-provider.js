@@ -1,14 +1,45 @@
-const DAY_OF_WEEK_LABELS = [
-  "星期日",
-  "星期一",
-  "星期二",
-  "星期三",
-  "星期四",
-  "星期五",
-  "星期六"
-];
+import { resolveLocale } from "../config.js";
 
-export function getTimeOfDayLabel(hour) {
+const DAY_OF_WEEK_LABELS = {
+  "zh-CN": ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"],
+  en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+};
+
+export function getTimeOfDayLabel(hour, locale = "zh-CN") {
+  const resolvedLocale = resolveLocale(locale);
+
+  if (resolvedLocale === "en") {
+    if (hour >= 0 && hour < 5) {
+      return "late night";
+    }
+
+    if (hour < 8) {
+      return "early morning";
+    }
+
+    if (hour < 11) {
+      return "morning";
+    }
+
+    if (hour < 13) {
+      return "midday";
+    }
+
+    if (hour < 18) {
+      return "afternoon";
+    }
+
+    if (hour < 20) {
+      return "early evening";
+    }
+
+    if (hour < 23) {
+      return "evening";
+    }
+
+    return "late night";
+  }
+
   if (hour >= 0 && hour < 5) {
     return "凌晨";
   }
@@ -40,7 +71,25 @@ export function getTimeOfDayLabel(hour) {
   return "深夜";
 }
 
-export function getSeasonLabel(month) {
+export function getSeasonLabel(month, locale = "zh-CN") {
+  const resolvedLocale = resolveLocale(locale);
+
+  if (resolvedLocale === "en") {
+    if (month >= 2 && month <= 4) {
+      return "spring";
+    }
+
+    if (month >= 5 && month <= 7) {
+      return "summer";
+    }
+
+    if (month >= 8 && month <= 10) {
+      return "autumn";
+    }
+
+    return "winter";
+  }
+
   if (month >= 2 && month <= 4) {
     return "春季";
   }
@@ -97,8 +146,10 @@ function getLastMessageAt(runtimeSession) {
 export function getTimeAwareness({
   now = new Date(),
   runtimeSession = null,
-  lastActiveAt = null
+  lastActiveAt = null,
+  locale = "zh-CN"
 } = {}) {
+  const resolvedLocale = resolveLocale(locale);
   const current = now instanceof Date ? now : new Date(now);
   const hour = current.getHours();
   const minute = current.getMinutes();
@@ -108,10 +159,10 @@ export function getTimeAwareness({
   return {
     hour,
     minute,
-    dayOfWeek: DAY_OF_WEEK_LABELS[dayIndex],
+    dayOfWeek: DAY_OF_WEEK_LABELS[resolvedLocale][dayIndex],
     isWorkday: dayIndex >= 1 && dayIndex <= 5,
-    timeOfDayLabel: getTimeOfDayLabel(hour),
-    season: getSeasonLabel(current.getMonth()),
+    timeOfDayLabel: getTimeOfDayLabel(hour, resolvedLocale),
+    season: getSeasonLabel(current.getMonth(), resolvedLocale),
     daysSinceLastChat: diffDays(lastActiveAt, current.toISOString()),
     minutesSinceLastMessage: diffMinutes(lastMessageAt, current.toISOString())
   };
