@@ -15,6 +15,7 @@ import {
   supportsMiniMaxProviderEmotion,
   supportsMiniMaxWhisper
 } from "./interaction-contract.js";
+import { resolveLocale } from "./config.js";
 import { normalizeThinkingMode } from "./providers/thinking-mode.js";
 
 const EMOTION_TO_DEFAULT_MOTION = {
@@ -33,6 +34,51 @@ const EMOTION_TO_DEFAULT_MOTION = {
 };
 
 const DEFAULT_INTENSITY = 0.6;
+
+const CAPTION_COPY = {
+  "zh-CN": {
+    thinking: "我先把语境和旧事接起来。",
+    speaking: {
+      concernedClose: "她靠近了一点，语气也放轻了。",
+      concernedWide: "她把语气放轻了，但没有躲开。",
+      affectionateClose: "她把这句话贴近了一点说出来。",
+      affectionateWide: "她把回应放得更柔了一些。",
+      playful: "她带了一点轻轻的逗趣，但没有出戏。",
+      angry: "她语气更硬了一点，但仍然克制。",
+      surprised: "她明显顿了一下，情绪先抬起来了。",
+      curious: "她把注意力往前收了一点，在认真追问。",
+      shy: "她有点不好意思，视线收了回去。",
+      determined: "她把态度立住了，说得很认真。",
+      default: "她已经把回应接上来了。"
+    },
+    listening: "我在，继续吧。",
+    idleVoice: "她在等下一句，话筒这边保持着。",
+    idleText: "在这里，等你把下一句慢慢说出来。"
+  },
+  en: {
+    thinking: "I'm pulling the thread and the older context back together first.",
+    speaking: {
+      concernedClose: "She leaned in a little, and her tone softened with it.",
+      concernedWide: "Her tone gentled, but she didn't step away.",
+      affectionateClose: "She let this line land a little closer.",
+      affectionateWide: "She answered in a softer way this time.",
+      playful: "There is a light edge of play in it, but it still stays grounded.",
+      angry: "Her tone turned firmer, but it stayed contained.",
+      surprised: "She paused for a beat, and the feeling rose before the words did.",
+      curious: "Her attention drew forward, like she was seriously following the thread.",
+      shy: "She pulled her gaze back a little, suddenly self-conscious.",
+      determined: "She set her footing and answered with real intent.",
+      default: "She has the reply in hand now."
+    },
+    listening: "I'm here. Keep going.",
+    idleVoice: "She's waiting for the next line, keeping the mic side open.",
+    idleText: "I'm here, waiting for the next line when you're ready."
+  }
+};
+
+function getCaptionCopy(locale = "zh-CN") {
+  return CAPTION_COPY[resolveLocale(locale)];
+}
 
 function normalizeIntensity(value, fallback = DEFAULT_INTENSITY) {
   const numericValue = Number(value);
@@ -315,58 +361,56 @@ function resolveTtsPreset({
   };
 }
 
-function buildCaption({ presence, emotion, camera, voiceModeEnabled }) {
+function buildCaption({ presence, emotion, camera, voiceModeEnabled, locale = "zh-CN" }) {
+  const copy = getCaptionCopy(locale);
+
   if (presence === "thinking") {
-    return "我先把语境和旧事接起来。";
+    return copy.thinking;
   }
 
   if (presence === "speaking") {
     if (emotion === "concerned") {
-      return camera === "close"
-        ? "她靠近了一点，语气也放轻了。"
-        : "她把语气放轻了，但没有躲开。";
+      return camera === "close" ? copy.speaking.concernedClose : copy.speaking.concernedWide;
     }
 
     if (emotion === "affectionate" || emotion === "whisper") {
       return camera === "close"
-        ? "她把这句话贴近了一点说出来。"
-        : "她把回应放得更柔了一些。";
+        ? copy.speaking.affectionateClose
+        : copy.speaking.affectionateWide;
     }
 
     if (emotion === "playful") {
-      return "她带了一点轻轻的逗趣，但没有出戏。";
+      return copy.speaking.playful;
     }
 
     if (emotion === "angry") {
-      return "她语气更硬了一点，但仍然克制。";
+      return copy.speaking.angry;
     }
 
     if (emotion === "surprised") {
-      return "她明显顿了一下，情绪先抬起来了。";
+      return copy.speaking.surprised;
     }
 
     if (emotion === "curious") {
-      return "她把注意力往前收了一点，在认真追问。";
+      return copy.speaking.curious;
     }
 
     if (emotion === "shy") {
-      return "她有点不好意思，视线收了回去。";
+      return copy.speaking.shy;
     }
 
     if (emotion === "determined") {
-      return "她把态度立住了，说得很认真。";
+      return copy.speaking.determined;
     }
 
-    return "她已经把回应接上来了。";
+    return copy.speaking.default;
   }
 
   if (presence === "listening") {
-    return "我在，继续吧。";
+    return copy.listening;
   }
 
-  return voiceModeEnabled
-    ? "她在等下一句，话筒这边保持着。"
-    : "在这里，等你把下一句慢慢说出来。";
+  return voiceModeEnabled ? copy.idleVoice : copy.idleText;
 }
 
 export function buildInteractionIntent({
@@ -426,7 +470,8 @@ export function resolveInteractionPlan({
   relationshipStage,
   lastActiveAt,
   history = {},
-  now = new Date()
+  now = new Date(),
+  locale = "zh-CN"
 }) {
   const safeRelationshipStage = sanitizeEnum(
     relationshipStage,
@@ -460,7 +505,8 @@ export function resolveInteractionPlan({
         presence,
         emotion: "calm",
         camera: "wide",
-        voiceModeEnabled
+        voiceModeEnabled,
+        locale
       }),
       historyPatch: {}
     };
@@ -490,7 +536,8 @@ export function resolveInteractionPlan({
         presence,
         emotion: "calm",
         camera: "wide",
-        voiceModeEnabled
+        voiceModeEnabled,
+        locale
       }),
       historyPatch: {}
     };
@@ -561,7 +608,8 @@ export function resolveInteractionPlan({
       presence,
       emotion,
       camera,
-      voiceModeEnabled
+      voiceModeEnabled,
+      locale
     }),
     historyPatch: {
       lastEmotion: emotion,

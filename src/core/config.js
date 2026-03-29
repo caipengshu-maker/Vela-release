@@ -4,6 +4,14 @@ import { parse } from "jsonc-parser";
 import { getProviderDefaults } from "./providers/registry.js";
 
 export const CONFIG_SCHEMA_VERSION = 2;
+export const DEFAULT_APP_LOCALE = "zh-CN";
+
+const SUPPORTED_APP_LOCALES = new Set(["zh-CN", "en"]);
+
+export function resolveLocale(value, fallback = DEFAULT_APP_LOCALE) {
+  const locale = String(value || "").trim();
+  return SUPPORTED_APP_LOCALES.has(locale) ? locale : fallback;
+}
 
 const defaultConfig = {
   app: {

@@ -2399,7 +2399,8 @@ export class VelaCore {
         await updateBehaviorPatternsIfNeeded({
           store: this.localStore,
           memoryStore: this.memoryStore,
-          turnIndex
+          turnIndex,
+          locale: this.config?.app?.locale
         });
       }
     } catch (error) {

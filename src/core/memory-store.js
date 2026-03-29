@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { resolveLocale } from "./config.js";
 import { generateReply } from "./provider.js";
 import { defaultMilestonesState, mergeMilestonesState } from "./milestones.js";
 
@@ -10,13 +11,64 @@ const FACTS_FILE = "memory/facts.jsonl";
 const SESSIONS_DIR = "memory/sessions";
 const EPISODES_DIR = "memory/episodes";
 
-const RELATIONSHIP_NOTE_PROMPT = `你在为一位长期聊天伴侣系统生成关系阶段备注。
-
+const RELATIONSHIP_NOTE_PROMPTS_V2 = {
+  "zh-CN": `你在为一位长期聊天伴侣系统生成关系阶段备注。
 只输出一句中文，不要引号，不要 JSON，不要解释。
 要求：
-- 15 到 30 个字
-- 语气克制、自然，不油腻
-- 描述双方当前关系感受，不要提系统、模型、阶段名、轮数`;
+- 15 到 30 个字。
+- 语气克制、自然，不油腻。
+- 描述双方当前的关系感受，不要提系统、模型、阶段名或轮数。`,
+  en: `You are writing a relationship-stage note for a long-term companion chat system.
+Output exactly one sentence in English. No quotes, no JSON, no explanation.
+Requirements:
+- Keep it to roughly 8 to 18 words.
+- The tone should be restrained, natural, and never cloying.
+- Describe how the relationship currently feels between the two people. Do not mention systems, models, stage names, or turn counts.`
+};
+
+const RELATIONSHIP_STAGE_DEFAULT_NOTES = {
+  "zh-CN": {
+    reserved: "还比较生疏，先保持礼貌和分寸。",
+    warm: "熟悉感在积累，靠近时依然克制而自然。",
+    close: "彼此更容易接上话，也更懂对方话里的重量。"
+  },
+  en: {
+    reserved: "You still feel a little new to each other. Stay polite, gentle, and measured.",
+    warm: "There is real familiarity now. Closer, but still restrained and easy.",
+    close: "You catch each other quickly now, and the closeness feels natural."
+  }
+};
+
+const BUILT_IN_RELATIONSHIP_NOTES = new Set(
+  Object.values(RELATIONSHIP_STAGE_DEFAULT_NOTES).flatMap((entry) =>
+    Object.values(entry)
+  )
+);
+
+function buildRelationshipNotePrompt(locale = "zh-CN") {
+  return RELATIONSHIP_NOTE_PROMPTS_V2[resolveLocale(locale)];
+}
+
+function getRelationshipNoteDefault(stage = "reserved", locale = "zh-CN") {
+  const resolvedLocale = resolveLocale(locale);
+  const noteMap = RELATIONSHIP_STAGE_DEFAULT_NOTES[resolvedLocale];
+
+  if (stage === "intimate") {
+    return noteMap.close;
+  }
+
+  return noteMap[stage] || noteMap.reserved;
+}
+
+function normalizeRelationshipNote(note, stage, locale = "zh-CN") {
+  const normalizedNote = String(note || "").trim();
+
+  if (!normalizedNote || BUILT_IN_RELATIONSHIP_NOTES.has(normalizedNote)) {
+    return getRelationshipNoteDefault(stage, locale);
+  }
+
+  return normalizedNote;
+}
 
 function defaultProfile() {
   return {
@@ -48,10 +100,10 @@ function defaultUserModel() {
   };
 }
 
-function defaultRelationship() {
+function defaultRelationship(locale = "zh-CN") {
   return {
     stage: "reserved",
-    note: "还比较生疏，先保持礼貌和分寸。",
+    note: getRelationshipNoteDefault("reserved", locale),
     sharedMoments: [],
     milestones: defaultMilestonesState()
   };
@@ -158,12 +210,15 @@ function mergeUserModel(userModel = {}) {
   };
 }
 
-function mergeRelationship(relationship = {}) {
-  const base = defaultRelationship();
+function mergeRelationship(relationship = {}, locale = "zh-CN") {
+  const base = defaultRelationship(locale);
+  const stage = String(relationship?.stage || base.stage).trim().toLowerCase() || base.stage;
 
   return {
     ...base,
     ...relationship,
+    stage,
+    note: normalizeRelationshipNote(relationship?.note, stage, locale),
     sharedMoments: Array.isArray(relationship.sharedMoments)
       ? relationship.sharedMoments
       : [],
@@ -254,7 +309,7 @@ function isHighConfidenceFact(fact) {
   return fact.confidence >= 0.7;
 }
 
-function formatFactLabel(entry) {
+function formatFactLabel(entry, locale = "zh-CN") {
   const key = String(entry?.key || "").trim();
   const value = String(entry?.value || "").trim();
 
@@ -262,7 +317,8 @@ function formatFactLabel(entry) {
     return value;
   }
 
-  return value.includes(key) ? value : `${key}：${value}`;
+  const separator = resolveLocale(locale) === "en" ? ": " : "：";
+  return value.includes(key) ? value : `${key}${separator}${value}`;
 }
 
 function upsertFactBucket(items, fact, limit) {
@@ -310,18 +366,8 @@ function downgradeRelationshipStage(stage) {
   }
 }
 
-function getFallbackRelationshipNote(stage) {
-  switch (stage) {
-    case "reserved":
-      return "还带着一点试探，但已经知道该怎么接住彼此。";
-    case "warm":
-      return "熟悉感在积累，靠近时依然克制而自然。";
-    case "close":
-    case "intimate":
-      return "彼此更容易接上话，也更懂对方话里的重量。";
-    default:
-      return defaultRelationship().note;
-  }
+function getFallbackRelationshipNote(stage, locale = "zh-CN") {
+  return getRelationshipNoteDefault(stage, locale);
 }
 
 export class MemoryStore {
@@ -347,7 +393,11 @@ export class MemoryStore {
       await this.store.writeJson(
         RELATIONSHIP_FILE,
         mergeRelationship(
-          await this.store.readJson(RELATIONSHIP_FILE, defaultRelationship())
+          await this.store.readJson(
+            RELATIONSHIP_FILE,
+            defaultRelationship(this.config?.app?.locale)
+          ),
+          this.config?.app?.locale
         )
       );
       await this.store.writeJson(
@@ -365,7 +415,11 @@ export class MemoryStore {
         await this.store.readJson(PROFILE_FILE, defaultProfile())
       );
       const relationship = mergeRelationship(
-        await this.store.readJson(RELATIONSHIP_FILE, defaultRelationship())
+        await this.store.readJson(
+          RELATIONSHIP_FILE,
+          defaultRelationship(this.config?.app?.locale)
+        ),
+        this.config?.app?.locale
       );
       const summaryIndex = await this.store.readJson(
         SUMMARY_INDEX_FILE,
@@ -388,7 +442,7 @@ export class MemoryStore {
       console.warn("load memory snapshot failed:", error?.message || error);
       return {
         profile: defaultProfile(),
-        relationship: defaultRelationship(),
+        relationship: defaultRelationship(this.config?.app?.locale),
         recentSummaries: [],
         bridgeSummary: null,
         openFollowUps: [],
@@ -432,7 +486,7 @@ export class MemoryStore {
     try {
       await this.store.writeJson(
         RELATIONSHIP_FILE,
-        mergeRelationship(relationship)
+        mergeRelationship(relationship, this.config?.app?.locale)
       );
     } catch (error) {
       console.warn("update relationship failed:", error?.message || error);
@@ -620,8 +674,12 @@ export class MemoryStore {
         ...profile,
         user: {
           ...profile.user,
-          preferences: nextPreferences.map(formatFactLabel),
-          notes: nextNotes.map(formatFactLabel)
+          preferences: nextPreferences.map((entry) =>
+            formatFactLabel(entry, this.config?.app?.locale)
+          ),
+          notes: nextNotes.map((entry) =>
+            formatFactLabel(entry, this.config?.app?.locale)
+          )
         }
       };
 
@@ -637,7 +695,11 @@ export class MemoryStore {
   async evaluateRelationship(episodes = []) {
     try {
       const relationship = mergeRelationship(
-        await this.store.readJson(RELATIONSHIP_FILE, defaultRelationship())
+        await this.store.readJson(
+          RELATIONSHIP_FILE,
+          defaultRelationship(this.config?.app?.locale)
+        ),
+        this.config?.app?.locale
       );
       const sourceEpisodes =
         Array.isArray(episodes) && episodes.length > 0
@@ -679,7 +741,7 @@ export class MemoryStore {
           recent10Emotional,
           recent30Emotional,
           latestEpisodes: sourceEpisodes.slice(0, 5)
-        })) || getFallbackRelationshipNote(nextStage);
+        })) || getFallbackRelationshipNote(nextStage, this.config?.app?.locale);
 
       const nextRelationship = {
         ...relationship,
@@ -705,7 +767,7 @@ export class MemoryStore {
   }) {
     try {
       const context = {
-        systemPrompt: RELATIONSHIP_NOTE_PROMPT,
+        systemPrompt: buildRelationshipNotePrompt(this.config?.app?.locale),
         messages: [
           {
             role: "user",

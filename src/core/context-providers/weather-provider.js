@@ -1,27 +1,29 @@
+import { resolveLocale } from "../config.js";
+
 const WEATHER_CACHE_TTL_MS = 30 * 60 * 1000;
 const LOCATION_CACHE_TTL_MS = 60 * 60 * 1000;
 
 const CITY_COORDINATES = {
   shanghai: { label: "Shanghai", latitude: 31.2304, longitude: 121.4737 },
-  "\u4e0a\u6d77": { label: "Shanghai", latitude: 31.2304, longitude: 121.4737 },
+  上海: { label: "Shanghai", latitude: 31.2304, longitude: 121.4737 },
   beijing: { label: "Beijing", latitude: 39.9042, longitude: 116.4074 },
-  "\u5317\u4eac": { label: "Beijing", latitude: 39.9042, longitude: 116.4074 },
+  北京: { label: "Beijing", latitude: 39.9042, longitude: 116.4074 },
   shenzhen: { label: "Shenzhen", latitude: 22.5431, longitude: 114.0579 },
-  "\u6df1\u5733": { label: "Shenzhen", latitude: 22.5431, longitude: 114.0579 },
+  深圳: { label: "Shenzhen", latitude: 22.5431, longitude: 114.0579 },
   guangzhou: { label: "Guangzhou", latitude: 23.1291, longitude: 113.2644 },
-  "\u5e7f\u5dde": { label: "Guangzhou", latitude: 23.1291, longitude: 113.2644 },
+  广州: { label: "Guangzhou", latitude: 23.1291, longitude: 113.2644 },
   hangzhou: { label: "Hangzhou", latitude: 30.2741, longitude: 120.1551 },
-  "\u676d\u5dde": { label: "Hangzhou", latitude: 30.2741, longitude: 120.1551 },
+  杭州: { label: "Hangzhou", latitude: 30.2741, longitude: 120.1551 },
   chengdu: { label: "Chengdu", latitude: 30.5728, longitude: 104.0668 },
-  "\u6210\u90fd": { label: "Chengdu", latitude: 30.5728, longitude: 104.0668 },
+  成都: { label: "Chengdu", latitude: 30.5728, longitude: 104.0668 },
   chongqing: { label: "Chongqing", latitude: 29.4316, longitude: 106.9123 },
-  "\u91cd\u5e86": { label: "Chongqing", latitude: 29.4316, longitude: 106.9123 },
+  重庆: { label: "Chongqing", latitude: 29.4316, longitude: 106.9123 },
   wuhan: { label: "Wuhan", latitude: 30.5928, longitude: 114.3055 },
-  "\u6b66\u6c49": { label: "Wuhan", latitude: 30.5928, longitude: 114.3055 },
+  武汉: { label: "Wuhan", latitude: 30.5928, longitude: 114.3055 },
   xian: { label: "Xi'an", latitude: 34.3416, longitude: 108.9398 },
-  "\u897f\u5b89": { label: "Xi'an", latitude: 34.3416, longitude: 108.9398 },
+  西安: { label: "Xi'an", latitude: 34.3416, longitude: 108.9398 },
   nanjing: { label: "Nanjing", latitude: 32.0603, longitude: 118.7969 },
-  "\u5357\u4eac": { label: "Nanjing", latitude: 32.0603, longitude: 118.7969 }
+  南京: { label: "Nanjing", latitude: 32.0603, longitude: 118.7969 }
 };
 
 const weatherCache = new Map();
@@ -68,40 +70,78 @@ function shouldUseCache(entry) {
   return Date.now() - entry.cachedAt < WEATHER_CACHE_TTL_MS;
 }
 
-function mapWeatherCodeToCondition(code) {
+function mapWeatherCodeToCondition(code, locale = "zh-CN") {
+  const resolvedLocale = resolveLocale(locale);
+
+  if (resolvedLocale === "en") {
+    if (code === 0) {
+      return "clear";
+    }
+
+    if ([1, 2].includes(code)) {
+      return "partly cloudy";
+    }
+
+    if (code === 3) {
+      return "overcast";
+    }
+
+    if ([45, 48].includes(code)) {
+      return "foggy";
+    }
+
+    if ([51, 53, 55, 56, 57].includes(code)) {
+      return "drizzle";
+    }
+
+    if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) {
+      return "rain";
+    }
+
+    if ([71, 73, 75, 77, 85, 86].includes(code)) {
+      return "snow";
+    }
+
+    if ([95, 96, 99].includes(code)) {
+      return "thunderstorm";
+    }
+
+    return "changing weather";
+  }
+
   if (code === 0) {
-    return "\u6674";
+    return "晴";
   }
 
   if ([1, 2].includes(code)) {
-    return "\u591a\u4e91";
+    return "多云";
   }
 
   if (code === 3) {
-    return "\u9634";
+    return "阴";
   }
 
   if ([45, 48].includes(code)) {
-    return "\u96fe";
+    return "雾";
   }
 
   if ([51, 53, 55, 56, 57].includes(code)) {
-    return "\u6bdb\u6bdb\u96e8";
+    return "毛毛雨";
   }
 
   if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) {
-    return "\u4e0b\u96e8";
+    return "下雨";
   }
 
   if ([71, 73, 75, 77, 85, 86].includes(code)) {
-    return "\u4e0b\u96ea";
+    return "下雪";
   }
 
   if ([95, 96, 99].includes(code)) {
-    return "\u96f7\u96e8";
+    return "雷雨";
   }
 
-  return "\u5929\u6c14\u53d8\u5316";
+  return "天气变化";
 }
 
 function isRainingCode(code) {
@@ -172,7 +212,8 @@ async function fetchWeatherAtCoordinates({
   longitude,
   cacheKey,
   cityLabel = null,
-  fetchImpl
+  fetchImpl,
+  locale = "zh-CN"
 }) {
   const cached = weatherCache.get(cacheKey);
 
@@ -210,7 +251,7 @@ async function fetchWeatherAtCoordinates({
     temperature: Number.isFinite(Number(current.temperature_2m))
       ? Number(current.temperature_2m)
       : null,
-    condition: mapWeatherCodeToCondition(weatherCode),
+    condition: mapWeatherCodeToCondition(weatherCode, locale),
     isRaining:
       Number(current.rain || 0) > 0 ||
       Number(current.precipitation || 0) > 0 ||
@@ -236,13 +277,15 @@ export async function getWeatherAwareness({
   config,
   persistedState = null,
   fetchImpl = globalThis.fetch,
-  navigatorImpl = globalThis.navigator
+  navigatorImpl = globalThis.navigator,
+  locale = "zh-CN"
 } = {}) {
   try {
     if (typeof fetchImpl !== "function") {
       return null;
     }
 
+    const resolvedLocale = resolveLocale(locale);
     const browserLocation = await getLocationFromBrowser({
       persistedState,
       navigatorImpl
@@ -253,7 +296,8 @@ export async function getWeatherAwareness({
         latitude: browserLocation.lat,
         longitude: browserLocation.lon,
         cacheKey: `location:${locationCacheKey(browserLocation)}`,
-        fetchImpl
+        fetchImpl,
+        locale: resolvedLocale
       });
     }
 
@@ -269,7 +313,8 @@ export async function getWeatherAwareness({
       longitude: cityEntry.longitude,
       cacheKey: `city:${cityEntry.label}`,
       cityLabel: cityEntry.label,
-      fetchImpl
+      fetchImpl,
+      locale: resolvedLocale
     });
   } catch {
     return null;
