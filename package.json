@@ -1,76 +1,76 @@
-{
-  "name": "vela",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Vela companion shell MVP",
-  "type": "module",
-  "main": "electron/main.js",
-  "scripts": {
-    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
-    "dev:renderer": "vite",
-    "dev:electron": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
-    "build": "vite build",
-    "start": "npm run dev",
-    "start:dist": "electron .",
-    "smoke": "npm run build && electron . --smoke-test",
-    "build:exe": "npm run build && electron-builder --win nsis",
-    "verify:core": "node scripts/verify-core.mjs",
-    "verify:providers": "node scripts/verify-provider-adapters.mjs",
-    "verify:m2": "node scripts/verify-m2.mjs"
-  },
-  "dependencies": {
-    "@met4citizen/headaudio": "^0.1.0",
-    "@pixiv/three-vrm": "^3.5.1",
-    "jsonc-parser": "^3.3.1",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "three": "^0.183.2",
-    "vrm-mixamo-retarget": "^1.0.3",
-    "ws": "^8.19.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^6.0.1",
-    "canvas": "^3.2.2",
-    "concurrently": "^9.2.1",
-    "cross-env": "^10.1.0",
-    "electron": "^41.0.3",
-    "electron-builder": "^26.8.1",
-    "vite": "^8.0.0",
-    "wait-on": "^9.0.4"
-  },
-  "build": {
-    "appId": "com.vela.desktop",
-    "productName": "Vela",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "src/core/**/*",
-      "package.json",
-      "vela.jsonc"
-    ],
-    "extraResources": [
-      {
-        "from": "assets/avatars",
-        "to": "assets/avatars",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
-    "win": {
-      "target": [
-        "nsis"
-      ],
-      "artifactName": "${productName}-${version}-Setup.${ext}",
-      "signAndEditExecutable": false
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true
-    }
-  }
+﻿{
+    "name":  "vela",
+    "version":  "0.3.0",
+    "private":  true,
+    "description":  "Vela companion shell MVP",
+    "type":  "module",
+    "main":  "electron/main.js",
+    "scripts":  {
+                    "dev":  "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+                    "dev:renderer":  "vite",
+                    "dev:electron":  "wait-on tcp:5173 \u0026\u0026 cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
+                    "build":  "vite build",
+                    "start":  "npm run dev",
+                    "start:dist":  "electron .",
+                    "smoke":  "npm run build \u0026\u0026 electron . --smoke-test",
+                    "build:exe":  "npm run build \u0026\u0026 electron-builder --win nsis",
+                    "verify:core":  "node scripts/verify-core.mjs",
+                    "verify:providers":  "node scripts/verify-provider-adapters.mjs",
+                    "verify:m2":  "node scripts/verify-m2.mjs"
+                },
+    "dependencies":  {
+                         "@met4citizen/headaudio":  "^0.1.0",
+                         "@pixiv/three-vrm":  "^3.5.1",
+                         "jsonc-parser":  "^3.3.1",
+                         "react":  "^19.2.4",
+                         "react-dom":  "^19.2.4",
+                         "three":  "^0.183.2",
+                         "vrm-mixamo-retarget":  "^1.0.3",
+                         "ws":  "^8.19.0"
+                     },
+    "devDependencies":  {
+                            "@vitejs/plugin-react":  "^6.0.1",
+                            "canvas":  "^3.2.2",
+                            "concurrently":  "^9.2.1",
+                            "cross-env":  "^10.1.0",
+                            "electron":  "^41.0.3",
+                            "electron-builder":  "^26.8.1",
+                            "vite":  "^8.0.0",
+                            "wait-on":  "^9.0.4"
+                        },
+    "build":  {
+                  "appId":  "com.vela.desktop",
+                  "productName":  "Vela",
+                  "directories":  {
+                                      "output":  "release"
+                                  },
+                  "files":  [
+                                "dist/**/*",
+                                "electron/**/*",
+                                "src/core/**/*",
+                                "package.json",
+                                "vela.jsonc"
+                            ],
+                  "extraResources":  [
+                                         {
+                                             "from":  "assets/avatars",
+                                             "to":  "assets/avatars",
+                                             "filter":  [
+                                                            "**/*"
+                                                        ]
+                                         }
+                                     ],
+                  "win":  {
+                              "target":  [
+                                             "nsis"
+                                         ],
+                              "artifactName":  "${productName}-${version}-Setup.${ext}",
+                              "signAndEditExecutable":  false
+                          },
+                  "nsis":  {
+                               "oneClick":  false,
+                               "perMachine":  false,
+                               "allowToChangeInstallationDirectory":  true
+                           }
+              }
 }
