@@ -63,6 +63,8 @@ export class VisemeDriver {
     this.amplitudeAnalyser = null;
     this.sourceNode = null;
     this.delayNode = null;
+    this.gainNode = null;
+    this.outputGain = 1;
     this.headAudio = null;
     this.headAudioReadyPromise = null;
     this.headAudioFailed = false;
@@ -100,8 +102,11 @@ export class VisemeDriver {
 
       this.delayNode = this.audioContext.createDelay(1);
       this.delayNode.delayTime.value = 0;
+      this.gainNode = this.audioContext.createGain();
+      this.gainNode.gain.value = this.outputGain;
       this.sourceNode.connect(this.delayNode);
-      this.delayNode.connect(this.audioContext.destination);
+      this.delayNode.connect(this.gainNode);
+      this.gainNode.connect(this.audioContext.destination);
     }
 
     if (this.audioContext.state === "suspended") {
@@ -208,6 +213,17 @@ export class VisemeDriver {
     }
   }
 
+  setOutputGain(value) {
+    const numericValue = Number(value);
+    this.outputGain = Number.isFinite(numericValue)
+      ? Math.max(0, Math.min(1, numericValue))
+      : 1;
+
+    if (this.gainNode) {
+      this.gainNode.gain.value = this.outputGain;
+    }
+  }
+
   _buildVisemeWeights() {
     const morphWeights = {};
 
@@ -285,6 +301,15 @@ export class VisemeDriver {
         // Ignore repeated disconnects.
       }
       this.delayNode = null;
+    }
+
+    if (this.gainNode) {
+      try {
+        this.gainNode.disconnect();
+      } catch {
+        // Ignore repeated disconnects.
+      }
+      this.gainNode = null;
     }
 
     if (this.amplitudeAnalyser) {

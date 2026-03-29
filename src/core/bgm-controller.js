@@ -1,350 +1,391 @@
-import { mapUserVolumeToGain } from "./audio-volume.js";
-
+const DEFAULT_VOLUME = 0.42;
 const DUCK_RATIO = 0.2;
-const DUCK_FADE_MS = 300;
-const UNDUCK_FADE_MS = 500;
-const CROSSFADE_MS = 800;
+const CROSSFADE_MS = 650;
 
-function clampVolume(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return 1;
+function toPlayableUrl(source) {
+  if (typeof source === "string" && source.length > 0) {
+    return { url: source, revoke() {} };
   }
 
-  return Math.min(1, Math.max(0, numeric));
+  let blob = null;
+
+  if (source instanceof Blob) {
+    blob = source;
+  } else if (source instanceof ArrayBuffer) {
+    blob = new Blob([source], { type: "audio/mpeg" });
+  } else if (ArrayBuffer.isView(source)) {
+    blob = new Blob(
+      [source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength)],
+      { type: "audio/mpeg" }
+    );
+  }
+
+  if (!blob) {
+    return null;
+  }
+
+  const url = URL.createObjectURL(blob);
+  return {
+    url,
+    revoke() {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // Ignore stale object URL cleanup errors.
+      }
+    }
+  };
+}
+
+function getTimestamp() {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
 export class BgmController {
   constructor() {
-    this.audioContext = null;
-    this.masterGain = null;
-    this.current = null;
-    this.userVolume = 0.42;
-    this.ducked = false;
-    this.enabled = true;
-    this.unlocked = false;
-    this.unlockHandler = null;
-    this.activeTrackUrl = "";
+    this._currentTrack = null;
+    this._outgoingTrack = null;
+    this._enabled = true;
+    this._ducked = false;
+    this._unlocked = false;
+    this._unlockHandler = null;
+    this._loadId = 0;
+    this._fadeFrame = null;
+    this._fadeToken = 0;
+    this._fadeProgress = 0;
   }
 
-  ensureContext() {
-    if (typeof window === "undefined") {
+  _createAudioElement() {
+    if (typeof document === "undefined") {
       return null;
     }
 
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) {
+    const audio = document.createElement("audio");
+    audio.loop = true;
+    audio.preload = "auto";
+    audio.volume = 0;
+    return audio;
+  }
+
+  _createTrack(playable, label) {
+    const audio = this._createAudioElement();
+    if (!audio) {
       return null;
     }
 
-    if (!this.audioContext) {
-      this.audioContext = new AudioContextClass();
-      this.masterGain = this.audioContext.createGain();
-      this.masterGain.gain.value = this.enabled ? this.userVolume : 0;
-      this.masterGain.connect(this.audioContext.destination);
-    }
+    audio.src = playable.url;
 
-    return this.audioContext;
+    return {
+      audio,
+      label,
+      revoke: playable.revoke
+    };
   }
 
-  getCurrentTargetVolume() {
-    if (!this.enabled) {
+  _pauseTrack(track) {
+    try {
+      track?.audio?.pause();
+    } catch {
+      // Ignore pause failures from a torn-down element.
+    }
+  }
+
+  _destroyTrack(track) {
+    if (!track) {
+      return;
+    }
+
+    this._pauseTrack(track);
+
+    try {
+      track.audio.removeAttribute("src");
+      track.audio.load();
+    } catch {
+      // Ignore cleanup failures from a torn-down element.
+    }
+
+    track.revoke?.();
+  }
+
+  _getTargetVolume() {
+    if (!this._enabled) {
       return 0;
     }
 
-    return this.ducked ? this.userVolume * DUCK_RATIO : this.userVolume;
+    return this._ducked ? DEFAULT_VOLUME * DUCK_RATIO : DEFAULT_VOLUME;
   }
 
-  applyGain(targetVolume, fadeMs = 0) {
-    if (!this.masterGain || !this.audioContext) {
+  _applyTrackVolume(track, factor = 1) {
+    if (!track?.audio) {
       return;
     }
 
-    const now = this.audioContext.currentTime;
-    const target = clampVolume(targetVolume);
-    this.masterGain.gain.cancelScheduledValues(now);
-    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-
-    if (fadeMs > 0) {
-      this.masterGain.gain.linearRampToValueAtTime(target, now + fadeMs / 1000);
-      return;
-    }
-
-    this.masterGain.gain.setValueAtTime(target, now);
+    const volume = Math.max(0, Math.min(1, this._getTargetVolume() * factor));
+    track.audio.volume = volume;
+    track.audio.muted = volume <= 0;
   }
 
-  async unlock() {
-    const context = this.ensureContext();
-    if (!context) {
+  _syncTrackVolumes() {
+    if (this._outgoingTrack) {
+      this._applyTrackVolume(this._outgoingTrack, 1 - this._fadeProgress);
+    }
+
+    if (this._currentTrack) {
+      this._applyTrackVolume(
+        this._currentTrack,
+        this._outgoingTrack ? this._fadeProgress : 1
+      );
+    }
+  }
+
+  _cancelCrossfade() {
+    if (this._fadeFrame) {
+      window.cancelAnimationFrame(this._fadeFrame);
+      this._fadeFrame = null;
+    }
+
+    this._fadeToken += 1;
+    this._fadeProgress = 0;
+
+    if (this._outgoingTrack) {
+      this._destroyTrack(this._outgoingTrack);
+      this._outgoingTrack = null;
+    }
+
+    this._syncTrackVolumes();
+  }
+
+  async _playTrack(track) {
+    if (!track?.audio?.src || !this._enabled) {
       return false;
-    }
-
-    if (context.state === "suspended") {
-      try {
-        await context.resume();
-      } catch {
-        return false;
-      }
-    }
-
-    this.unlocked = context.state === "running";
-    if (this.unlocked) {
-      this.applyGain(this.getCurrentTargetVolume(), 0);
-    }
-    return this.unlocked;
-  }
-
-  bindFirstUserGesture() {
-    if (typeof window === "undefined" || this.unlockHandler) {
-      return;
-    }
-
-    this.unlockHandler = () => {
-      void this.unlock().finally(() => {
-        if (!this.unlocked) {
-          return;
-        }
-
-        ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
-          window.removeEventListener(eventName, this.unlockHandler);
-        });
-        this.unlockHandler = null;
-      });
-    };
-
-    ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
-      window.addEventListener(eventName, this.unlockHandler, { passive: true });
-    });
-  }
-
-  async fetchBuffer(trackUrl) {
-    const context = this.ensureContext();
-    if (!context || !trackUrl) {
-      return null;
     }
 
     try {
-      const response = await fetch(trackUrl, { cache: "force-cache" });
-      if (!response.ok) {
-        return null;
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      if (!arrayBuffer.byteLength) {
-        return null;
-      }
-
-      return await context.decodeAudioData(arrayBuffer.slice(0));
-    } catch {
-      return null;
-    }
-  }
-
-  createTrackNode(buffer) {
-    if (!this.audioContext || !this.masterGain || !buffer) {
-      return null;
-    }
-
-    const source = this.audioContext.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-
-    const gainNode = this.audioContext.createGain();
-    gainNode.gain.value = 1;
-    source.connect(gainNode);
-    gainNode.connect(this.masterGain);
-    source.start();
-
-    return { source, gainNode };
-  }
-
-  async loadAndPlay(trackUrl) {
-    this.activeTrackUrl = String(trackUrl || "").trim();
-    if (!this.activeTrackUrl) {
-      return false;
-    }
-
-    this.ensureContext();
-    this.bindFirstUserGesture();
-    await this.unlock();
-
-    const buffer = await this.fetchBuffer(this.activeTrackUrl);
-    if (!buffer) {
-      return false;
-    }
-
-    const track = this.createTrackNode(buffer);
-    if (!track) {
-      return false;
-    }
-
-    this.current?.source?.stop();
-    this.current = track;
-    this.applyGain(this.getCurrentTargetVolume(), 0);
-    return true;
-  }
-
-  async loadFromBuffer(arrayBuffer, label = "") {
-    this.ensureContext();
-    this.bindFirstUserGesture();
-    await this.unlock();
-
-    if (!this.audioContext || !arrayBuffer?.byteLength) {
-      return false;
-    }
-
-    let audioBuffer;
-    try {
-      audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer.slice(0));
+      await track.audio.play();
+      return true;
     } catch {
       return false;
     }
-
-    const nextTrack = this.createTrackNode(audioBuffer);
-    if (!nextTrack) {
-      return false;
-    }
-
-    const previous = this.current;
-    if (previous?.gainNode && this.audioContext) {
-      const now = this.audioContext.currentTime;
-      nextTrack.gainNode.gain.setValueAtTime(0, now);
-      nextTrack.gainNode.gain.linearRampToValueAtTime(1, now + CROSSFADE_MS / 1000);
-      previous.gainNode.gain.cancelScheduledValues(now);
-      previous.gainNode.gain.setValueAtTime(previous.gainNode.gain.value, now);
-      previous.gainNode.gain.linearRampToValueAtTime(0, now + CROSSFADE_MS / 1000);
-      window.setTimeout(() => {
-        try { previous.source.stop(); } catch { /* noop */ }
-      }, CROSSFADE_MS + 80);
-    } else {
-      this.current?.source?.stop();
-    }
-
-    this.current = nextTrack;
-    this.activeTrackUrl = label;
-    this.applyGain(this.getCurrentTargetVolume(), 0);
-    return true;
   }
 
-  async switchTrack(newUrl) {
-    const nextUrl = String(newUrl || "").trim();
-    if (!nextUrl) {
-      return false;
-    }
+  async _swapTrack(nextTrack) {
+    this._cancelCrossfade();
 
-    if (nextUrl === this.activeTrackUrl && this.current) {
+    if (!this._currentTrack) {
+      this._currentTrack = nextTrack;
+      this._syncTrackVolumes();
+
+      if (this._enabled) {
+        await this._playTrack(nextTrack);
+      }
+
       return true;
     }
 
-    this.activeTrackUrl = nextUrl;
-    this.ensureContext();
-    this.bindFirstUserGesture();
-    await this.unlock();
+    if (!this._enabled || this._currentTrack.audio.paused) {
+      this._destroyTrack(this._currentTrack);
+      this._currentTrack = nextTrack;
+      this._syncTrackVolumes();
+      if (this._enabled) {
+        await this._playTrack(nextTrack);
+      }
+      return true;
+    }
 
-    const buffer = await this.fetchBuffer(nextUrl);
-    if (!buffer) {
+    const outgoingTrack = this._currentTrack;
+    this._outgoingTrack = outgoingTrack;
+    this._currentTrack = nextTrack;
+    this._fadeProgress = 0;
+    this._syncTrackVolumes();
+
+    const started = await this._playTrack(nextTrack);
+    if (!started) {
+      this._destroyTrack(nextTrack);
+      this._currentTrack = outgoingTrack;
+      this._outgoingTrack = null;
+      this._syncTrackVolumes();
       return false;
     }
 
-    const nextTrack = this.createTrackNode(buffer);
-    if (!nextTrack || !this.audioContext) {
-      return false;
-    }
+    const fadeToken = ++this._fadeToken;
+    const startedAt = getTimestamp();
 
-    const now = this.audioContext.currentTime;
-    nextTrack.gainNode.gain.setValueAtTime(0, now);
-    nextTrack.gainNode.gain.linearRampToValueAtTime(1, now + CROSSFADE_MS / 1000);
-
-    const previous = this.current;
-    if (previous?.gainNode) {
-      previous.gainNode.gain.cancelScheduledValues(now);
-      previous.gainNode.gain.setValueAtTime(previous.gainNode.gain.value, now);
-      previous.gainNode.gain.linearRampToValueAtTime(0, now + CROSSFADE_MS / 1000);
-      window.setTimeout(() => {
-        try {
-          previous.source.stop();
-        } catch {
-          // noop
+    await new Promise((resolve) => {
+      const step = (frameAt) => {
+        if (fadeToken !== this._fadeToken) {
+          resolve();
+          return;
         }
-      }, CROSSFADE_MS + 80);
-    }
 
-    this.current = nextTrack;
-    this.applyGain(this.getCurrentTargetVolume(), 0);
+        const elapsed = frameAt - startedAt;
+        this._fadeProgress = Math.max(0, Math.min(1, elapsed / CROSSFADE_MS));
+        this._syncTrackVolumes();
+
+        if (this._fadeProgress >= 1) {
+          this._fadeFrame = null;
+          this._destroyTrack(outgoingTrack);
+          if (this._outgoingTrack === outgoingTrack) {
+            this._outgoingTrack = null;
+          }
+          this._fadeProgress = 0;
+          this._syncTrackVolumes();
+          resolve();
+          return;
+        }
+
+        this._fadeFrame = window.requestAnimationFrame(step);
+      };
+
+      this._fadeFrame = window.requestAnimationFrame(step);
+    });
+
     return true;
   }
 
-  pause() {
-    if (!this.audioContext) {
+  async _loadPlayable(playable, label) {
+    const nextTrack = this._createTrack(playable, label);
+    if (!nextTrack) {
+      playable.revoke();
+      return false;
+    }
+
+    return this._swapTrack(nextTrack);
+  }
+
+  bindFirstUserGesture() {
+    if (typeof window === "undefined" || this._unlockHandler) {
       return;
     }
 
-    void this.audioContext.suspend();
+    this._unlockHandler = () => {
+      this._unlocked = true;
+      void this.play();
+      void this._playTrack(this._outgoingTrack);
+
+      ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+        window.removeEventListener(eventName, this._unlockHandler);
+      });
+      this._unlockHandler = null;
+    };
+
+    ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+      window.addEventListener(eventName, this._unlockHandler, { passive: true });
+    });
+  }
+
+  isCurrentTrack(label) {
+    const normalized = String(label || "").trim();
+    return Boolean(normalized) && normalized === this._currentTrack?.label;
+  }
+
+  async loadFromBuffer(arrayBuffer, label = "") {
+    const normalized = String(label || "").trim();
+
+    if (this.isCurrentTrack(normalized)) {
+      return true;
+    }
+
+    const myLoadId = ++this._loadId;
+    const playable = toPlayableUrl(arrayBuffer);
+    if (!playable) {
+      return false;
+    }
+
+    if (this._loadId !== myLoadId) {
+      playable.revoke();
+      return false;
+    }
+
+    return this._loadPlayable(playable, normalized);
+  }
+
+  async loadAndPlay(trackUrl) {
+    const normalized = String(trackUrl || "").trim();
+    if (!normalized) {
+      return false;
+    }
+
+    if (this.isCurrentTrack(normalized)) {
+      return this.play();
+    }
+
+    const myLoadId = ++this._loadId;
+    if (this._loadId !== myLoadId) {
+      return false;
+    }
+
+    return this._loadPlayable(toPlayableUrl(normalized), normalized);
+  }
+
+  async switchTrack(trackUrl) {
+    return this.loadAndPlay(trackUrl);
+  }
+
+  stop() {
+    this._cancelCrossfade();
+    this._pauseTrack(this._currentTrack);
+    this._syncTrackVolumes();
+  }
+
+  pause() {
+    this.stop();
+  }
+
+  async play() {
+    if (!this._currentTrack) {
+      return false;
+    }
+
+    this._syncTrackVolumes();
+    return this._playTrack(this._currentTrack);
   }
 
   async resume() {
-    if (!this.audioContext) {
-      return false;
-    }
-
-    try {
-      await this.audioContext.resume();
-      this.unlocked = this.audioContext.state === "running";
-      this.applyGain(this.getCurrentTargetVolume(), 0);
-      return this.unlocked;
-    } catch {
-      return false;
-    }
-  }
-
-  setVolume(volume) {
-    this.userVolume = mapUserVolumeToGain(clampVolume(volume));
-    this.applyGain(this.getCurrentTargetVolume(), 160);
+    return this.play();
   }
 
   duck() {
-    this.ducked = true;
-    this.applyGain(this.getCurrentTargetVolume(), DUCK_FADE_MS);
+    this._ducked = true;
+    this._syncTrackVolumes();
   }
 
   unduck() {
-    this.ducked = false;
-    this.applyGain(this.getCurrentTargetVolume(), UNDUCK_FADE_MS);
+    this._ducked = false;
+    this._syncTrackVolumes();
   }
 
   setEnabled(enabled) {
-    this.enabled = Boolean(enabled);
-    this.applyGain(this.getCurrentTargetVolume(), 220);
+    this._enabled = Boolean(enabled);
+
+    if (!this._enabled) {
+      this.stop();
+      return;
+    }
+
+    this._syncTrackVolumes();
+  }
+
+  async unlock() {
+    this._unlocked = true;
+    this.bindFirstUserGesture();
+    return true;
+  }
+
+  ensureContext() {
+    return null;
   }
 
   async dispose() {
-    if (typeof window !== "undefined" && this.unlockHandler) {
+    if (typeof window !== "undefined" && this._unlockHandler) {
       ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
-        window.removeEventListener(eventName, this.unlockHandler);
+        window.removeEventListener(eventName, this._unlockHandler);
       });
-      this.unlockHandler = null;
+      this._unlockHandler = null;
     }
 
-    if (this.current?.source) {
-      try {
-        this.current.source.stop();
-      } catch {
-        // noop
-      }
-    }
-
-    this.current = null;
-
-    if (this.audioContext) {
-      try {
-        await this.audioContext.close();
-      } catch {
-        // noop
-      }
-    }
-
-    this.audioContext = null;
-    this.masterGain = null;
-    this.unlocked = false;
+    this._cancelCrossfade();
+    this._destroyTrack(this._currentTrack);
+    this._currentTrack = null;
+    this._unlocked = false;
   }
 }

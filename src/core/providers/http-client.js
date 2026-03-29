@@ -13,11 +13,22 @@ function mergeHeaders(...headerSets) {
     }
 
     for (const [key, value] of Object.entries(headerSet)) {
-      if (value === null || value === undefined || value === "") {
+      const normalizedValue = Array.isArray(value)
+        ? value.join(",")
+        : value === null || value === undefined
+          ? ""
+          : String(value);
+
+      const trimmedValue = normalizedValue.trim();
+      const isBlankBearerHeader =
+        String(key).trim().toLowerCase() === "authorization" &&
+        /^bearer$/i.test(trimmedValue);
+
+      if (!trimmedValue || isBlankBearerHeader) {
         continue;
       }
 
-      headers[key] = Array.isArray(value) ? value.join(",") : String(value);
+      headers[key] = normalizedValue;
     }
   }
 
@@ -60,7 +71,8 @@ async function createRequest({
   config,
   requestTuning,
   fetchImpl,
-  stream = false
+  stream = false,
+  signal = null
 }) {
   if (typeof fetchImpl !== "function") {
     throw new Error("Global fetch is not available in this runtime");
@@ -87,6 +99,23 @@ async function createRequest({
 
   const controller =
     typeof AbortController === "function" ? new AbortController() : null;
+  const cleanupTasks = [];
+
+  if (controller && signal) {
+    const abortFromSignal = () => {
+      controller.abort(signal.reason || new Error("llm-request-cancelled"));
+    };
+
+    if (signal.aborted) {
+      abortFromSignal();
+    } else if (typeof signal.addEventListener === "function") {
+      signal.addEventListener("abort", abortFromSignal, { once: true });
+      cleanupTasks.push(() => {
+        signal.removeEventListener("abort", abortFromSignal);
+      });
+    }
+  }
+
   const timeoutId = controller
     ? setTimeout(() => {
         controller.abort(new Error("LLM request timed out"));
@@ -100,11 +129,36 @@ async function createRequest({
       method: "POST",
       headers,
       body: JSON.stringify(request.body),
-      ...(controller ? { signal: controller.signal } : {})
+      ...((controller || signal)
+        ? { signal: controller ? controller.signal : signal }
+        : {})
     });
   } catch (error) {
     if (timeoutId) {
       clearTimeout(timeoutId);
+    }
+    cleanupTasks.forEach((cleanup) => cleanup());
+
+    const abortReason = controller?.signal?.aborted
+      ? controller.signal.reason
+      : signal?.aborted
+        ? signal.reason
+        : null;
+    const abortMessage =
+      abortReason instanceof Error
+        ? abortReason.message
+        : String(abortReason || "").trim();
+
+    if (abortMessage) {
+      if (abortMessage === "llm-request-cancelled") {
+        throw new Error("llm-request-cancelled");
+      }
+
+      if (abortMessage.toLowerCase().includes("timed out")) {
+        throw new Error("LLM request timed out");
+      }
+
+      throw new Error(abortMessage);
     }
 
     if (error?.name === "AbortError") {
@@ -117,6 +171,7 @@ async function createRequest({
   if (timeoutId) {
     clearTimeout(timeoutId);
   }
+  cleanupTasks.forEach((cleanup) => cleanup());
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -507,7 +562,8 @@ export async function requestAdapterResponse({
   context,
   config,
   fetchImpl = globalThis.fetch,
-  requestTuning = null
+  requestTuning = null,
+  signal = null
 }) {
   const { response, endpoint } = await createRequest({
     adapter,
@@ -515,7 +571,8 @@ export async function requestAdapterResponse({
     config,
     requestTuning,
     fetchImpl,
-    stream: false
+    stream: false,
+    signal
   });
   const payload = await response.json();
 
@@ -533,7 +590,8 @@ export async function requestAdapterStream({
   config,
   fetchImpl = globalThis.fetch,
   requestTuning = null,
-  onEvent
+  onEvent,
+  signal = null
 }) {
   const { response, endpoint } = await createRequest({
     adapter,
@@ -541,7 +599,8 @@ export async function requestAdapterStream({
     config,
     requestTuning,
     fetchImpl,
-    stream: true
+    stream: true,
+    signal
   });
 
   if (!response.body) {
@@ -549,23 +608,39 @@ export async function requestAdapterStream({
   }
 
   if (adapter.streamFormat === "openai-chat-sse") {
-    return streamOpenAiCompatible({
-      adapter,
-      response,
-      endpoint,
-      config,
-      onEvent
-    });
+    try {
+      return await streamOpenAiCompatible({
+        adapter,
+        response,
+        endpoint,
+        config,
+        onEvent
+      });
+    } catch (error) {
+      if (signal?.aborted) {
+        throw new Error("llm-request-cancelled");
+      }
+
+      throw error;
+    }
   }
 
   if (adapter.streamFormat === "anthropic-messages-sse") {
-    return streamAnthropicMessages({
-      adapter,
-      response,
-      endpoint,
-      config,
-      onEvent
-    });
+    try {
+      return await streamAnthropicMessages({
+        adapter,
+        response,
+        endpoint,
+        config,
+        onEvent
+      });
+    } catch (error) {
+      if (signal?.aborted) {
+        throw new Error("llm-request-cancelled");
+      }
+
+      throw error;
+    }
   }
 
   throw new Error(`Adapter "${adapter.id}" does not support streaming`);

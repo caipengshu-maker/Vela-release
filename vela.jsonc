@@ -30,13 +30,13 @@
     "name": ""
   },
   "llm": {
-    "provider": "minimax-messages",
-    "baseUrl": "https://api.minimaxi.com/anthropic",
-    "model": "MiniMax-M2.7",
+    "provider": "openai-compatible",
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "gpt-4.1-mini",
     "apiKey": "",
-    "apiKeyEnv": "MINIMAX_API_KEY",
+    "apiKeyEnv": "OPENAI_API_KEY",
     "temperature": 0.9,
-    "maxTokens": 512,
+    "maxTokens": 260,
     "thinkingMode": "balanced",
     "endpointPath": "",
     "headers": {},
@@ -45,21 +45,15 @@
       "enabled": false,
       "budgetTokens": 512
     },
-    "fallback": {
-      "provider": "anthropic-messages",
-      "model": "k2p5",
-      "apiKey": "",
-      "apiKeyEnv": "KIMI_CODING_API_KEY",
-      "baseUrl": "https://api.kimi.com/coding"
-    }
+    "fallback": null
   },
   "asr": {
     "enabled": true,
     "provider": "webspeech"
   },
   "tts": {
-    "enabled": true,
-    "provider": "minimax-websocket",
+    "enabled": false,
+    "provider": "placeholder",
     "apiKey": "",
     "apiKeyEnv": "MINIMAX_API_KEY",
     "model": "speech-2.8-hd",
@@ -95,7 +89,7 @@
     "assetPath": "avatars/eku/Eku_VRM_v1_0_0.vrm"
   },
   "audio": {
-    "bgmVolume": 42,
-    "ttsVolume": 100
+    "bgmEnabled": true,
+    "ttsEnabled": false
   }
 }

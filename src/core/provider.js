@@ -123,6 +123,27 @@ function hasApiKey(llmConfig) {
   return Boolean(resolveApiKey(llmConfig));
 }
 
+function isLocalOpenAiWithoutKey(llmConfig) {
+  const providerId = String(
+    llmConfig?.provider || llmConfig?.mode || ""
+  )
+    .trim()
+    .toLowerCase();
+  const baseUrl = String(llmConfig?.baseUrl || "").trim();
+
+  if (providerId !== "openai-compatible" || !baseUrl) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(baseUrl);
+    const hostname = String(parsed.hostname || "").trim().toLowerCase();
+    return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(hostname);
+  } catch {
+    return false;
+  }
+}
+
 function ensureTextResponse(response) {
   if (response.text) {
     return response;
@@ -249,6 +270,11 @@ function isCircuitBreakerError(error) {
   );
 }
 
+function isUserCancelledError(error) {
+  const reason = String(error?.message || error || "").toLowerCase();
+  return reason.includes("llm-request-cancelled");
+}
+
 async function persistProviderState(options, providerState) {
   if (typeof options.persistProviderState !== "function") {
     return providerState;
@@ -335,7 +361,10 @@ async function executeAttempt({
     return ensureTextResponse(response);
   }
 
-  if (!hasApiKey(attempt.config.llm)) {
+  if (
+    !hasApiKey(attempt.config.llm) &&
+    !isLocalOpenAiWithoutKey(attempt.config.llm)
+  ) {
     throw new Error("missing-api-key");
   }
 
@@ -347,7 +376,8 @@ async function executeAttempt({
         config: attempt.config,
         requestTuning: attempt.requestTuning,
         fetchImpl: options.fetchImpl,
-        onEvent: options.onEvent
+        onEvent: options.onEvent,
+        signal: options.signal
       })
     );
   }
@@ -358,7 +388,8 @@ async function executeAttempt({
       context,
       config: attempt.config,
       requestTuning: attempt.requestTuning,
-      fetchImpl: options.fetchImpl
+      fetchImpl: options.fetchImpl,
+      signal: options.signal
     })
   );
 }
@@ -546,6 +577,10 @@ async function generateWithFallback(context, config, options = {}, stream = fals
 
         return attached;
       } catch (error) {
+        if (isUserCancelledError(error)) {
+          throw error;
+        }
+
         failures.push(normalizeAttemptError(routeAttempts.primaryAttempt.providerId, error));
 
         if (routeAttempts.requestedRoute?.kind === "primary") {
@@ -602,6 +637,10 @@ async function generateWithFallback(context, config, options = {}, stream = fals
         );
         return attached;
       } catch (error) {
+        if (isUserCancelledError(error)) {
+          throw error;
+        }
+
         failures.push(normalizeAttemptError(routeAttempts.fallbackAttempt.providerId, error));
       }
     }

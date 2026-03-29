@@ -1,9 +1,7 @@
-import { randomUUID } from "node:crypto";
-import { resolveLocale } from "./config.js";
+﻿import { randomUUID } from "node:crypto";
 import { generateReply } from "./provider.js";
 
-const MEMORY_SUMMARIZER_PROMPTS = {
-  "zh-CN": `你在为一个陪伴型聊天系统生成一条“触发式”对话记忆。
+const MEMORY_SUMMARIZER_PROMPT = `你在为一个陪伴型聊天系统生成一条“触发式”对话记忆。
 只输出一个 JSON 对象，不要代码块，不要解释，不要额外文本。结构如下：
 {
   "id": "string",
@@ -38,56 +36,24 @@ const MEMORY_SUMMARIZER_PROMPTS = {
 - confidence 取值 0 到 1。
 - emotionalMoment 如果不明显也要输出对象，detected=false 时 emotion 写 "calm"，intensity 写 0。
 - topicLabel 用 2 到 8 个字概括话题。
-- 使用输入里的 id、createdAt、turnIndex 原样写回。`,
-  en: `You are generating one trigger-based conversation memory for a companionship chat system.
-Output exactly one JSON object. No code fences, no explanations, no extra text. Use this structure:
-{
-  "id": "string",
-  "createdAt": "ISO-8601 string",
-  "turnIndex": 0,
-  "summary": "string",
-  "bridgeSummary": "string",
-  "openFollowUps": ["string"],
-  "facts": [
-    {
-      "type": "preference | event | fact",
-      "key": "string",
-      "value": "string",
-      "confidence": 0.0
-    }
-  ],
-  "emotionalMoment": {
-    "detected": true,
-    "emotion": "string",
-    "intensity": 0.0
-  },
-  "topicLabel": "string"
-}
+- 使用输入里的 id、createdAt、turnIndex 原样写回。
+- 重要：你的回复必须只包含一个 JSON 对象，不要添加任何前缀文字、解释或 markdown 代码块标记。直接输出 { 开头的 JSON。
+`;
 
-Requirements:
-- summary should be a concise English summary of this turn in 1 to 2 sentences.
-- bridgeSummary should be a shorter English handoff line that makes it easy to resume later.
-- openFollowUps should keep only questions worth returning to later, with at most 3 items. Use an empty array if there are none.
-- facts should keep only information with long-term value. Use an empty array if there are none.
-- Use preference for user preferences, habits, and stable tendencies.
-- Use event for important events that clearly happened or are about to happen.
-- confidence must be between 0 and 1.
-- emotionalMoment must always be present. If nothing stands out, set detected=false, emotion="calm", intensity=0.
-- topicLabel should be a short English topic tag in 1 to 4 words.
-- Copy id, createdAt, and turnIndex back exactly as provided in the input.`
-};
-
-function buildMemorySummarizerPrompt(locale = "zh-CN") {
-  return MEMORY_SUMMARIZER_PROMPTS[resolveLocale(locale)];
-}
+const MEMORY_SUMMARIZER_RETRY_PROMPT = `请把输入总结成一个 JSON 对象。
+只输出 JSON，不要解释，不要代码块，不要额外文本。
+JSON 必须包含这些字段：id、createdAt、turnIndex、summary、bridgeSummary、openFollowUps、facts、emotionalMoment、topicLabel。
+facts 必须是数组；emotionalMoment 必须是包含 detected、emotion、intensity 的对象。
+summary 和 bridgeSummary 用简洁中文；使用输入里的 id、createdAt、turnIndex 原样写回。
+直接输出 { 开头的 JSON。`;
 
 function buildSummarizerConfig(config) {
   return {
     ...config,
     llm: {
       ...config.llm,
-      temperature: 0.3,
-      maxTokens: 300,
+      temperature: 0.2,
+      maxTokens: 420,
       thinking: {
         ...config.llm.thinking,
         enabled: false
@@ -117,20 +83,24 @@ function normalizeStringList(values, limit = 3) {
 }
 
 function extractJsonObject(text) {
-  const source = String(text || "").trim();
-  const fenced = source.replace(/^```(?:json)?\s*|\s*```$/g, "").trim();
-  const start = fenced.indexOf("{");
+  const source = String(text || "")
+    .replace(/^\uFEFF/, "")
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  const start = source.indexOf("{");
 
   if (start < 0) {
     return null;
   }
 
+  const jsonCandidate = source.slice(start);
   let depth = 0;
   let inString = false;
   let escaped = false;
 
-  for (let index = start; index < fenced.length; index += 1) {
-    const char = fenced[index];
+  for (let index = 0; index < jsonCandidate.length; index += 1) {
+    const char = jsonCandidate[index];
 
     if (inString) {
       if (escaped) {
@@ -163,12 +133,58 @@ function extractJsonObject(text) {
     if (char === "}") {
       depth -= 1;
       if (depth === 0) {
-        return fenced.slice(start, index + 1);
+        return jsonCandidate.slice(0, index + 1).trim();
       }
     }
   }
 
   return null;
+}
+
+function buildSummarizerContext(payload, systemPrompt) {
+  return {
+    systemPrompt,
+    messages: [
+      {
+        role: "user",
+        content: JSON.stringify(payload, null, 2)
+      }
+    ],
+    memory: {
+      recentSummaries: []
+    },
+    session: {
+      launchTurnCount: 0,
+      lifetimeTurnCount: Number(payload?.turnIndex) || 0
+    }
+  };
+}
+
+function parseEpisodeFromResponse(response, defaults) {
+  const responseText = String(response?.text || "");
+  const jsonText = extractJsonObject(responseText);
+
+  if (!jsonText) {
+    console.warn("[memory-summarizer] Raw LLM response:", responseText.slice(0, 500));
+    throw new Error("summarizer did not return JSON");
+  }
+
+  let parsed;
+
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (error) {
+    console.warn("[memory-summarizer] Raw LLM response:", responseText.slice(0, 500));
+    throw new Error(error?.message || "summarizer returned invalid JSON");
+  }
+
+  const episode = normalizeEpisode(parsed, defaults);
+
+  if (!episode) {
+    throw new Error("summarizer JSON missing summary or topicLabel");
+  }
+
+  return episode;
 }
 
 function normalizeFact(fact, episode) {
@@ -196,13 +212,13 @@ function normalizeFact(fact, episode) {
 }
 
 function normalizeEpisode(payload, defaults) {
-  const summary = String(payload?.summary || "").trim();
+  const summary = String(payload?.summary || payload?.bridgeSummary || "").trim();
   const bridgeSummary = String(
     payload?.bridgeSummary || payload?.summary || ""
   ).trim();
-  const topicLabel = String(payload?.topicLabel || "").trim();
+  const topicLabel = String(payload?.topicLabel || payload?.label || "").trim();
 
-  if (!summary || !topicLabel) {
+  if (!summary) {
     return null;
   }
 
@@ -216,7 +232,7 @@ function normalizeEpisode(payload, defaults) {
     createdAt: defaults.createdAt,
     turnIndex: defaults.turnIndex,
     summary,
-    bridgeSummary,
+    bridgeSummary: bridgeSummary || summary,
     openFollowUps: normalizeStringList(payload?.openFollowUps, 3),
     facts: Array.isArray(payload?.facts) ? payload.facts : [],
     emotionalMoment: {
@@ -224,7 +240,7 @@ function normalizeEpisode(payload, defaults) {
       emotion: String(emotionalMoment.emotion || "calm").trim() || "calm",
       intensity: normalizeConfidence(emotionalMoment.intensity, 0)
     },
-    topicLabel
+    topicLabel: topicLabel || truncateText(summary, 8)
   };
 }
 
@@ -237,14 +253,27 @@ function truncateText(value, maxLength) {
   return `${text.slice(0, maxLength)}...`;
 }
 
-function createRawFallback(defaults, { userMessage, assistantReply }) {
+function createStructuredFallback(defaults, { userMessage, assistantReply, emotion }) {
+  const trimmedUser = String(userMessage || "").trim();
+  const trimmedAssistant = String(assistantReply || "").trim();
+  const summary = trimmedUser
+    ? `聊到“${truncateText(trimmedUser, 24)}”，这轮话题已经接住。`
+    : truncateText(trimmedAssistant, 48) || "这轮对话已经接住。";
+
   return {
     id: defaults.id,
-    type: "raw-fallback",
-    userMessage: String(userMessage || "").trim(),
-    assistantReply: truncateText(assistantReply, 200),
     createdAt: defaults.createdAt,
-    reason: "parse-error"
+    turnIndex: defaults.turnIndex,
+    summary,
+    bridgeSummary: summary,
+    openFollowUps: [],
+    facts: [],
+    emotionalMoment: {
+      detected: Boolean(emotion && emotion !== "calm"),
+      emotion: String(emotion || "calm").trim() || "calm",
+      intensity: emotion && emotion !== "calm" ? 0.35 : 0
+    },
+    topicLabel: truncateText(trimmedUser || trimmedAssistant || "近况", 8)
   };
 }
 
@@ -270,52 +299,36 @@ export class MemorySummarizer {
     };
 
     try {
-      const context = {
-        systemPrompt: buildMemorySummarizerPrompt(this.config?.app?.locale),
-        messages: [
-          {
-            role: "user",
-            content: JSON.stringify(
-              {
-                ...defaults,
-                userMessage,
-                assistantReply,
-                emotion: String(emotion || "calm").trim() || "calm",
-                action: String(action || "none").trim() || "none",
-                triggerReasons: Array.isArray(triggerReasons) ? triggerReasons : [],
-                lastActiveAt
-              },
-              null,
-              2
-            )
-          }
-        ],
-        memory: {
-          recentSummaries: []
-        },
-        session: {
-          launchTurnCount: 0,
-          lifetimeTurnCount: defaults.turnIndex
-        }
+      const payload = {
+        ...defaults,
+        userMessage,
+        assistantReply,
+        emotion: String(emotion || "calm").trim() || "calm",
+        action: String(action || "none").trim() || "none",
+        triggerReasons: Array.isArray(triggerReasons) ? triggerReasons : [],
+        lastActiveAt
       };
+      const summarizerConfig = buildSummarizerConfig(this.config);
       const response = await generateReply(
-        context,
-        buildSummarizerConfig(this.config),
+        buildSummarizerContext(payload, MEMORY_SUMMARIZER_PROMPT),
+        summarizerConfig,
         {
           thinkingMode: "balanced"
         }
       );
-      const jsonText = extractJsonObject(response?.text);
+      let episode;
 
-      if (!jsonText) {
-        throw new Error("summarizer did not return JSON");
-      }
-
-      const parsed = JSON.parse(jsonText);
-      const episode = normalizeEpisode(parsed, defaults);
-
-      if (!episode) {
-        throw new Error("summarizer JSON missing summary or topicLabel");
+      try {
+        episode = parseEpisodeFromResponse(response, defaults);
+      } catch {
+        const retryResponse = await generateReply(
+          buildSummarizerContext(payload, MEMORY_SUMMARIZER_RETRY_PROMPT),
+          summarizerConfig,
+          {
+            thinkingMode: "balanced"
+          }
+        );
+        episode = parseEpisodeFromResponse(retryResponse, defaults);
       }
 
       const facts = episode.facts
@@ -339,12 +352,13 @@ export class MemorySummarizer {
       await this.memoryStore.autoUpdateProfile(facts);
       return finalEpisode;
     } catch (error) {
-      console.warn("[memory-summarizer] Parse failed, using raw fallback");
+      console.warn("[memory-summarizer] Parse failed, using structured fallback");
       console.warn("memory summarizer failed:", error?.message || error);
 
-      const fallbackEpisode = createRawFallback(defaults, {
+      const fallbackEpisode = createStructuredFallback(defaults, {
         userMessage,
-        assistantReply
+        assistantReply,
+        emotion
       });
 
       await this.memoryStore.appendEpisode(fallbackEpisode);
