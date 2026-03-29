@@ -1230,6 +1230,29 @@ export class VelaCore {
     return nextConfig;
   }
 
+  getSettings() {
+    const cfg = this.config || {};
+    return {
+      userName: cfg.user?.name || this.memorySnapshot?.profile?.user?.name || "",
+      llm: {
+        provider: cfg.llm?.provider || "openai-compatible",
+        baseUrl: cfg.llm?.baseUrl || "",
+        model: cfg.llm?.model || "",
+        apiKey: cfg.llm?.apiKey || ""
+      },
+      tts: {
+        enabled: Boolean(cfg.tts?.enabled),
+        provider: cfg.tts?.provider || "placeholder",
+        apiKey: cfg.tts?.apiKey || "",
+        voiceId: cfg.tts?.voiceId || ""
+      },
+      audio: {
+        bgmEnabled: Boolean(cfg.audio?.bgmEnabled),
+        ttsEnabled: Boolean(cfg.audio?.ttsEnabled)
+      }
+    };
+  }
+
   async updateSettings(payload = {}) {
     const hasOwnField = (key) =>
       Object.prototype.hasOwnProperty.call(payload || {}, key);

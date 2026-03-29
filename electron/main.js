@@ -461,6 +461,10 @@ ipcMain.handle("vela:complete-onboarding-v2", async (_event, payload) => {
   return core.completeOnboardingV2(payload);
 });
 
+ipcMain.handle("vela:get-settings", async () => {
+  return core.getSettings();
+});
+
 ipcMain.handle("vela:update-settings", async (_event, payload) => {
   return core.updateSettings(payload);
 });

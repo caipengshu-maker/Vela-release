@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("vela", {
     ipcRenderer.invoke("vela:read-bundled-asset", relativePath),
   sendMessage: (message) => ipcRenderer.invoke("vela:send-message", message),
   switchModel: (modelId) => ipcRenderer.invoke("vela:switch-model", modelId),
+  getSettings: () => ipcRenderer.invoke("vela:get-settings"),
   cacheLocation: (location) => ipcRenderer.invoke("vela:cache-location", location),
   proactiveOpen: () => ipcRenderer.invoke("vela:proactive-open"),
   proactiveTrigger: () => ipcRenderer.invoke("vela:proactive-trigger"),
