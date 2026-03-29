@@ -319,13 +319,13 @@ function buildRelationshipUnlockHints(relationship, locale = "zh-CN") {
   return hints;
 }
 
-function buildMilestonePromptBlock(milestones = []) {
+function buildMilestonePromptBlock(milestones = [], locale = "zh-CN") {
   if (!Array.isArray(milestones) || milestones.length === 0) {
     return "";
   }
 
   return milestones
-    .map((milestone) => buildMilestoneSystemMessage(milestone))
+    .map((milestone) => buildMilestoneSystemMessage(milestone, locale))
     .filter(Boolean)
     .join("\n\n");
 }
@@ -649,7 +649,8 @@ export class VelaCore {
     const fallback = String(fallbackStage || "reserved").trim().toLowerCase();
     const stage = RELATIONSHIP_STAGES.includes(fallback) ? fallback : "reserved";
     const tracker = new RelationshipTracker(
-      hasPersistedRelationship ? persistedRelationship : { stage }
+      hasPersistedRelationship ? persistedRelationship : { stage },
+      this.getLocale()
     );
 
     if (!hasPersistedRelationship && stage) {
@@ -696,7 +697,7 @@ export class VelaCore {
     const note =
       baseStage === stage && String(base.note || "").trim()
         ? base.note
-        : getRelationshipStageNote(stage);
+        : getRelationshipStageNote(stage, this.getLocale());
 
     return {
       ...base,
@@ -779,7 +780,7 @@ export class VelaCore {
     return {
       relationship: this.getRelationshipState(nextRelationship),
       relationshipForPersistence: nextRelationship,
-      milestonePromptBlock: buildMilestonePromptBlock(newlyTriggeredMilestones),
+      milestonePromptBlock: buildMilestonePromptBlock(newlyTriggeredMilestones, this.getLocale()),
       newlyTriggeredMilestones
     };
   }
@@ -898,7 +899,7 @@ export class VelaCore {
       memoryPeek: buildMemoryPeek(memory, locale),
       voiceMode: this.buildVoiceModeState(),
       thinkingMode: this.runtimeSession.thinkingMode,
-      thinkingModes: listThinkingModes(),
+      thinkingModes: listThinkingModes(locale),
       llm: {
         provider: this.config.llm.provider,
         apiKey: this.config.llm.apiKey,
@@ -1754,7 +1755,7 @@ export class VelaCore {
     const relationshipStage = this.getRelationshipState(
       this.memorySnapshot?.relationship
     ).stage;
-    const decision = shouldGreetOnOpen(this.persistedState, relationshipStage);
+    const decision = shouldGreetOnOpen(this.persistedState, relationshipStage, this.getLocale());
 
     if (!decision.shouldGreet) {
       return null;
@@ -1799,7 +1800,8 @@ export class VelaCore {
       timeAwareness,
       weather,
       previousPersistedState,
-      relationshipStage
+      relationshipStage,
+      this.getLocale()
     );
     await this.updateWeatherState(weather);
 

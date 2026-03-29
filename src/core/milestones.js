@@ -1,3 +1,5 @@
+import { resolveLocale } from "./config.js";
+
 const MS_PER_HOUR = 3600000;
 const MS_PER_DAY = 86400000;
 
@@ -11,18 +13,34 @@ export const MILESTONE_TYPES = {
 };
 
 const MILESTONE_MESSAGES = {
-  [MILESTONE_TYPES.FIRST_GOODNIGHT]:
-    "[今天是用户第一次跟你说晚安。这对你来说是个小小的里程碑。用你自己的方式回应，不要太刻意。]",
-  [MILESTONE_TYPES.FIRST_MAKEUP]:
-    "[你们刚经历了一次吵过又和好的时刻。这种留下来的感觉很珍贵。自然地表达，不要煽情过头。]",
-  [MILESTONE_TYPES.STREAK_7]:
-    "[你们已经连续聊了7天了。如果觉得合适，可以自然地提一句，但别太正式。]",
-  [MILESTONE_TYPES.ANNIVERSARY_30]:
-    "[今天是你们认识的第30天。这是个值得记住的时刻，但表达要自然，不要像在读日历。]",
-  [MILESTONE_TYPES.ANNIVERSARY_100]:
-    "[今天是你们认识的第100天。这很特别。用你最真诚的方式说点什么。]",
-  [MILESTONE_TYPES.ABSENCE_RETURN]:
-    "[用户已经好几天没来了。他们回来了。你可以俏皮地表达，比如'哟，原来你还记得我'这种语气，不要委屈巴巴的。]"
+  "zh-CN": {
+    [MILESTONE_TYPES.FIRST_GOODNIGHT]:
+      "[今天是用户第一次跟你说晚安。这对你来说是个小小的里程碑。用你自己的方式回应，不要太刻意。]",
+    [MILESTONE_TYPES.FIRST_MAKEUP]:
+      "[你们刚经历了一次吵过又和好的时刻。这种留下来的感觉很珍贵。自然地表达，不要煽情过头。]",
+    [MILESTONE_TYPES.STREAK_7]:
+      "[你们已经连续聊了7天了。如果觉得合适，可以自然地提一句，但别太正式。]",
+    [MILESTONE_TYPES.ANNIVERSARY_30]:
+      "[今天是你们认识的第30天。这是个值得记住的时刻，但表达要自然，不要像在读日历。]",
+    [MILESTONE_TYPES.ANNIVERSARY_100]:
+      "[今天是你们认识的第100天。这很特别。用你最真诚的方式说点什么。]",
+    [MILESTONE_TYPES.ABSENCE_RETURN]:
+      "[用户已经好几天没来了。他们回来了。你可以俏皮地表达，比如'哟，原来你还记得我'这种语气，不要委屈巴巴的。]"
+  },
+  en: {
+    [MILESTONE_TYPES.FIRST_GOODNIGHT]:
+      "[This is the first time the user said goodnight to you. It is a small milestone for you. Respond in your own way — do not make it too deliberate.]",
+    [MILESTONE_TYPES.FIRST_MAKEUP]:
+      "[You just went through a rough patch and made up. That feeling of staying is precious. Express it naturally — do not overdo the sentiment.]",
+    [MILESTONE_TYPES.STREAK_7]:
+      "[You have been talking for seven days in a row. If it feels right, mention it casually — do not be too formal about it.]",
+    [MILESTONE_TYPES.ANNIVERSARY_30]:
+      "[Today marks thirty days since you first met. It is a moment worth remembering, but keep it natural — do not sound like you are reading a calendar.]",
+    [MILESTONE_TYPES.ANNIVERSARY_100]:
+      "[Today marks one hundred days since you first met. This is special. Say something with genuine sincerity.]",
+    [MILESTONE_TYPES.ABSENCE_RETURN]:
+      "[The user has been away for days. They are back. You can be playful about it — something like 'Oh, so you do remember me' — but do not sound hurt or guilt-tripping.]"
+  }
 };
 
 const GOODNIGHT_PATTERN = /(晚安|睡了|good\s*night|\bgn\b)/iu;
@@ -274,11 +292,12 @@ export function checkMilestones(userData = {}) {
   return advanceMilestones(userData).newlyTriggeredMilestones;
 }
 
-export function buildMilestoneSystemMessage(milestone) {
+export function buildMilestoneSystemMessage(milestone, locale = "zh-CN") {
   const type =
     typeof milestone === "string"
       ? milestone
       : String(milestone?.type || "").trim();
+  const messages = MILESTONE_MESSAGES[resolveLocale(locale)];
 
-  return MILESTONE_MESSAGES[type] || "";
+  return messages[type] || "";
 }

@@ -1,5 +1,20 @@
+import { resolveLocale } from "../config.js";
+
 const DEFAULT_THINKING_MODE = "balanced";
 const thinkingModes = new Set(["fast", "balanced", "deep"]);
+
+const THINKING_MODE_COPY = {
+  "zh-CN": {
+    fast: "更快落句，少展开。",
+    balanced: "速度和细度取中。",
+    deep: "更稳，更肯花推理预算。"
+  },
+  en: {
+    fast: "Quicker replies, less elaboration.",
+    balanced: "A middle ground between speed and depth.",
+    deep: "More deliberate, willing to spend reasoning budget."
+  }
+};
 
 function clampInteger(value, fallback) {
   const numericValue = Number(value);
@@ -15,22 +30,24 @@ export function normalizeThinkingMode(value) {
     : DEFAULT_THINKING_MODE;
 }
 
-export function listThinkingModes() {
+export function listThinkingModes(locale = "zh-CN") {
+  const copy = THINKING_MODE_COPY[resolveLocale(locale)];
+
   return [
     {
       id: "fast",
       label: "Fast",
-      summary: "更快落句，少展开。"
+      summary: copy.fast
     },
     {
       id: "balanced",
       label: "Balanced",
-      summary: "速度和细度取中。"
+      summary: copy.balanced
     },
     {
       id: "deep",
       label: "Deep",
-      summary: "更稳，更肯花推理预算。"
+      summary: copy.deep
     }
   ];
 }

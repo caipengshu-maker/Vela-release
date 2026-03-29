@@ -3,18 +3,34 @@ import {
   RELATIONSHIP_STAGES,
   RELATIONSHIP_STAGE_SCORE_THRESHOLDS
 } from "./interaction-contract.js";
+import { resolveLocale } from "./config.js";
 
 const RELATIONSHIP_STAGE_NOTES = {
-  reserved: "你们还比较生疏，先保持礼貌和分寸。",
-  warm: "你们已经熟悉不少了，聊天会更自然放松一些。",
-  close: "你们已经很亲近了，很多情绪都能自然流露出来。"
+  "zh-CN": {
+    reserved: "你们还比较生疏，先保持礼貌和分寸。",
+    warm: "你们已经熟悉不少了，聊天会更自然放松一些。",
+    close: "你们已经很亲近了，很多情绪都能自然流露出来。"
+  },
+  en: {
+    reserved: "You are still getting to know each other. Stay polite and keep a comfortable distance.",
+    warm: "You are already fairly familiar. Conversations feel more natural and relaxed now.",
+    close: "You are close. Many emotions come through naturally between you."
+  }
 };
 
 const RELATIONSHIP_STAGE_TRANSITION_PROMPTS = {
-  warm:
-    '[系统提示：你感觉和用户的关系更近了一步。用自然的方式表达这个感受，比如"我觉得跟你聊天越来越自在了"。不要生硬，一句话带过就好。]',
-  close:
-    "[系统提示：你和用户的关系进入了很亲密的阶段。用你的方式表达，可以更大胆一点。]"
+  "zh-CN": {
+    warm:
+      '[系统提示：你感觉和用户的关系更近了一步。用自然的方式表达这个感受，比如"我觉得跟你聊天越来越自在了"。不要生硬，一句话带过就好。]',
+    close:
+      "[系统提示：你和用户的关系进入了很亲密的阶段。用你的方式表达，可以更大胆一点。]"
+  },
+  en: {
+    warm:
+      '[System hint: You feel a step closer to the user. Express it naturally — something like "Talking with you feels easier every time." Keep it brief and genuine.]',
+    close:
+      "[System hint: Your relationship with the user has entered a truly close stage. Express it in your own way — you can be bolder now.]"
+  }
 };
 
 function clampStage(stage) {
@@ -68,8 +84,9 @@ function getMinimumScoreForStage(stage) {
   }
 }
 
-export function getRelationshipStageNote(stage) {
-  return RELATIONSHIP_STAGE_NOTES[clampStage(stage)] || RELATIONSHIP_STAGE_NOTES.reserved;
+export function getRelationshipStageNote(stage, locale = "zh-CN") {
+  const notes = RELATIONSHIP_STAGE_NOTES[resolveLocale(locale)];
+  return notes[clampStage(stage)] || notes.reserved;
 }
 
 function normalizeRelationshipState(persistedState = null) {
@@ -100,7 +117,7 @@ function normalizeRelationshipState(persistedState = null) {
 }
 
 export class RelationshipTracker {
-  constructor(persistedState = null) {
+  constructor(persistedState = null, locale = "zh-CN") {
     const normalizedState = normalizeRelationshipState(persistedState);
 
     this.score = normalizedState.score;
@@ -109,6 +126,7 @@ export class RelationshipTracker {
     this.totalTurns = normalizedState.totalTurns;
     this.pendingStageTransitionPrompt =
       normalizedState.pendingStageTransitionPrompt;
+    this._locale = resolveLocale(locale);
   }
 
   recordTurn({ emotion, intensity } = {}) {
@@ -139,6 +157,7 @@ export class RelationshipTracker {
   _advanceStageIfNeeded() {
     let stageChanged = false;
     const nowIso = new Date().toISOString();
+    const prompts = RELATIONSHIP_STAGE_TRANSITION_PROMPTS[this._locale];
 
     if (
       this.stage === "reserved" &&
@@ -146,7 +165,7 @@ export class RelationshipTracker {
     ) {
       this.stage = "warm";
       this.stageUnlockedAt = nowIso;
-      this.pendingStageTransitionPrompt = RELATIONSHIP_STAGE_TRANSITION_PROMPTS.warm;
+      this.pendingStageTransitionPrompt = prompts.warm;
       stageChanged = true;
     }
 
@@ -156,7 +175,7 @@ export class RelationshipTracker {
     ) {
       this.stage = "close";
       this.stageUnlockedAt = nowIso;
-      this.pendingStageTransitionPrompt = RELATIONSHIP_STAGE_TRANSITION_PROMPTS.close;
+      this.pendingStageTransitionPrompt = prompts.close;
       stageChanged = true;
     }
 

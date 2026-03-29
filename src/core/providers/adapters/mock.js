@@ -1,4 +1,5 @@
 import { appendBlock, buildNormalizedResponse } from "../shared.js";
+import { resolveLocale } from "../../config.js";
 
 function clipText(text, limit = 32) {
   if (!text) {
@@ -22,25 +23,58 @@ function chunkReply(text) {
   return fragments.length > 0 ? fragments : [String(text || "")];
 }
 
-function buildMockReply(context) {
+function buildMockReply(context, locale = "zh-CN") {
+  const resolvedLocale = resolveLocale(locale);
   const latestUserMessage = context.messages.at(-1)?.content?.trim() || "";
   const recentSummary = context.memory.recentSummaries[0];
   const isFirstTurnThisLaunch = context.session.launchTurnCount === 0;
-  const asksForJudgment = /(该不该|要不要|怎么看|觉得|判断|建议)/.test(
+  const asksForJudgment = /(该不该|要不要|怎么看|觉得|判断|建议|should I|what do you think|advice)/i.test(
     latestUserMessage
   );
-  const emotionalSignal = /(难过|焦虑|委屈|压力|失眠|崩|累)/.test(
+  const emotionalSignal = /(难过|焦虑|委屈|压力|失眠|崩|累|upset|anxious|stressed|exhausted|can't sleep)/i.test(
     latestUserMessage
   );
-  const greeting = /(你好|在吗|早上好|晚上好|晚安|嗨)/.test(latestUserMessage);
-  const wantsContinuation = /(上次|之前|继续|后来|记得)/.test(latestUserMessage);
+  const greeting = /(你好|在吗|早上好|晚上好|晚安|嗨|hello|hi|good morning|good evening|good night)/i.test(latestUserMessage);
+  const wantsContinuation = /(上次|之前|继续|后来|记得|last time|before|continue|remember)/i.test(latestUserMessage);
   const requestsLongSpeech = /long enough to queue speech|queue speech|慢一点说|说长一点/i.test(
     latestUserMessage
   );
+  const mentionsPlans = /(想|计划|准备|打算|want to|planning|going to|intend)/i.test(latestUserMessage);
+
+  if (resolvedLocale === "en") {
+    const continuityLine =
+      recentSummary && (isFirstTurnThisLaunch || wantsContinuation)
+        ? `I still remember we left off at "${clipText(recentSummary.topicLabel || recentSummary.summary, 18)}", so what you just said picks right up from there.`
+        : "";
+
+    let body = "I'm listening. There's already a point buried in what you said -- it just hasn't fully surfaced yet.";
+    let close = "If you're willing, go one layer deeper. I'll keep up.";
+
+    if (greeting) {
+      body = "I'm here. You don't need to tidy up your thoughts first -- just start with whatever's on your mind today.";
+      close = "Give me the first sentence. That's enough.";
+    } else if (emotionalSignal) {
+      body = "Don't try to hold it all together right now. Hand me the part that's stuck, and we'll untangle it bit by bit.";
+      close = "You don't have to say it all at once. I can follow.";
+    } else if (requestsLongSpeech) {
+      body =
+        "Okay, I'll slow down and meet you where you are. Hold on to the thing you most want to get across, then let the rest unfold at its own pace.";
+      close =
+        "No rush. I'll match your rhythm and hold each piece steady so nothing slips away.";
+    } else if (asksForJudgment) {
+      body = "If you want my read on it, I'd start by looking at what matters most to you right now, then talk about next steps.";
+      close = "Tell me the part that's hardest to weigh, and I'll be more precise.";
+    } else if (mentionsPlans) {
+      body = "Sounds like you already have a direction -- you're just looking for solid ground to stand on.";
+      close = "Tell me where you're torn, and we'll work from there.";
+    }
+
+    return [continuityLine, body, close].filter(Boolean).join(" ");
+  }
 
   const continuityLine =
     recentSummary && (isFirstTurnThisLaunch || wantsContinuation)
-      ? `我还记得上次我们停在“${clipText(recentSummary.topicLabel || recentSummary.summary, 18)}”，所以你这句话一出来，语境就接上了。`
+      ? `我还记得上次我们停在"${clipText(recentSummary.topicLabel || recentSummary.summary, 18)}"，所以你这句话一出来，语境就接上了。`
       : "";
 
   let body = "我在听。你这句话里已经有重点了，只是还没完全摊开。";
@@ -60,7 +94,7 @@ function buildMockReply(context) {
   } else if (asksForJudgment) {
     body = "如果只说我的判断，我会先看你现在最想保住的是什么，再谈动作。";
     close = "你把最难取舍的那一点补给我，我会说得更准。";
-  } else if (/(想|计划|准备|打算)/.test(latestUserMessage)) {
+  } else if (mentionsPlans) {
     body = "听起来你不是没有方向，只是还缺一个能站稳的落点。";
     close = "把你最犹豫的那个分叉说出来，我们继续往下接。";
   }
@@ -84,7 +118,7 @@ export const mockAdapter = {
   },
   generate({ context, config, fallback = null }) {
     const blocks = [];
-    appendBlock(blocks, "text", buildMockReply(context));
+    appendBlock(blocks, "text", buildMockReply(context, config?.app?.locale));
 
     return buildNormalizedResponse({
       adapter: this,
